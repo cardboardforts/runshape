@@ -142,3 +142,29 @@ describe("diffRuns on the same refactor", () => {
     `);
   });
 });
+
+describe("diffRuns: identical lines", () => {
+  test("switching from one `return None` to another identical one later in the function is a change", async () => {
+    const { before, after } = await loadRefactor();
+    // Rewrite the recordings' source of one function so it holds two identical lines, and
+    // make "before" reach the first and "after" the second.
+    const file = "app/services/articles.py";
+    const withTwins = (run: Run, reached: number): Run => {
+      const lines = [...(run.sources!.get(file) ?? [])];
+      const fn = run.catalog.find((f) => f.file === file && f.qualname === "check_article_exists")!;
+      lines[fn.firstLine] = "    return None";
+      lines[fn.firstLine + 2] = "    return None";
+      const sources = new Map(run.sources!);
+      sources.set(file, lines);
+      const copy = Object.assign(Object.create(Object.getPrototypeOf(run)), run, { sources });
+      for (const span of copy.scenario(CREATE)!.spans) {
+        if (span.fn.qualname === "check_article_exists") span.lines.splice(0, span.lines.length, fn.firstLine + 1 + reached);
+      }
+      return copy;
+    };
+
+    const changed = diffRuns(withTwins(before, 0), withTwins(after, 2)).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
+
+    expect(changed.find((fn) => fn.qualname === "check_article_exists")).toBeDefined();
+  });
+});

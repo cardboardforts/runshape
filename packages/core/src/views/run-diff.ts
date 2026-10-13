@@ -175,15 +175,28 @@ function statementsOf(scenario: Scenario | null, phases: Phase[]): Map<string, n
   return counts;
 }
 
-/** How a reached line is identified: its recorded text when both runs have source, else its number. */
-type LineText = (file: string | null, line: number) => string;
+/**
+ * How a reached line is identified: when both runs have source, its text plus which
+ * occurrence of that text it is within the function ("return None#2"), so moving the
+ * function doesn't count as a change but switching between two identical lines does.
+ * Without source, its line number.
+ */
+type LineText = (file: string | null, line: number, functionFirstLine: number) => string;
 
 function lineTexts(before: Run, after: Run): [LineText, LineText] {
   if (before.sources === null || after.sources === null) {
     const byNumber: LineText = (_file, line) => `line ${line}`;
     return [byNumber, byNumber];
   }
-  const byText = (run: Run): LineText => (file, line) => (file ? run.sourceLine(file, line)?.trim() : null) ?? `line ${line}`;
+  const byText = (run: Run): LineText => (file, line, functionFirstLine) => {
+    const text = file ? run.sourceLine(file, line)?.trim() : undefined;
+    if (text === undefined || file === null) return `line ${line}`;
+    let occurrence = 0;
+    for (let other = functionFirstLine; other <= line; other += 1) {
+      if (run.sourceLine(file, other)?.trim() === text) occurrence += 1;
+    }
+    return `${text}#${occurrence}`;
+  };
   return [byText(before), byText(after)];
 }
 
@@ -203,7 +216,7 @@ function reachedLines(scenario: Scenario | null, phases: Phase[], identify: Line
       lines = new Map();
       reached.set(key, lines);
     }
-    for (const line of span.lines) lines.set(identify(span.fn.file, line), line);
+    for (const line of span.lines) lines.set(identify(span.fn.file, line, span.fn.firstLine), line);
   }
   return reached;
 }

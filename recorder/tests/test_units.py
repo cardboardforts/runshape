@@ -77,3 +77,18 @@ def test_closing_a_generator_counts_as_resuming_it_on_every_backend(tmp_path, mo
     assert [e for e in recording.events if isinstance(e, SpanResumed) and e.span == numbers_span] != []
     assert recording.recorder_errors == []
     sys.modules.pop("gens", None)
+
+
+def test_source_snapshot_keeps_python_line_numbers_and_only_project_files(tmp_path):
+    # A form feed (common in older stdlib-style code) is a line break to str.splitlines()
+    # but not to Python; snapshot line N must be the line Python calls N.
+    write_package(tmp_path, "pkg", {"__init__.py": "", "m.py": "x = 1  # \x0c page break\ndef f():\n    return 2\n"})
+    write_package(tmp_path, "vendor", {"__init__.py": "", "lib.py": "def g():\n    return 3\n"})
+    catalog = SourceCatalog(str(tmp_path))
+    catalog.functions_under([str(tmp_path / "pkg")])
+    catalog._compile(str(tmp_path / "vendor" / "lib.py"))  # as qualname() does for framework code on 3.9/3.10
+
+    sources = catalog.sources_under([str(tmp_path / "pkg")])
+
+    assert sorted(sources) == ["pkg/__init__.py", "pkg/m.py"]
+    assert sources["pkg/m.py"][2] == "    return 2"  # line 3

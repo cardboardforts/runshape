@@ -29,7 +29,10 @@ function withContext(calls: CallStep[]): Row[] {
 
 const MARK: Record<Op, string> = { [Op.Same]: " ", [Op.Added]: "+", [Op.Removed]: "−" };
 
+const TOO_DIFFERENT = "These two executions are too different to line up call by call, so this is shown as everything removed and everything added. It doesn't mean nothing stayed the same.";
+
 export function ExecutionCalls({ diff, onOpenFunction }: { diff: ExecutionDiff; onOpenFunction: (call: CallStep) => void }) {
+  if (!diff.complete) return <p role="note">{TOO_DIFFERENT}</p>;
   if (diff.added + diff.removed === 0) {
     return <p className="muted">The same calls, in the same order, as before.</p>;
   }
@@ -73,6 +76,7 @@ export function FunctionExecutionPanel({ diff }: { diff: FunctionExecutionDiff }
           ? "Statements are matched by their text, so moving the function or editing code above it doesn't count as a change."
           : "One of these recordings has no source snapshot, so statements are matched by line number: a moved function will look rewritten."}
       </p>
+      {!diff.complete && <p role="note">{TOO_DIFFERENT}</p>}
       {diff.statements.length === 0 ? (
         <p className="muted">It ran no project lines in either recording.</p>
       ) : (

@@ -22,6 +22,8 @@ export interface CallStep {
 
 export interface ExecutionDiff {
   scenarioId: string;
+  /** False when the two executions were too different to align (see align.ts). */
+  complete: boolean;
   calls: CallStep[];
   added: number;
   removed: number;
@@ -37,13 +39,14 @@ const PROJECT_ROLES = new Set([Role.Source, Role.Test]);
 
 export function diffExecution(before: Scenario, after: Scenario, phases: Phase[] = [Phase.Call]): ExecutionDiff {
   const aligned = align(callsOf(before, phases), callsOf(after, phases), (call) => call.path);
-  const calls = aligned.map((entry): CallStep => {
+  const calls = aligned.steps.map((entry): CallStep => {
     const call = (entry.after ?? entry.before)!;
     return { op: entry.op, depth: call.depth, module: call.module, qualname: call.qualname, path: call.path, reparented: false };
   });
   markReparented(calls);
   return {
     scenarioId: after.nodeid,
+    complete: aligned.complete,
     calls,
     added: calls.filter((call) => call.op === Op.Added).length,
     removed: calls.filter((call) => call.op === Op.Removed).length,
@@ -58,7 +61,7 @@ export function mergeReplays(
   grouping: Grouping = FINE_GROUPING,
 ): MergedReplayStep[] {
   const hopKey = (step: ReplayStep) => `${step.kind}|${step.from}|${step.to}|${step.kind === StepKind.External ? step.label : ""}`;
-  return align(buildReplay(before, phases, grouping), buildReplay(after, phases, grouping), hopKey).map((entry) => ({
+  return align(buildReplay(before, phases, grouping), buildReplay(after, phases, grouping), hopKey).steps.map((entry) => ({
     op: entry.op,
     step: (entry.after ?? entry.before)!,
   }));
@@ -125,6 +128,8 @@ export interface FunctionExecutionDiff {
   qualname: string;
   /** "text" when both recordings carry their source; otherwise line numbers stand in, and moves show as changes. */
   matchedBy: "text" | "line-number";
+  /** False when the two were too different to align (see align.ts). */
+  complete: boolean;
   callsBefore: number;
   callsAfter: number;
   fileBefore: string | null;
@@ -151,12 +156,14 @@ export function diffFunctionExecution(
   const matchedBy = beforeRun.sources !== null && afterRun.sources !== null ? "text" : "line-number";
   const before = statementsOf(beforeRun, scenarioId, module, qualname, phases, matchedBy);
   const after = statementsOf(afterRun, scenarioId, module, qualname, phases, matchedBy);
-  const statements = align(before.statements, after.statements, (statement) => statement.key).map(toStep);
+  const aligned = align(before.statements, after.statements, (statement) => statement.key);
+  const statements = aligned.steps.map(toStep);
   return {
     scenarioId,
     module,
     qualname,
     matchedBy,
+    complete: aligned.complete,
     callsBefore: before.calls,
     callsAfter: after.calls,
     fileBefore: before.file,

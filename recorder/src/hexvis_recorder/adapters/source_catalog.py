@@ -54,6 +54,12 @@ class SourceCatalog:
             self._compile(filename)
         return self._by_location.get((filename, code.co_firstlineno, code.co_name), code.co_name)
 
+    def sources_under(self, directories: List[str]) -> Dict[str, List[str]]:
+        """Source of the catalogued (project) files only. On Python < 3.11 qualname() also
+        compiles framework files to name their functions; their source isn't ours to copy."""
+        prefixes = [self._relative(os.path.realpath(d)).rstrip(os.sep) + os.sep for d in directories]
+        return {file: lines for file, lines in self.sources.items() if any(file.startswith(p) for p in prefixes)}
+
     def functions_under(self, directories: List[str]) -> List[CatalogFunction]:
         functions: List[CatalogFunction] = []
         for filename in sorted(_python_files(directories)):
@@ -74,7 +80,10 @@ class SourceCatalog:
             self.problems.append(CatalogProblem(self._relative(filename), f"{type(error).__name__}: {error}"))
             return
         relative = self._relative(filename)
-        self.sources[relative] = raw.decode("utf-8", errors="replace").splitlines()
+        # Split on newlines only: str.splitlines() also breaks on form feeds, U+2028 and other
+        # characters Python's tokenizer doesn't count as line ends, shifting every later line.
+        text = raw.decode("utf-8", errors="replace")
+        self.sources[relative] = [line.rstrip("\r") for line in text.split("\n")]
         module = _module_name(filename, self._root)
         for code, qualname in _walk(module_code, ""):
             self._by_location[(filename, code.co_firstlineno, code.co_name)] = qualname
