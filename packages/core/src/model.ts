@@ -107,6 +107,9 @@ export class Span {
   readonly boundaryCalls: BoundaryCall[] = [];
   resumes = 0;
   endUs: number;
+  /** When it was actually running: one interval for a plain call, one per resume for a coroutine. */
+  readonly runs: [startUs: number, endUs: number][] = [];
+  private runningSince: number | null;
   request: RequestLine | null = null;
 
   constructor(
@@ -119,6 +122,18 @@ export class Span {
     readonly thread: number,
   ) {
     this.endUs = startUs;
+    this.runningSince = startUs;
+  }
+
+  resumedAt(tUs: number): void {
+    this.runningSince = tUs;
+  }
+
+  /** Returned, raised or suspended; the last stop is its end. */
+  stoppedAt(tUs: number): void {
+    this.endUs = tUs;
+    if (this.runningSince !== null) this.runs.push([this.runningSince, tUs]);
+    this.runningSince = null;
   }
 
   get isLandmark(): boolean {

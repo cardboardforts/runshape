@@ -889,3 +889,29 @@ button {
 .architecture-panel .actions {
   margin: 2px 0 0;
 }
+
+.timeline {
+  width: 100%;
+  height: auto;
+  background: color-mix(in srgb, var(--fg, currentColor) 3%, transparent);
+}
+
+.timeline-bar {
+  cursor: pointer;
+}
+
+.timeline-bar:focus-visible rect:first-of-type,
+.timeline-bar.selected rect:first-of-type {
+  stroke: var(--focus);
+  stroke-width: 1.5;
+}
+
+.timeline-label {
+  font-size: 9px;
+  fill: var(--fg, currentColor);
+  pointer-events: none;
+}
+
+.timeline-external rect {
+  fill: var(--zone-external);
+}

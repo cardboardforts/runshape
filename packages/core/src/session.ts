@@ -8,6 +8,7 @@ import { buildComponentView } from "./views/component-view";
 import { Grouping } from "./views/components";
 import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
 import { buildReplay } from "./views/replay";
+import { buildTimeline } from "./views/timeline";
 import { diffExecution, diffFunctionExecution, mergeReplays } from "./views/execution-diff";
 import { aggregateWiring, buildObjectGraph } from "./views/object-graph";
 import { buildReview } from "./views/review";
@@ -159,6 +160,11 @@ export class ViewerSession {
           if (error instanceof UnknownFunctionError) return { type: "error", message: error.message };
           throw error;
         }
+      }
+      case "timeline": {
+        const scenario = this.run.scenario(request.scenarioId);
+        if (scenario === undefined) return { type: "error", message: `no scenario ${request.scenarioId} in this run` };
+        return { type: "timeline", timeline: buildTimeline(scenario, request.phases, request.grouping) };
       }
       case "replay": {
         const scenario = this.run.scenario(request.scenarioId);

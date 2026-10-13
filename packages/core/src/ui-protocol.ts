@@ -14,6 +14,7 @@ import type { ComponentWiring, ObjectGraph } from "./views/object-graph";
 import type { ReviewSummary } from "./views/review";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "./views/execution-diff";
 import type { SystemGraph } from "./views/system-graph";
+import type { Timeline } from "./views/timeline";
 
 export type UiRequest =
   | { type: "ready" }
@@ -23,6 +24,7 @@ export type UiRequest =
   | { type: "component"; id: string; grouping: Grouping }
   | { type: "function"; module: string; qualname: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
+  | { type: "timeline"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
   /** Rank the styles against this recording. */
   | { type: "detectArchitecture" }
@@ -45,6 +47,7 @@ export type UiResponse =
   | { type: "component"; view: ComponentView }
   | { type: "function"; view: FunctionView }
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
+  | { type: "timeline"; timeline: Timeline }
   | { type: "diff"; diff: RunDiff; review: ReviewSummary }
   | { type: "rulesChanged"; count: number; style: string }
   | { type: "architecture"; candidates: ArchitectureCandidate[] }

@@ -28,12 +28,14 @@ import {
   RunDiff,
   RunSummary,
   SystemGraph,
+  Timeline,
   UiResponse,
 } from "@runshape/core";
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";
 import { ArchitecturePanel } from "./components/ArchitecturePanel";
+import { TimelinePanel } from "./components/TimelinePanel";
 import { FunctionPanel } from "./components/FunctionPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { ReplayBar } from "./components/ReplayBar";
@@ -42,7 +44,7 @@ import { FunctionExecutionPanel } from "./components/ExecutionDiffView";
 import { ScenarioList } from "./components/ScenarioList";
 import type { Host } from "./host";
 import { layoutGraph, Positioned } from "./layout";
-import { zoneClass } from "./zone-style";
+import { zoneClass, zoneColor } from "./zone-style";
 import { Scene3D } from "./three/Scene3D";
 
 type Status =
@@ -102,6 +104,7 @@ export function App({ host }: { host: Host }) {
   // The style to draw in when it isn't runshape.json's own; never saved.
   const [drawStyle, setDrawStyle] = useState<string | undefined>(undefined);
   // Closed: null. Open: the ranked candidates, or null inside while the session ranks them.
+  const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [detection, setDetection] = useState<{ candidates: ArchitectureCandidate[] | null } | null>(null);
   const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined }>({
     phases: TEST_BODY_ONLY,
@@ -196,6 +199,9 @@ export function App({ host }: { host: Host }) {
           if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
           break;
         }
+        case "timeline":
+          setTimeline(response.timeline);
+          break;
         case "architecture":
           setDetection({ candidates: response.candidates });
           break;
@@ -347,6 +353,16 @@ export function App({ host }: { host: Host }) {
   const openFunction = (fn: Pick<FunctionSummary, "module" | "qualname">) => host.post({ type: "function", module: fn.module, qualname: fn.qualname });
   const openSource = (file: string, line: number) => host.post({ type: "openSource", file, line });
   const startReplay = (scenarioId: string) => host.post({ type: "replay", scenarioId, phases, grouping });
+  const openTimeline = (scenarioId: string) => {
+    setDetail({ component: null, fn: null });
+    host.post({ type: "timeline", scenarioId, phases, grouping });
+  };
+  // Shown only for the selected scenario: another selection leaves it behind.
+  const shownTimeline = timeline !== null && timeline.scenarioId === selected ? timeline : null;
+  const zoneColorOf = (componentId: string) => {
+    const node = displayed?.nodes.find((candidate) => candidate.id === componentId);
+    return node && displayed ? `#${zoneColor(displayed.profile, node.zone).toString(16).padStart(6, "0")}` : "#8a8f98";
+  };
 
   return (
     <div className="app">
@@ -423,6 +439,7 @@ export function App({ host }: { host: Host }) {
           review={reviewCategories}
           onSelect={selectScenario}
           onReplay={startReplay}
+          onTimeline={openTimeline}
         />
         <Legend ruleCount={ruleCount} profile={displayed?.profile ?? null} />
       </aside>
@@ -496,12 +513,17 @@ export function App({ host }: { host: Host }) {
         )}
       </main>
 
-      {(detail.component || detail.fn || selectedDiff) && (
+      {(detail.component || detail.fn || shownTimeline || selectedDiff) && (
         <aside className="detail" aria-label="Details">
           <nav className="breadcrumbs">
             {detail.fn && detail.component && (
               <button type="button" className="link" onClick={() => setDetail({ component: detail.component, fn: null })}>
                 ← {detail.component.label}
+              </button>
+            )}
+            {detail.fn && !detail.component && shownTimeline && (
+              <button type="button" className="link" onClick={() => setDetail({ component: null, fn: null })}>
+                ← Timeline
               </button>
             )}
             <button
@@ -510,6 +532,7 @@ export function App({ host }: { host: Host }) {
               onClick={() => {
                 openComponentId.current = null;
                 setDetail({ component: null, fn: null });
+                setTimeline(null);
               }}
             >
               Close ✕
@@ -546,6 +569,14 @@ export function App({ host }: { host: Host }) {
                   />
                 )
               }
+            />
+          ) : shownTimeline ? (
+            <TimelinePanel
+              key={shownTimeline.scenarioId}
+              timeline={shownTimeline}
+              scenarioName={summary.scenarios.find((s) => s.id === shownTimeline.scenarioId)?.name ?? shownTimeline.scenarioId}
+              colorOf={zoneColorOf}
+              onOpenFunction={(module, qualname) => openFunction({ module, qualname })}
             />
           ) : executionFn && selectedDiff ? (
             <>

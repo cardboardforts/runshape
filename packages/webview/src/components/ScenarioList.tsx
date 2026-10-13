@@ -17,6 +17,7 @@ interface Props {
   review: Map<string, ReviewCategory> | null;
   onSelect: (id: string | null) => void;
   onReplay: (id: string) => void;
+  onTimeline: (id: string) => void;
 }
 
 /** Each scenario is a test, i.e. one named user behaviour. Selecting one lights up its path. */
@@ -31,7 +32,7 @@ const REVIEW_BADGE: Record<ReviewCategory, string | null> = {
   [ReviewCategory.Unchanged]: null,
 };
 
-export function ScenarioList({ scenarios, selected, review, onSelect, onReplay }: Props) {
+export function ScenarioList({ scenarios, selected, review, onSelect, onReplay, onTimeline }: Props) {
   if (scenarios.length === 0) {
     return <p className="muted">This run recorded no scenarios.</p>;
   }
@@ -63,9 +64,14 @@ export function ScenarioList({ scenarios, selected, review, onSelect, onReplay }
               )}
             </button>
             {isSelected && (
-              <button type="button" className="replay-button" onClick={() => onReplay(scenario.id)}>
-                ▶ Replay
-              </button>
+              <span className="scenario-actions">
+                <button type="button" className="replay-button" onClick={() => onReplay(scenario.id)}>
+                  ▶ Replay
+                </button>{" "}
+                <button type="button" className="replay-button" onClick={() => onTimeline(scenario.id)}>
+                  Timeline
+                </button>
+              </span>
             )}
           </li>
         );
