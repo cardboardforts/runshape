@@ -13,3 +13,4 @@ examples/fastapi-realworld/
 examples/.pg-venv/
 examples/.pgdata/
 .vscode-test/
+examples/heapspace/
