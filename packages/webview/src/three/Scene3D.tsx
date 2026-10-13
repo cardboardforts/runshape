@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, ReplayStep, SystemGraph } from "@hexvis/core";
 
@@ -23,6 +23,7 @@ interface Props {
 export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, onOpenComponent }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<HexScene | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   // The scene is created once; clicks must reach the latest callback, not the first one.
   const onOpen = useRef(onOpenComponent);
   onOpen.current = onOpenComponent;
@@ -31,7 +32,14 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
   useEffect(() => {
     if (container.current === null) return;
     const background = getComputedStyle(container.current).getPropertyValue("--bg").trim() || "#1e1e1e";
-    const created = new HexScene(container.current, (node) => onOpen.current(node), background);
+    let created: HexScene;
+    try {
+      created = new HexScene(container.current, (node) => onOpen.current(node), background);
+    } catch (error) {
+      // No WebGL (disabled GPU, remote session): say so instead of blanking the view.
+      setFailure(error instanceof Error ? error.message : String(error));
+      return;
+    }
     scene.current = created;
     return () => {
       created.dispose();
@@ -69,5 +77,13 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
     // stepIndex: the same edge twice in a row must still pulse twice.
   }, [step, stepOp, stepIndex]);
 
-  return <div ref={container} className="scene3d" aria-label="3D view of the system: drag to orbit, scroll to zoom" />;
+  return (
+    <div ref={container} className="scene3d" aria-label="3D view of the system: drag to orbit, scroll to zoom">
+      {failure && (
+        <p className="centered" role="alert">
+          The 3D view needs WebGL, which isn't available here ({failure}). Untick 3D to use the 2D view.
+        </p>
+      )}
+    </div>
+  );
 }

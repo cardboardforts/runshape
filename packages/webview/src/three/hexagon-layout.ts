@@ -31,6 +31,8 @@ const MIN_TILE = 5;
 const MAX_TILE = 14;
 const MIN_RADIUS = 40;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+/** Adapters stand just inside the hexagon's edge, at this fraction of its radius. */
+const ADAPTER_RING = 0.86;
 const INBOUND_ARC: [number, number] = [120, 240];
 const OUTBOUND_ARC: [number, number] = [-60, 60];
 const FRAMEWORK_ORDER = [ComponentKind.Client, ComponentKind.Entry, ComponentKind.Middleware, ComponentKind.Router];
@@ -54,7 +56,13 @@ export function layoutHexagon(graph: SystemGraph): HexagonLayout {
   const coreRadius = spacing * Math.sqrt(core.length) * 0.75;
   // The adapters on each side share a 120° arc, which must be long enough to hold them.
   const arcNeeded = (count: number) => (count * spacing * 3) / (2 * Math.PI);
-  const radius = Math.max(MIN_RADIUS, coreRadius + spacing * 1.6, arcNeeded(inbound.length), arcNeeded(outbound.length));
+  // Adapters stand at ADAPTER_RING × radius; that ring must clear the core's spiral.
+  const radius = Math.max(
+    MIN_RADIUS,
+    (coreRadius + spacing * 1.2) / ADAPTER_RING,
+    arcNeeded(inbound.length) / ADAPTER_RING,
+    arcNeeded(outbound.length) / ADAPTER_RING,
+  );
 
   const tiles = new Map<string, Tile>();
   core.forEach((node, index) => {
@@ -62,8 +70,8 @@ export function layoutHexagon(graph: SystemGraph): HexagonLayout {
     const theta = index * GOLDEN_ANGLE;
     tiles.set(node.id, { id: node.id, x: r * Math.cos(theta), z: r * Math.sin(theta), size: tileSize(node), angle: null });
   });
-  placeOnArc(inbound, INBOUND_ARC, radius * 0.86, tiles);
-  placeOnArc(outbound, OUTBOUND_ARC, radius * 0.86, tiles);
+  placeOnArc(inbound, INBOUND_ARC, radius * ADAPTER_RING, tiles);
+  placeOnArc(outbound, OUTBOUND_ARC, radius * ADAPTER_RING, tiles);
   placeOnArc(doubles, OUTBOUND_ARC, radius * 1.25, tiles);
   placeInColumn(externals, radius * 1.75, tiles);
   framework.forEach((node, index) => {

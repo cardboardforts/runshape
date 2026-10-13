@@ -127,6 +127,7 @@ export function App({ host }: { host: Host }) {
             setDiff(null);
             setExecution(null);
             setExecutionFn(null);
+            setObjectGraph(null);
             const { phases, grouping: currentGrouping, compare: comparing } = viewOptions.current;
             host.post({ type: "graph", phases, grouping: currentGrouping });
             if (comparing && response.summary.baselineCreatedAt !== null) {
@@ -222,6 +223,11 @@ export function App({ host }: { host: Host }) {
     return () => window.clearInterval(timer);
   }, [playing]);
 
+  // Memoised so the 3D scene's emphasis effect, which depends on them, doesn't rerun on every
+  // render (each replay tick). Hooks, so above the early return.
+  const nodeChanges = useMemo(() => (compare && diff ? new Map(diff.nodes.map((node) => [node.id, node.change])) : null), [compare, diff]);
+  const edgeChanges = useMemo(() => (compare && diff ? new Map(diff.edges.map((edge) => [edge.id, edge.change])) : null), [compare, diff]);
+
   if (status.kind !== "ready" || summary === null) {
     return <StatusScreen status={status} onRetry={() => host.post({ type: "reload" })} />;
   }
@@ -236,8 +242,12 @@ export function App({ host }: { host: Host }) {
     setReplay(null);
     host.post({ type: "graph", phases: nextPhases, grouping: nextGrouping });
     if (comparing) {
+      // Every compare view depends on the options; none may outlive them.
       setDiff(null);
+      setExecution(null);
+      setExecutionFn(null);
       host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping });
+      if (selected !== null) host.post({ type: "executionDiff", scenarioId: selected, phases: nextPhases, grouping: nextGrouping });
     }
   };
   const toggleSetup = () => {
@@ -289,8 +299,6 @@ export function App({ host }: { host: Host }) {
       index: 0,
       playing: execution.replay.length > 0,
     });
-  const nodeChanges = compare && diff ? new Map(diff.nodes.map((node) => [node.id, node.change])) : null;
-  const edgeChanges = compare && diff ? new Map(diff.edges.map((edge) => [edge.id, edge.change])) : null;
   const scenarioChanges = compare && diff ? new Map(diff.scenarios.map((scenario) => [scenario.id, scenario.change])) : null;
   const componentNode = detail.component ? (displayed?.nodes.find((node) => node.id === detail.component?.id) ?? null) : null;
   const selectedDiff = compare && diff ? (diff.scenarios.find((scenario) => scenario.id === selected) ?? null) : null;
@@ -426,7 +434,7 @@ export function App({ host }: { host: Host }) {
             </button>
           </nav>
           {detail.fn ? (
-            <FunctionPanel view={detail.fn} selectedScenario={selected} onSelectScenario={setSelected} onOpenSource={openSource} />
+            <FunctionPanel view={detail.fn} selectedScenario={selected} onSelectScenario={selectScenario} onOpenSource={openSource} />
           ) : detail.component ? (
             <ComponentPanel
               view={detail.component}

@@ -82,6 +82,7 @@ export class HexScene {
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.5, 5000);
   private readonly controls: OrbitControls;
   private readonly composer: EffectComposer;
+  private readonly bloom: UnrealBloomPass;
   private readonly world = new THREE.Group();
   private readonly tiles = new Map<string, TileParts>();
   private readonly arcs = new Map<string, ArcParts>();
@@ -125,7 +126,8 @@ export class HexScene {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.5, 0.85));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.5, 0.85);
+    this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
     this.labels.domElement.addEventListener("pointerdown", this.handlePointerDown);
@@ -301,8 +303,11 @@ export class HexScene {
     this.labels.domElement.removeEventListener("pointerup", this.handlePointerUp);
     this.clearWorld();
     this.controls.dispose();
+    this.bloom.dispose();
     this.composer.dispose();
     this.renderer.dispose();
+    // Toggling 3D off and on must not pile up live GL contexts (browsers cap them).
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
     this.labels.domElement.remove();
   }

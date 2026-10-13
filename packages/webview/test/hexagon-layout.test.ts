@@ -42,9 +42,34 @@ describe("layoutHexagon", () => {
     expect(tiles.size).toBe(graph.nodes.length);
   });
 
-  test("no two tiles overlap", async () => {
-    const { tiles } = layoutHexagon(await fastapiGraph());
-    const all = [...tiles.values()];
+  test("no two tiles overlap, on the real graph or on a big synthetic one", async () => {
+    const real = await fastapiGraph();
+    const node = (id: string, ring: Ring, calls: number) =>
+      ({ id, kind: "class", label: id, qualifiedName: id, ring, ringSource: "inferred", ringReason: "", smells: [], calls, instances: 0, scenarioIds: [] }) as never;
+    const big = {
+      nodes: [
+        ...Array.from({ length: 120 }, (_, i) => node(`core${i}`, Ring.Core, 1 + (i % 500))),
+        ...Array.from({ length: 4 }, (_, i) => node(`in${i}`, Ring.InboundAdapter, 400)),
+        ...Array.from({ length: 4 }, (_, i) => node(`out${i}`, Ring.OutboundAdapter, 400)),
+      ],
+      edges: [],
+    };
+    for (const graph of [real, big]) {
+      const { tiles } = layoutHexagon(graph);
+      expect(overlappingTiles(tiles)).toEqual([]);
+      // Stronger than "nothing happens to overlap": the adapters' ring clears the whole
+      // core region, whichever angle the core's outermost tiles end up at.
+      const reach = (ids: string[], outward: 1 | -1) =>
+        ids.map((id) => tiles.get(id)!).map((t) => Math.hypot(t.x, t.z) + (outward * t.size * Math.SQRT2) / 2);
+      const coreIds = graph.nodes.filter((n) => n.ring === Ring.Core).map((n) => n.id);
+      const adapterIds = graph.nodes.filter((n) => n.ring === Ring.InboundAdapter || n.ring === Ring.OutboundAdapter).map((n) => n.id);
+      expect(Math.min(...reach(adapterIds, -1))).toBeGreaterThan(Math.max(...reach(coreIds, 1)));
+    }
+  });
+});
+
+function overlappingTiles(tiles: ReturnType<typeof layoutHexagon>["tiles"]): string[] {
+  const all = [...tiles.values()];
 
     const overlapping: string[] = [];
     for (let i = 0; i < all.length; i += 1) {
@@ -55,9 +80,8 @@ describe("layoutHexagon", () => {
         if (apart < (a.size + b.size) / 2) overlapping.push(`${a.id} / ${b.id}`);
       }
     }
-    expect(overlapping).toEqual([]);
-  });
-});
+  return overlapping;
+}
 
 describe("objectSlots", () => {
   test("one slot per object (up to the cap), all distinct, floating above their tile", () => {
