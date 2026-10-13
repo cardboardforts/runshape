@@ -6,11 +6,13 @@ interface Props {
   view: ComponentView;
   /** Where the component sits in the onion, and the controls to change that. */
   ring: ReactNode;
+  /** Which objects this component's objects hold, and are held by. */
+  relations: ReactNode;
   onOpenFunction: (fn: FunctionSummary) => void;
 }
 
 /** A component opened up: every function it has, and how much of each the tests reach. */
-export function ComponentPanel({ view, ring, onOpenFunction }: Props) {
+export function ComponentPanel({ view, ring, relations, onOpenFunction }: Props) {
   if (view.functions.length === 0) {
     return (
       <section className="panel">
@@ -25,6 +27,7 @@ export function ComponentPanel({ view, ring, onOpenFunction }: Props) {
       <h2>{view.label}</h2>
       {view.qualifiedName && <p className="muted mono">{view.qualifiedName}</p>}
       {ring}
+      {relations}
       <table className="functions">
         <thead>
           <tr>

@@ -92,6 +92,11 @@ export function externalComponent(system: string): ComponentRef {
   return { id: `external:${system}`, kind: ComponentKind.External, label: system, qualifiedName: null };
 }
 
+/** The graph id of a project class's box; objects and the calls made on them share it. */
+export function classComponentId(qualifiedName: string): string {
+  return `class:${qualifiedName}`;
+}
+
 function classComponent(qualifiedName: string): ComponentRef {
-  return { id: `class:${qualifiedName}`, kind: ComponentKind.Class, label: lastSegment(qualifiedName), qualifiedName };
+  return { id: classComponentId(qualifiedName), kind: ComponentKind.Class, label: lastSegment(qualifiedName), qualifiedName };
 }

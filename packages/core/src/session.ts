@@ -7,6 +7,7 @@ import { Grouping } from "./views/components";
 import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
 import { buildReplay } from "./views/replay";
 import { diffExecution, diffFunctionExecution, mergeReplays } from "./views/execution-diff";
+import { aggregateWiring, buildObjectGraph } from "./views/object-graph";
 import { diffRuns } from "./views/run-diff";
 import { buildSystemGraph } from "./views/system-graph";
 
@@ -115,7 +116,13 @@ export class ViewerSession {
           type: "graph",
           phases: request.phases,
           graph: buildSystemGraph(this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
+          wiring: aggregateWiring(this.run),
         };
+      case "objects": {
+        const scenario = this.run.scenario(request.scenarioId);
+        if (scenario === undefined) return { type: "error", message: `no scenario ${request.scenarioId} in this run` };
+        return { type: "objects", graph: buildObjectGraph(scenario) };
+      }
       case "component":
         return { type: "component", view: buildComponentView(this.run, request.id, request.grouping) };
       case "function": {

@@ -14,3 +14,4 @@ export * from "./rings";
 export * from "./ring-advice";
 export * from "./align";
 export * from "./views/execution-diff";
+export * from "./views/object-graph";

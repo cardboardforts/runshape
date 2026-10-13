@@ -8,6 +8,8 @@ import {
   MergedReplayStep,
   Op,
   ComponentView,
+  ComponentWiring,
+  ObjectGraph,
   FunctionSummary,
   FunctionView,
   GraphNode,
@@ -73,6 +75,8 @@ export function App({ host }: { host: Host }) {
   const [replay, setReplay] = useState<Replay | null>(null);
   const [compare, setCompare] = useState(false);
   const [threeD, setThreeD] = useState(false);
+  const [wiring, setWiring] = useState<ComponentWiring[]>([]);
+  const [objectGraph, setObjectGraph] = useState<ObjectGraph | null>(null);
   const [diff, setDiff] = useState<RunDiff | null>(null);
   const [execution, setExecution] = useState<{ diff: ExecutionDiff; replay: MergedReplayStep[] } | null>(null);
   const [executionFn, setExecutionFn] = useState<FunctionExecutionDiff | null>(null);
@@ -138,6 +142,10 @@ export function App({ host }: { host: Host }) {
           break;
         case "graph":
           setGraph(response.graph);
+          setWiring(response.wiring);
+          break;
+        case "objects":
+          setObjectGraph(response.graph);
           break;
         case "component":
           openComponentId.current = response.view.id;
@@ -259,7 +267,14 @@ export function App({ host }: { host: Host }) {
   };
   const selectScenario = (scenarioId: string | null) => {
     setSelected(scenarioId);
+    setObjectGraph(null);
     if (compare && scenarioId !== null) requestExecution(scenarioId);
+    if (threeD && scenarioId !== null) host.post({ type: "objects", scenarioId });
+  };
+  const toggleThreeD = () => {
+    const next = !threeD;
+    setThreeD(next);
+    if (next && selected !== null) host.post({ type: "objects", scenarioId: selected });
   };
   const openCall = (call: CallStep) =>
     selected !== null &&
@@ -300,7 +315,7 @@ export function App({ host }: { host: Host }) {
             <input type="checkbox" checked={!grouping.collapseMiddleware} onChange={toggleMiddleware} /> Show each middleware
           </label>
           <label className="toggle">
-            <input type="checkbox" checked={threeD} onChange={() => setThreeD(!threeD)} /> 3D (hexagon floor)
+            <input type="checkbox" checked={threeD} onChange={toggleThreeD} /> 3D (hexagon floor)
           </label>
           {summary.baselineCreatedAt !== null && (
             <label className="toggle">
@@ -343,6 +358,8 @@ export function App({ host }: { host: Host }) {
         {displayed !== null && displayed.nodes.length > 0 && threeD ? (
           <Scene3D
             graph={displayed}
+            wiring={wiring}
+            objects={objectGraph?.scenarioId === selected ? objectGraph : null}
             nodeChanges={nodeChanges}
             edgeChanges={edgeChanges}
             selectedScenario={selected}
@@ -414,6 +431,7 @@ export function App({ host }: { host: Host }) {
             <ComponentPanel
               view={detail.component}
               onOpenFunction={openFunction}
+              relations={<Holdings componentId={detail.component.id} wiring={wiring} graph={displayed} />}
               ring={
                 componentNode && (
                   <RingControls
@@ -469,6 +487,29 @@ function StatusScreen({ status, onRetry }: { status: Status; onRetry: () => void
       <button type="button" onClick={onRetry}>
         Reload
       </button>
+    </div>
+  );
+}
+
+/** What this component's objects hold, and what holds them: the runtime wiring, by attribute. */
+function Holdings({ componentId, wiring, graph }: { componentId: string; wiring: ComponentWiring[]; graph: SystemGraph | null }) {
+  const label = (id: string) => graph?.nodes.find((node) => node.id === id)?.label ?? id.replace(/^class:/, "");
+  const holds = wiring.filter((w) => w.from === componentId);
+  const heldBy = wiring.filter((w) => w.to === componentId);
+  if (holds.length + heldBy.length === 0) return null;
+  return (
+    <div className="holdings">
+      {holds.length > 0 && (
+        <p>
+          <strong>Holds</strong>{" "}
+          {holds.map((w) => `${label(w.to)} (via ${w.attributes.join(", ")})`).join(" · ")}
+        </p>
+      )}
+      {heldBy.length > 0 && (
+        <p>
+          <strong>Held by</strong> {heldBy.map((w) => `${label(w.from)} (as ${w.attributes.join(", ")})`).join(" · ")}
+        </p>
+      )}
     </div>
   );
 }

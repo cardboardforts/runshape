@@ -813,3 +813,7 @@ button {
   border-color: var(--pulse);
   box-shadow: 0 0 10px var(--pulse);
 }
+
+.holdings p {
+  margin: 4px 0;
+}

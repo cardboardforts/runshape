@@ -6,9 +6,9 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { Change, GraphNode, Op, Ring, StepKind, SystemGraph } from "@hexvis/core";
+import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, Ring, StepKind, SystemGraph } from "@hexvis/core";
 
-import { HexagonLayout, hexagonCorners } from "./hexagon-layout";
+import { HexagonLayout, hexagonCorners, OBJECT_SIDE, objectSlots, Tile } from "./hexagon-layout";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
 
@@ -31,8 +31,8 @@ const PULSE_MS = 450;
 const TRAIL_POINTS = 14;
 const TRAIL_LENGTH = 0.12;
 const TILE_HEIGHT = 1.2;
-const OBJECT_SIDE = 1.6;
-const MAX_OBJECTS_SHOWN = 16;
+const WIRE_COLOR = 0xc4b5fd;
+const WIRE_LIFT = 3;
 const DIMMED_OPACITY = 0.08;
 const CLICK_TOLERANCE_PX = 4;
 /** Re-decide which labels fit every few frames: often enough to follow the camera, cheaply. */
@@ -44,8 +44,8 @@ interface TileParts {
   node: GraphNode;
   body: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
   outline: THREE.LineSegments<THREE.EdgesGeometry, THREE.LineBasicMaterial>;
-  objects: THREE.InstancedMesh | null;
   label: CSS2DObject;
+  layout: Tile;
   tier: LabelTier;
   /** Measured once the label has been laid out; until then it is always shown. */
   labelSize: { width: number; height: number } | null;
@@ -86,6 +86,10 @@ export class HexScene {
   private readonly tiles = new Map<string, TileParts>();
   private readonly arcs = new Map<string, ArcParts>();
   private readonly trunks: TrunkParts[] = [];
+  /** Live objects and the references between them; rebuilt on its own, without the graph. */
+  private readonly objectLayer = new THREE.Group();
+  private readonly objectMeshes = new Map<string, THREE.InstancedMesh>();
+  private readonly wireLines: { from: string; to: string; line: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> }[] = [];
   private readonly packets: Packet[] = [];
   private readonly resize: ResizeObserver;
   private frame = 0;
@@ -137,7 +141,7 @@ export class HexScene {
     this.addFloor(layout.radius);
     for (const node of graph.nodes) {
       const tile = layout.tiles.get(node.id);
-      if (tile) this.addTile(node, tile.x, tile.z, tile.size);
+      if (tile) this.addTile(node, tile);
     }
     const { routes, trunks } = routeEdges(graph, layout);
     const edges = new Map(graph.edges.map((edge) => [edge.id, edge]));
@@ -164,6 +168,72 @@ export class HexScene {
     this.frameCamera();
   }
 
+  /**
+   * A class's live objects float above its tile: the tile is the definition, the cubes its
+   * instances. Without a test selected, each class shows how many objects it had and a
+   * dashed line joins classes whose objects hold one another; with a test selected, every
+   * cube is one real object of that test and the lines join the exact objects.
+   */
+  setObjects(wiring: ComponentWiring[], objects: ObjectGraph | null): void {
+    this.clearGroup(this.objectLayer);
+    this.objectMeshes.clear();
+    this.wireLines.length = 0;
+
+    const slotsByObject = new Map<number, THREE.Vector3>();
+    const cloudCentre = new Map<string, THREE.Vector3>();
+    for (const [id, tile] of this.tiles) {
+      const own = objects ? objects.objects.filter((o) => o.componentId === id) : null;
+      const count = own ? own.length : tile.node.instances;
+      if (count === 0) continue;
+      const slots = objectSlots(tile.layout, count);
+      const color = RING_COLOR[tile.node.ring];
+      const mesh = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(OBJECT_SIDE, OBJECT_SIDE, OBJECT_SIDE),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9 }),
+        slots.length,
+      );
+      const matrix = new THREE.Matrix4();
+      const centre = new THREE.Vector3();
+      slots.forEach(([x, y, z], index) => {
+        mesh.setMatrixAt(index, matrix.makeTranslation(x, y, z));
+        centre.add(new THREE.Vector3(x, y, z));
+        const object = own?.[index];
+        if (object) slotsByObject.set(object.id, new THREE.Vector3(x, y, z));
+      });
+      cloudCentre.set(id, centre.divideScalar(slots.length));
+      this.objectLayer.add(mesh);
+      this.objectMeshes.set(id, mesh);
+    }
+
+    if (objects) {
+      const component = new Map(objects.objects.map((o) => [o.id, o.componentId]));
+      for (const wire of objects.wires) {
+        const from = slotsByObject.get(wire.from);
+        const to = slotsByObject.get(wire.to);
+        if (from && to) this.addWire(from, to, component.get(wire.from)!, component.get(wire.to)!);
+      }
+    } else {
+      for (const held of wiring) {
+        const from = cloudCentre.get(held.from);
+        const to = cloudCentre.get(held.to);
+        if (from && to) this.addWire(from, to, held.from, held.to);
+      }
+    }
+  }
+
+  private addWire(from: THREE.Vector3, to: THREE.Vector3, fromId: string, toId: string): void {
+    const control = from.clone().lerp(to, 0.5);
+    control.y += WIRE_LIFT + from.distanceTo(to) * 0.1;
+    const curve = new THREE.QuadraticBezierCurve3(from, control, to);
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(curve.getPoints(32)),
+      new THREE.LineDashedMaterial({ color: WIRE_COLOR, dashSize: 1.2, gapSize: 0.8, transparent: true, opacity: 0.85 }),
+    );
+    line.computeLineDistances();
+    this.objectLayer.add(line);
+    this.wireLines.push({ from: fromId, to: toId, line });
+  }
+
   /** Who is lit: the selected scenario's path, the replay's current hop, compare-mode changes. */
   setEmphasis(
     nodeEmphasis: (node: GraphNode) => Emphasis,
@@ -180,7 +250,8 @@ export class HexScene {
       tile.body.material.emissiveIntensity = active ? 1.2 : 0.25;
       tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : RING_COLOR[tile.node.ring]));
       tile.outline.material.opacity = emphasis === "dimmed" ? 0.2 : 1;
-      if (tile.objects) (tile.objects.material as THREE.MeshStandardMaterial).opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.9;
+      const objects = this.objectMeshes.get(id);
+      if (objects) (objects.material as THREE.MeshStandardMaterial).opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.9;
       tile.label.element.style.opacity = emphasis === "dimmed" ? "0.3" : "1";
       tile.tier = active ? LabelTier.Active : emphasis === "highlighted" ? LabelTier.Highlighted : emphasis === "dimmed" ? LabelTier.Dimmed : LabelTier.Normal;
       tile.label.element.classList.toggle("active", active);
@@ -189,6 +260,13 @@ export class HexScene {
       const emphasis = edgeEmphasis(id);
       arc.mesh.material.color.setHex(changeColor(edgeChanges?.get(id) ?? null) ?? arc.baseColor);
       arc.mesh.material.opacity = emphasis === "dimmed" ? 0.05 : emphasis === "highlighted" ? 0.8 : 0.45;
+    }
+    for (const wire of this.wireLines) {
+      const dimmed = [wire.from, wire.to].some((id) => {
+        const tile = this.tiles.get(id);
+        return tile !== undefined && nodeEmphasis(tile.node) === "dimmed";
+      });
+      wire.line.material.opacity = dimmed ? 0.08 : 0.85;
     }
     for (const trunk of this.trunks) {
       const anyLit = trunk.edgeIds.some((id) => edgeEmphasis(id) !== "dimmed");
@@ -246,7 +324,8 @@ export class HexScene {
     this.world.add(grid, floor, rim);
   }
 
-  private addTile(node: GraphNode, x: number, z: number, size: number): void {
+  private addTile(node: GraphNode, tile: Tile): void {
+    const { x, z, size } = tile;
     const color = RING_COLOR[node.ring];
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(size, TILE_HEIGHT, size),
@@ -257,37 +336,19 @@ export class HexScene {
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(body.geometry), new THREE.LineBasicMaterial({ color, transparent: true }));
     outline.position.copy(body.position);
 
-    // A class's live objects float above it: the tile is the definition, cubes its instances.
-    let objects: THREE.InstancedMesh | null = null;
-    const count = Math.min(node.instances, MAX_OBJECTS_SHOWN);
-    if (count > 0) {
-      objects = new THREE.InstancedMesh(
-        new THREE.BoxGeometry(OBJECT_SIDE, OBJECT_SIDE, OBJECT_SIDE),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9 }),
-        count,
-      );
-      const perRow = Math.ceil(Math.sqrt(count));
-      const step = OBJECT_SIDE * 1.5;
-      const matrix = new THREE.Matrix4();
-      for (let i = 0; i < count; i += 1) {
-        const row = Math.floor(i / perRow);
-        const column = i % perRow;
-        matrix.setPosition(x + (column - (perRow - 1) / 2) * step, 5 + (i % 3) * 0.6, z + (row - (perRow - 1) / 2) * step);
-        objects.setMatrixAt(i, matrix);
-      }
-      this.world.add(objects);
-    }
-
     const element = document.createElement("button");
     element.type = "button";
     element.className = `label3d ring-${node.ring}`;
     element.textContent = node.label;
     element.title = `${node.qualifiedName ?? node.label}\n${node.ring}: ${node.ringReason}`;
-    element.addEventListener("click", () => this.onPick(node));
+    // No click listener: orbit controls capture the pointer, so clicks are resolved in
+    // handlePointerUp, which checks labels before tiles.
+    element.dataset.nodeId = node.id;
     const label = new CSS2DObject(element);
-    label.position.set(x, count > 0 ? 9 : 3.2, z);
+    // Above the object cloud when the class has live objects, else just above the tile.
+    label.position.set(x, node.instances > 0 ? 9 : 3.2, z);
     this.world.add(body, outline, label);
-    this.tiles.set(node.id, { node, body, outline, objects, label, tier: LabelTier.Normal, labelSize: null });
+    this.tiles.set(node.id, { node, body, outline, label, layout: tile, tier: LabelTier.Normal, labelSize: null });
   }
 
   /** Fit everything, from the client on the far left to the external systems on the right. */
@@ -307,22 +368,29 @@ export class HexScene {
   private clearWorld(): void {
     for (const packet of this.packets.splice(0)) this.disposeObject(packet.head, packet.trail);
     for (const tile of this.tiles.values()) tile.label.element.remove();
-    // Descendants only: traverse() also visits the world group itself, and disposing that
-    // would detach it from the scene.
-    for (const child of [...this.world.children]) child.traverse((object) => this.disposeObject(object));
-    this.world.clear();
+    this.clearGroup(this.objectLayer);
+    this.clearGroup(this.world);
     this.tiles.clear();
     this.arcs.clear();
     this.trunks.length = 0;
+    this.objectMeshes.clear();
+    this.wireLines.length = 0;
+    this.world.add(this.objectLayer); // emptied, not discarded: setObjects refills it
+  }
+
+  /**
+   * Releases everything under a group, then empties it. GPU resources are freed during the
+   * walk and the tree is detached only afterwards: removing children while traverse() is
+   * iterating them would skip their siblings. The group itself stays attached.
+   */
+  private clearGroup(group: THREE.Group): void {
+    for (const child of group.children) child.traverse(releaseResources);
+    group.clear();
   }
 
   private disposeObject(...objects: THREE.Object3D[]): void {
     for (const object of objects) {
-      const disposable = object as Partial<THREE.Mesh>;
-      disposable.geometry?.dispose();
-      const material = disposable.material;
-      if (Array.isArray(material)) material.forEach((m) => m.dispose());
-      else material?.dispose();
+      releaseResources(object);
       object.removeFromParent();
     }
   }
@@ -405,6 +473,12 @@ export class HexScene {
     const down = this.pointerDown;
     this.pointerDown = null;
     if (!down || Math.hypot(event.clientX - down.x, event.clientY - down.y) > CLICK_TOLERANCE_PX) return;
+    const labelUnderPointer = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(".label3d");
+    const labelled = labelUnderPointer?.dataset.nodeId ? this.tiles.get(labelUnderPointer.dataset.nodeId) : undefined;
+    if (labelled) {
+      this.onPick(labelled.node);
+      return;
+    }
     const bounds = this.renderer.domElement.getBoundingClientRect();
     const pointer = new THREE.Vector2(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -((event.clientY - bounds.top) / bounds.height) * 2 + 1);
     const raycaster = new THREE.Raycaster();
@@ -414,6 +488,14 @@ export class HexScene {
     const tile = id ? this.tiles.get(id) : undefined;
     if (tile) this.onPick(tile.node);
   };
+}
+
+function releaseResources(object: THREE.Object3D): void {
+  const disposable = object as Partial<THREE.Mesh>;
+  disposable.geometry?.dispose();
+  const material = disposable.material;
+  if (Array.isArray(material)) material.forEach((m) => m.dispose());
+  else material?.dispose();
 }
 
 function toVector([x, y, z]: Point): THREE.Vector3 {

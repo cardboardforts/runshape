@@ -1,12 +1,15 @@
 import { useEffect, useRef } from "react";
 
-import { Change, GraphNode, Op, ReplayStep, SystemGraph } from "@hexvis/core";
+import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, ReplayStep, SystemGraph } from "@hexvis/core";
 
 import { Emphasis, HexScene } from "./hex-scene";
 import { layoutHexagon } from "./hexagon-layout";
 
 interface Props {
   graph: SystemGraph;
+  wiring: ComponentWiring[];
+  /** The selected test's objects, one cube each; null shows per-class counts instead. */
+  objects: ObjectGraph | null;
   nodeChanges: Map<string, Change> | null;
   edgeChanges: Map<string, Change> | null;
   selectedScenario: string | null;
@@ -17,7 +20,7 @@ interface Props {
 }
 
 /** The 3D renderer: same inputs as the 2D graph canvas, drawn on a hexagon floor. */
-export function Scene3D({ graph, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, onOpenComponent }: Props) {
+export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, onOpenComponent }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<HexScene | null>(null);
   // The scene is created once; clicks must reach the latest callback, not the first one.
@@ -41,6 +44,10 @@ export function Scene3D({ graph, nodeChanges, edgeChanges, selectedScenario, ste
   }, [graph]);
 
   useEffect(() => {
+    scene.current?.setObjects(wiring, objects);
+  }, [graph, wiring, objects]);
+
+  useEffect(() => {
     const emphasisOf = (scenarioIds: string[]): Emphasis => {
       if (selectedScenario === null) return "normal";
       return scenarioIds.includes(selectedScenario) ? "highlighted" : "dimmed";
@@ -54,7 +61,8 @@ export function Scene3D({ graph, nodeChanges, edgeChanges, selectedScenario, ste
       nodeChanges,
       edgeChanges,
     );
-  }, [graph, selectedScenario, step, nodeChanges, edgeChanges]);
+    // wiring/objects: setObjects rebuilds the cubes and lines, which then need their emphasis.
+  }, [graph, wiring, objects, selectedScenario, step, nodeChanges, edgeChanges]);
 
   useEffect(() => {
     if (step) scene.current?.pulse(step.edgeId, step.kind, stepOp);

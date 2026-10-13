@@ -171,7 +171,7 @@ Accepted risks:
 
 ## Next
 
-1. **3D, next steps**: bundle arcs between the same pair of rings (as Heapscape bundles
-   references between regions), cull overlapping labels, draw wiring (`W` events) between
-   instance cubes, flight controls.
+1. **3D, next steps**: flight controls; wiring for objects the framework built (DRF views,
+   serializers) needs those objects' attributes scanned too, not only at the end of a
+   project `__init__`.
 2. Recording across xdist workers; Celery tasks as their own entry landmark.
