@@ -9,6 +9,7 @@ import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRe
 import { Change, GraphNode, Op, Ring, StepKind, SystemGraph } from "@hexvis/core";
 
 import { HexagonLayout, hexagonCorners } from "./hexagon-layout";
+import { Point, routeEdges } from "./routes";
 
 const RING_COLOR: Record<Ring, number> = {
   [Ring.Edge]: 0x8a8f98,
@@ -45,13 +46,18 @@ interface TileParts {
 }
 
 interface ArcParts {
-  curve: THREE.QuadraticBezierCurve3;
+  curve: THREE.Curve<THREE.Vector3>;
   mesh: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
   baseColor: number;
 }
 
+interface TrunkParts {
+  mesh: THREE.Mesh<THREE.TubeGeometry, THREE.MeshBasicMaterial>;
+  edgeIds: string[];
+}
+
 interface Packet {
-  curve: THREE.QuadraticBezierCurve3;
+  curve: THREE.Curve<THREE.Vector3>;
   reverse: boolean;
   started: number;
   head: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
@@ -73,6 +79,7 @@ export class HexScene {
   private readonly world = new THREE.Group();
   private readonly tiles = new Map<string, TileParts>();
   private readonly arcs = new Map<string, ArcParts>();
+  private readonly trunks: TrunkParts[] = [];
   private readonly packets: Packet[] = [];
   private readonly resize: ResizeObserver;
   private frame = 0;
@@ -125,21 +132,27 @@ export class HexScene {
       const tile = layout.tiles.get(node.id);
       if (tile) this.addTile(node, tile.x, tile.z, tile.size);
     }
-    for (const edge of graph.edges) {
-      const from = this.tiles.get(edge.from);
-      const to = this.tiles.get(edge.to);
-      if (!from || !to) continue;
-      const start = from.body.position.clone().setY(TILE_HEIGHT);
-      const end = to.body.position.clone().setY(TILE_HEIGHT);
-      const lift = 6 + start.distanceTo(end) * 0.22;
-      const control = start.clone().lerp(end, 0.5).setY(lift);
-      const curve = new THREE.QuadraticBezierCurve3(start, control, end);
-      const radius = 0.12 + Math.log2(edge.calls + 1) * 0.07;
+    const { routes, trunks } = routeEdges(graph, layout);
+    const edges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+    for (const route of routes) {
+      const edge = edges.get(route.edgeId)!;
+      const curve = new THREE.CatmullRomCurve3(route.points.map(toVector), false, "centripetal");
+      // Bundled calls are thin threads along a shared trunk; direct ones carry their own weight.
+      const radius = route.trunk ? 0.08 + Math.log2(edge.calls + 1) * 0.02 : 0.12 + Math.log2(edge.calls + 1) * 0.07;
       const baseColor = edge.violation ? VIOLATION_COLOR : CALL_COLOR;
       const material = new THREE.MeshBasicMaterial({ color: baseColor, transparent: true, opacity: 0.45, depthWrite: false });
-      const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, radius, 6, false), material);
+      const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, route.trunk ? 64 : 40, radius, 6, false), material);
       this.world.add(mesh);
       this.arcs.set(edge.id, { curve, mesh, baseColor });
+    }
+    for (const trunk of trunks) {
+      // The bundle itself: a translucent sheath around the shared stretch, thicker with traffic.
+      const curve = new THREE.LineCurve3(toVector(trunk.from), toVector(trunk.to));
+      const radius = 0.6 + Math.log2(trunk.calls + 1) * 0.25;
+      const material = new THREE.MeshBasicMaterial({ color: CALL_COLOR, transparent: true, opacity: 0.12, depthWrite: false });
+      const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 1, radius, 12, false), material);
+      this.world.add(mesh);
+      this.trunks.push({ mesh, edgeIds: trunk.edgeIds });
     }
     this.frameCamera();
   }
@@ -168,6 +181,10 @@ export class HexScene {
       const emphasis = edgeEmphasis(id);
       arc.mesh.material.color.setHex(changeColor(edgeChanges?.get(id) ?? null) ?? arc.baseColor);
       arc.mesh.material.opacity = emphasis === "dimmed" ? 0.05 : emphasis === "highlighted" ? 0.8 : 0.45;
+    }
+    for (const trunk of this.trunks) {
+      const anyLit = trunk.edgeIds.some((id) => edgeEmphasis(id) !== "dimmed");
+      trunk.mesh.material.opacity = anyLit ? 0.12 : 0.03;
     }
   }
 
@@ -288,6 +305,7 @@ export class HexScene {
     this.world.clear();
     this.tiles.clear();
     this.arcs.clear();
+    this.trunks.length = 0;
   }
 
   private disposeObject(...objects: THREE.Object3D[]): void {
@@ -357,6 +375,10 @@ export class HexScene {
     const tile = id ? this.tiles.get(id) : undefined;
     if (tile) this.onPick(tile.node);
   };
+}
+
+function toVector([x, y, z]: Point): THREE.Vector3 {
+  return new THREE.Vector3(x, y, z);
 }
 
 function changeColor(change: Change | null): number | null {
