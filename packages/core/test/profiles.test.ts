@@ -143,9 +143,9 @@ describe("detect and adopt", () => {
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store });
 
     const detected = await session.handle({ type: "detectArchitecture" });
-    const declined = await session.handle({ type: "adoptArchitecture", style: "layered" });
+    const declined = await session.handle({ type: "adoptArchitecture", style: "layered", from: "detected" });
     confirm = true;
-    const adopted = await session.handle({ type: "adoptArchitecture", style: "layered" });
+    const adopted = await session.handle({ type: "adoptArchitecture", style: "layered", from: "detected" });
     const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
 
     expect(detected?.type === "architecture" && detected.candidates.map((c) => `${c.style} ${c.score}`)).toMatchInlineSnapshot(`

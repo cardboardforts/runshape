@@ -34,7 +34,7 @@ import {
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";
-import { ArchitecturePanel } from "./components/ArchitecturePanel";
+import { ArchitecturePanel, ModelAdvice } from "./components/ArchitecturePanel";
 import { TimelinePanel } from "./components/TimelinePanel";
 import { FunctionPanel } from "./components/FunctionPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
@@ -106,6 +106,7 @@ export function App({ host }: { host: Host }) {
   // Closed: null. Open: the ranked candidates, or null inside while the session ranks them.
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [detection, setDetection] = useState<{ candidates: ArchitectureCandidate[] | null } | null>(null);
+  const [modelAdvice, setModelAdvice] = useState<ModelAdvice>({ kind: "idle" });
   const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined }>({
     phases: TEST_BODY_ONLY,
     grouping: INITIAL_GROUPING,
@@ -204,6 +205,12 @@ export function App({ host }: { host: Host }) {
           break;
         case "architecture":
           setDetection({ candidates: response.candidates });
+          break;
+        case "architectureAdvice":
+          setModelAdvice({ kind: "proposed", style: response.style, reason: response.reason, confidence: response.confidence, rules: response.rules });
+          break;
+        case "architectureAdviceFailed":
+          setModelAdvice({ kind: "failed", message: response.message });
           break;
         case "zoneAdvice":
           setAdvice({ componentId: response.componentId, state: { kind: "proposed", advice: response.advice } });
@@ -409,8 +416,14 @@ export function App({ host }: { host: Host }) {
               candidates={detection.candidates}
               drawnStyle={drawStyle ?? summary.style}
               canAdopt={summary.canEditRules}
+              canAsk={summary.canAdviseZones}
+              advice={modelAdvice}
               onPreview={changeStyle}
-              onAdopt={(style) => host.post({ type: "adoptArchitecture", style })}
+              onAdopt={(style, from) => host.post({ type: "adoptArchitecture", style, from })}
+              onAsk={() => {
+                setModelAdvice({ kind: "asking" });
+                host.post({ type: "adviseArchitecture" });
+              }}
               onClose={() => setDetection(null)}
             />
           )}

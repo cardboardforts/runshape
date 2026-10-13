@@ -1,4 +1,5 @@
-import { detectArchitecture, proposedRules } from "./architecture";
+import { detectArchitecture, projectPackages, proposedRules } from "./architecture";
+import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, parseArchitectureAdvice } from "./architecture-advice";
 import { Outcome, Run } from "./model";
 import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
@@ -81,6 +82,8 @@ export class ViewerSession {
   private readonly advisor: ZoneAdvisor | null;
   private rules: ZoneRules;
   private rulesProblem: string | null;
+  /** The model's last architecture proposal, adoptable by reference. */
+  private architectureAdvice: ArchitectureAdvice | null = null;
 
   constructor(
     private readonly run: Run,
@@ -206,8 +209,10 @@ export class ViewerSession {
       }
       case "detectArchitecture":
         return { type: "architecture", candidates: detectArchitecture(this.run) };
+      case "adviseArchitecture":
+        return this.adviseArchitecture();
       case "adoptArchitecture":
-        return this.adoptArchitecture(request.style);
+        return this.adoptArchitecture(request.style, request.from);
       case "adviseZone":
         return this.adviseZone(request.componentId, request.grouping);
       case "executionDiff": {
@@ -241,22 +246,57 @@ export class ViewerSession {
   }
 
   /** Replaces runshape.json with the detected style and its rules, once the person confirms. */
-  private async adoptArchitecture(style: string): Promise<UiResponse | null> {
+  private async adoptArchitecture(style: string, from: "detected" | "model"): Promise<UiResponse | null> {
     if (this.ruleStore === null) return { type: "error", message: "Zones can't be saved from here." };
-    const candidate = detectArchitecture(this.run).find((c) => c.style === style);
-    if (candidate === undefined) return { type: "error", message: unknownStyle(style) };
-    const next = proposedRules(candidate);
+    let next: ZoneRules;
+    if (from === "model") {
+      if (this.architectureAdvice === null || this.architectureAdvice.rules.profile.style !== style) {
+        return { type: "error", message: "There is no model proposal for that style to adopt; ask the model again." };
+      }
+      next = this.architectureAdvice.rules;
+    } else {
+      const candidate = detectArchitecture(this.run).find((c) => c.style === style);
+      if (candidate === undefined) return { type: "error", message: unknownStyle(style) };
+      next = proposedRules(candidate);
+    }
     const current =
       this.rulesProblem !== null
         ? `runshape.json can't be read now (${this.rulesProblem}); it is replaced.`
         : `It replaces runshape.json's ${this.rules.rules.length} rule(s) (${this.rules.profile.style} style).`;
     const lines = next.rules.map((rule) => `  ${rule.match} → ${rule.zone}`);
-    const change = `Style: ${candidate.name}\n${lines.length ? lines.join("\n") : "  (no rules: every zone inferred)"}\n\n${current}`;
-    const saved = await this.ruleStore.save(next, { question: `Rewrite ${RULES_FILE} as ${candidate.name}?`, detail: change, confirm: `Rewrite ${RULES_FILE}` });
+    const change = `Style: ${next.profile.name}\n${lines.length ? lines.join("\n") : "  (no rules: every zone inferred)"}\n\n${current}`;
+    const saved = await this.ruleStore.save(next, { question: `Rewrite ${RULES_FILE} as ${next.profile.name}?`, detail: change, confirm: `Rewrite ${RULES_FILE}` });
     if (!saved) return null;
     this.rules = next;
     this.rulesProblem = null;
     return { type: "rulesChanged", count: next.rules.length, style: next.profile.style };
+  }
+
+  private async adviseArchitecture(): Promise<UiResponse> {
+    if (this.advisor === null || !this.advisor.available) {
+      return { type: "architectureAdviceFailed", message: "No language model is available (in VS Code, one comes with e.g. GitHub Copilot)." };
+    }
+    const prompt = architecturePrompt(detectArchitecture(this.run), projectPackages(this.run));
+    let answer: string;
+    try {
+      answer = await this.advisor.complete(prompt);
+    } catch (error) {
+      return { type: "architectureAdviceFailed", message: `The model request failed: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    try {
+      this.architectureAdvice = parseArchitectureAdvice(answer);
+    } catch (error) {
+      if (error instanceof ArchitectureAdviceError) return { type: "architectureAdviceFailed", message: error.message };
+      throw error;
+    }
+    const { rules, reason, confidence } = this.architectureAdvice;
+    return {
+      type: "architectureAdvice",
+      style: rules.profile.style,
+      reason,
+      confidence,
+      rules: rules.rules.map(({ match, zone }) => ({ match, zone })),
+    };
   }
 
   private async adviseZone(componentId: string, grouping: Grouping): Promise<UiResponse> {

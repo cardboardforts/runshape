@@ -28,8 +28,13 @@ export type UiRequest =
   | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
   /** Rank the styles against this recording. */
   | { type: "detectArchitecture" }
-  /** Write runshape.json from the detected candidate for `style`: its style and proposed rules. */
-  | { type: "adoptArchitecture"; style: string }
+  /** Ask a language model which style the app follows and how its packages map to zones. */
+  | { type: "adviseArchitecture" }
+  /**
+   * Write runshape.json from a proposal for `style`: the detector's candidate, or the model's
+   * last proposal (which the session kept: the view never sends rules to write).
+   */
+  | { type: "adoptArchitecture"; style: string; from: "detected" | "model" }
   | { type: "setZone"; qualifiedName: string; zone: string; reason: string; by: ZoneRule["by"] }
   | { type: "adviseZone"; componentId: string; grouping: Grouping }
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
@@ -51,6 +56,8 @@ export type UiResponse =
   | { type: "diff"; diff: RunDiff; review: ReviewSummary }
   | { type: "rulesChanged"; count: number; style: string }
   | { type: "architecture"; candidates: ArchitectureCandidate[] }
+  | { type: "architectureAdvice"; style: string; reason: string; confidence: string; rules: { match: string; zone: string }[] }
+  | { type: "architectureAdviceFailed"; message: string }
   | { type: "executionDiff"; diff: ExecutionDiff; replay: MergedReplayStep[] }
   | { type: "functionExecutionDiff"; diff: FunctionExecutionDiff }
   | { type: "zoneAdvice"; componentId: string; advice: ZoneAdvice }

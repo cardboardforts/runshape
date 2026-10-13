@@ -121,7 +121,7 @@ export function proposedRules(candidate: ArchitectureCandidate): ZoneRules {
  * Every package and module in the app's own code. Modules count too: Django names its roles
  * per module (app/views.py, app/models.py), other frameworks per package (app/api/routes/).
  */
-function projectPackages(run: Run): string[] {
+export function projectPackages(run: Run): string[] {
   const testFiles = /(^|\/)tests?\//;
   const packages = new Set<string>();
   for (const fn of run.catalog) {
