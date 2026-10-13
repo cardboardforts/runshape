@@ -161,7 +161,7 @@ const MAX_LISTED = 5;
 
 /** Markdown for a PR comment. Test names and function names only; no SQL text or source. */
 export function reviewMarkdown(summary: ReviewSummary): string {
-  const out: string[] = ["## Behaviour changes (HexVis)", ""];
+  const out: string[] = ["## Behaviour changes (Runshape)", ""];
   const total = summary.items.length;
   out.push(`${total} tests recorded on the base and on this branch.`, "");
   const silent = summary.counts[ReviewCategory.SilentChange];

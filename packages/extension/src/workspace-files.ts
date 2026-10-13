@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 
-import { SourceReader, TraceFiles } from "@hexvis/core";
+import { SourceReader, TraceFiles } from "@runshape/core";
 
-/** TraceFiles over a .hexvis/traces directory, read through VS Code's file system API. */
+/** TraceFiles over a .runshape/traces directory, read through VS Code's file system API. */
 export function traceFilesAt(tracesDirectory: vscode.Uri): TraceFiles {
   return {
     async readText(relativePath: string): Promise<string> {
@@ -12,7 +12,7 @@ export function traceFilesAt(tracesDirectory: vscode.Uri): TraceFiles {
   };
 }
 
-/** Project source, relative to the project root (the folder holding .hexvis/). */
+/** Project source, relative to the project root (the folder holding .runshape/). */
 export function sourceReaderAt(projectRoot: vscode.Uri): SourceReader {
   return {
     async readLines(relativeFile: string): Promise<string[] | null> {

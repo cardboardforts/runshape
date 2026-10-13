@@ -1,6 +1,6 @@
 import { Background, Controls, ReactFlow } from "@xyflow/react";
 
-import { Change, GraphNode, Op, ReplayStep, SystemGraph } from "@hexvis/core";
+import { Change, GraphNode, Op, ReplayStep, SystemGraph } from "@runshape/core";
 
 import type { Positioned } from "../layout";
 import { ComponentFlowNode, ComponentNode, Emphasis } from "./ComponentNode";

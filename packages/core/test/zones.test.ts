@@ -1,5 +1,5 @@
 /**
- * Declared zones (hexvis.json) against observed behaviour. Inference only says what a
+ * Declared zones (runshape.json) against observed behaviour. Inference only says what a
  * component does; declaring what it is supposed to be turns disagreements into findings.
  */
 import { describe, expect, test } from "vitest";
@@ -20,7 +20,7 @@ function violations(graph: SystemGraph): string[] {
 }
 
 describe("ZoneRules", () => {
-  test("a hexvis.json with mistakes reports every one of them", () => {
+  test("a runshape.json with mistakes reports every one of them", () => {
     const text = JSON.stringify({
       version: 2,
       zones: [
@@ -32,7 +32,7 @@ describe("ZoneRules", () => {
 
     expect(() => ZoneRules.parse(text)).toThrowError(ZoneRulesError);
     expect(() => ZoneRules.parse(text)).toThrowErrorMatchingInlineSnapshot(`
-      [Error: hexvis.json is invalid:
+      [Error: runshape.json is invalid:
         - zones[1].match must be a non-empty string
         - zones[1].zone must be one of inbound-adapter, core, outbound-adapter
         - zones[1].reason must say why
@@ -118,8 +118,8 @@ describe("zones on the system graph", () => {
     // them are ordinary inward calls rather than adapter-to-adapter hops.
     expect(describeZones(graph, ["Profile", "User"])).toMatchInlineSnapshot(`
       [
-        "User: core [rule] declared in hexvis.json (conduit.apps.*.models.*): the domain entities",
-        "Profile: core [rule] declared in hexvis.json (conduit.apps.*.models.*): the domain entities !core-touches-external",
+        "User: core [rule] declared in runshape.json (conduit.apps.*.models.*): the domain entities",
+        "Profile: core [rule] declared in runshape.json (conduit.apps.*.models.*): the domain entities !core-touches-external",
       ]
     `);
   });

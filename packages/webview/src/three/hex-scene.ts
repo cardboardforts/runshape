@@ -6,7 +6,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, Zone, StepKind, SystemGraph } from "@hexvis/core";
+import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, Zone, StepKind, SystemGraph } from "@runshape/core";
 
 import { HexagonLayout, hexagonCorners, OBJECT_SIDE, objectSlots, Tile } from "./hexagon-layout";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";

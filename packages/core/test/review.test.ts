@@ -19,7 +19,7 @@ describe("buildReview", () => {
 
     expect(summary.counts[ReviewCategory.SilentChange]).toBe(2);
     expect(reviewMarkdown(summary)).toMatchInlineSnapshot(`
-      "## Behaviour changes (HexVis)
+      "## Behaviour changes (Runshape)
 
       4 tests recorded on the base and on this branch.
 
@@ -41,7 +41,7 @@ describe("buildReview", () => {
     const summary = await review("django-feed-fix");
 
     expect(reviewMarkdown(summary)).toMatchInlineSnapshot(`
-      "## Behaviour changes (HexVis)
+      "## Behaviour changes (Runshape)
 
       8 tests recorded on the base and on this branch.
 

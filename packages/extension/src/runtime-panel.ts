@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 
-import { DeclaredZone, loadLatestRun, loadPreviousRun, Phase, ZoneSource, Run, UiRequest, UiResponse, ViewerSession } from "@hexvis/core";
+import { DeclaredZone, loadLatestRun, loadPreviousRun, Phase, ZoneSource, Run, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
 
 import type { Logger } from "./logger";
 import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./zone-adapters";
 import { childUri, sourceReaderAt, traceFilesAt } from "./workspace-files";
 
-const VIEW_TYPE = "hexvis.runtime";
+const VIEW_TYPE = "runshape.runtime";
 
 /**
  * One webview showing one project's latest recording. Owns the ViewerSession and routes
@@ -35,7 +35,7 @@ export class RuntimePanel {
     const webviewRoot = vscode.Uri.joinPath(extensionUri, "dist", "webview");
     const panel = vscode.window.createWebviewPanel(
       VIEW_TYPE,
-      `HexVis: ${projectRoot.path.split("/").pop() ?? "runtime"}`,
+      `Runshape: ${projectRoot.path.split("/").pop() ?? "runtime"}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [webviewRoot] },
     );
@@ -52,7 +52,7 @@ export class RuntimePanel {
     this.panel.reveal();
   }
 
-  /** hexvis.json changed on disk: re-read it and tell the view to redraw. */
+  /** runshape.json changed on disk: re-read it and tell the view to redraw. */
   async reloadRules(): Promise<void> {
     if (this.session === null) return;
     try {
@@ -95,14 +95,14 @@ export class RuntimePanel {
       if (picked === undefined) return null;
       target = picked.id;
     }
-    this.logger.info("command.suggest_ring", { request: requestId, component: target });
+    this.logger.info("command.suggest_zone", { request: requestId, component: target });
     const response = await session.handle({ type: "adviseZone", componentId: target, grouping });
     if (response !== null) await this.post(response);
     if (componentId === undefined && response?.type === "zoneAdvice") {
       const { advice } = response;
       const accept = await vscode.window.showInformationMessage(
         `Proposed zone: ${advice.zone} (${advice.confidence} confidence). ${advice.reason}`,
-        "Accept into hexvis.json",
+        "Accept into runshape.json",
       );
       const qualifiedName = target.replace(/^(class|module):/, "");
       if (accept) await this.respond({ type: "setZone", qualifiedName, zone: advice.zone as DeclaredZone, reason: advice.reason, by: "llm" }, requestId);
@@ -164,7 +164,7 @@ export class RuntimePanel {
 
   private async load(requestId: number): Promise<ViewerSession> {
     const started = Date.now();
-    const traces = traceFilesAt(vscode.Uri.joinPath(this.projectRoot, ".hexvis", "traces"));
+    const traces = traceFilesAt(vscode.Uri.joinPath(this.projectRoot, ".runshape", "traces"));
     const run = await loadLatestRun(traces);
     const baseline = await this.loadBaseline(traces, requestId);
     const { rules, problem } = await readRules(this.projectRoot);
@@ -239,7 +239,7 @@ function renderHtml(webview: vscode.Webview, webviewRoot: vscode.Uri): string {
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="${style}" />
-    <title>HexVis</title>
+    <title>Runshape</title>
   </head>
   <body>
     <div id="root"></div>

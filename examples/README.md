@@ -1,18 +1,18 @@
 # Example apps
 
-Two RealWorld ("Conduit") backends used to develop and test HexVis against real code. Neither is
+Two RealWorld ("Conduit") backends used to develop and test Runshape against real code. Neither is
 committed here: `setup.sh` clones each at a pinned commit and applies what's in `patches/`.
 
 ```sh
 ./setup.sh                 # clone, patch, build a venv for each (needs uv)
 ./postgres.sh start        # FastAPI only: local Postgres 16 on 127.0.0.1:54329, no Docker
-./record.sh django         # run the app's tests with --hexvis
+./record.sh django         # run the app's tests with --runshape
 ./record.sh fastapi
 ./postgres.sh stop
 ```
 
-Recordings land in `<app>/.hexvis/traces/`. Open `examples/<app>` in VS Code and run
-**HexVis: Open Runtime View**.
+Recordings land in `<app>/.runshape/traces/`. Open `examples/<app>` in VS Code and run
+**Runshape: Open Runtime View**.
 
 ## fastapi-realworld-example-app — unchanged
 

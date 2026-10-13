@@ -22,7 +22,7 @@ import {
   RunSummary,
   SystemGraph,
   UiResponse,
-} from "@hexvis/core";
+} from "@runshape/core";
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";
@@ -315,7 +315,7 @@ export function App({ host }: { host: Host }) {
     <div className="app">
       <aside className="sidebar">
         <header>
-          <h1>HexVis</h1>
+          <h1>Runshape</h1>
           <p className="muted">
             {summary.framework ?? "no framework"} · Python {summary.python} · {summary.backend} · {summary.scenarios.length}{" "}
             scenarios
@@ -556,7 +556,7 @@ function Legend({ ruleCount }: { ruleCount: number }) {
       <h2>
         Zones{" "}
         {ruleCount > 0
-          ? `(${ruleCount} rule${ruleCount === 1 ? "" : "s"} in hexvis.json, the rest inferred)`
+          ? `(${ruleCount} rule${ruleCount === 1 ? "" : "s"} in runshape.json, the rest inferred)`
           : "(inferred from runtime behaviour)"}
       </h2>
       <ul>

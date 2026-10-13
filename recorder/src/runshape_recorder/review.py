@@ -1,9 +1,9 @@
-"""hexvis-review: record the tests on a base commit and on the working tree, for comparing.
+"""runshape-review: record the tests on a base commit and on the working tree, for comparing.
 
-    hexvis-review --base origin/main [-- pytest arguments]
+    runshape-review --base origin/main [-- pytest arguments]
 
 The base is checked out into a temporary git worktree (the working tree is never touched),
-the tests run there and then here, each with --hexvis. The base recording becomes the
+the tests run there and then here, each with --runshape. The base recording becomes the
 "previous" run and the working tree's the "latest", so the viewer's compare mode shows
 exactly what this branch changes in how the tests execute.
 """
@@ -18,7 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
-from hexvis_recorder.settings import DEFAULT_OUT_DIRECTORY
+from runshape_recorder.settings import DEFAULT_OUT_DIRECTORY
 
 # pytest exit codes 0 (all passed), 1 (some failed) and 5 (none collected) are results;
 # anything else (usage error, internal error, interrupted) means there's no recording.
@@ -41,14 +41,14 @@ class Revision:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="hexvis-review", description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="runshape-review", description=__doc__.split("\n\n")[0])
     parser.add_argument("--base", required=True, help="commit, branch or tag to compare against (e.g. origin/main)")
     parser.add_argument("pytest_args", nargs="*", help="passed to pytest (put them after --)")
     args = parser.parse_args(argv)
     try:
         record_base_and_head(os.getcwd(), args.base, list(args.pytest_args))
     except ReviewError as error:
-        print(f"hexvis-review: {error}", file=sys.stderr)
+        print(f"runshape-review: {error}", file=sys.stderr)
         return 2
     return 0
 
@@ -62,18 +62,18 @@ def record_base_and_head(project: str, base_ref: str, pytest_args: List[str]) ->
     out_directory = os.path.join(project, DEFAULT_OUT_DIRECTORY)
     relative_project = os.path.relpath(os.path.realpath(project), os.path.realpath(repository))
 
-    worktree = tempfile.mkdtemp(prefix="hexvis-base-")
+    worktree = tempfile.mkdtemp(prefix="runshape-base-")
     try:
         _git(project, "worktree", "add", "--detach", "--quiet", worktree, base.sha)
-        print(f"hexvis-review: recording base {base.sha[:10]} in a temporary worktree")
+        print(f"runshape-review: recording base {base.sha[:10]} in a temporary worktree")
         _record(os.path.join(worktree, relative_project), out_directory, base, pytest_args)
     finally:
         subprocess.run(["git", "-C", project, "worktree", "remove", "--force", worktree], capture_output=True)
         shutil.rmtree(worktree, ignore_errors=True)
 
-    print(f"hexvis-review: recording head {head.sha[:10]}{' (with uncommitted changes)' if dirty else ''}")
+    print(f"runshape-review: recording head {head.sha[:10]}{' (with uncommitted changes)' if dirty else ''}")
     _record(project, out_directory, head, pytest_args)
-    print("hexvis-review: done. In VS Code: HexVis: Open Runtime View, then tick 'Compare with previous recording'.")
+    print("runshape-review: done. In VS Code: Runshape: Open Runtime View, then tick 'Compare with previous recording'.")
 
 
 def _record(directory: str, out_directory: str, revision: Revision, pytest_args: List[str]) -> None:
@@ -81,9 +81,9 @@ def _record(directory: str, out_directory: str, revision: Revision, pytest_args:
         sys.executable,
         "-m",
         "pytest",
-        "--hexvis",
-        f"--hexvis-out={out_directory}",
-        f"--hexvis-run-name={revision.run_name}",
+        "--runshape",
+        f"--runshape-out={out_directory}",
+        f"--runshape-run-name={revision.run_name}",
         *pytest_args,
     ]
     completed = subprocess.run(command, cwd=directory)

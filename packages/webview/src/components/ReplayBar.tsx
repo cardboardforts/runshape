@@ -1,4 +1,4 @@
-import { Op, ReplayStep, StepKind } from "@hexvis/core";
+import { Op, ReplayStep, StepKind } from "@runshape/core";
 
 interface Props {
   scenarioName: string;

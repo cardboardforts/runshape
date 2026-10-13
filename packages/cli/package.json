@@ -1,12 +1,12 @@
 {
-  "name": "@hexvis/cli",
+  "name": "@runshape/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "hexvis-review-md": "dist/hexvis-review-md.mjs" },
+  "bin": { "runshape-review-md": "dist/runshape-review-md.mjs" },
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc -p ."
   },
-  "dependencies": { "@hexvis/core": "0.1.0" }
+  "dependencies": { "@runshape/core": "0.1.0" }
 }

@@ -2,7 +2,7 @@ import { Run } from "../model";
 import { LoadedScenario, parseRun, TraceFormatError } from "./parse";
 import { ManifestDto, ScenarioDto } from "./wire";
 
-/** Port: read a text file, by path relative to a traces directory (.hexvis/traces). */
+/** Port: read a text file, by path relative to a traces directory (.runshape/traces). */
 export interface TraceFiles {
   readText(relativePath: string): Promise<string>;
 }
@@ -10,7 +10,7 @@ export interface TraceFiles {
 export const LATEST_POINTER = "latest.json";
 export const PREVIOUS_POINTER = "previous.json";
 
-export const HOW_TO_RECORD = "record one by running your tests with `pytest --hexvis` (see the HexVis README)";
+export const HOW_TO_RECORD = "record one by running your tests with `pytest --runshape` (see the Runshape README)";
 
 export async function loadLatestRun(files: TraceFiles): Promise<Run> {
   let pointerText: string;

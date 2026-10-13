@@ -194,17 +194,17 @@ index 54612f9..07779b1 100644
  ]
 diff --git a/pytest.ini b/pytest.ini
 new file mode 100644
-index 0000000..2b4eacd
+index 0000000..592a9b4
 --- /dev/null
 +++ b/pytest.ini
 @@ -0,0 +1,5 @@
 +[pytest]
 +DJANGO_SETTINGS_MODULE = conduit.settings
 +testpaths = tests
-+hexvis_source = conduit
-+hexvis_tests = tests
++runshape_source = conduit
++runshape_tests = tests
 diff --git a/requirements.txt b/requirements.txt
-index 6eb9d54..425c617 100644
+index 6eb9d54..be487e8 100644
 --- a/requirements.txt
 +++ b/requirements.txt
 @@ -1,6 +1,7 @@
@@ -214,7 +214,7 @@ index 6eb9d54..425c617 100644
 -djangorestframework==3.4.4
 -PyJWT==1.4.2
 -six==1.10.0
-+# Ported from Django 1.10 / Python 3.5 to run on a current Python (see hexvis examples/README.md).
++# Ported from Django 1.10 / Python 3.5 to run on a current Python (see runshape examples/README.md).
 +Django==5.2.7
 +djangorestframework==3.16.1
 +django-cors-headers==4.9.0
@@ -226,14 +226,14 @@ new file mode 100644
 index 0000000..e69de29
 diff --git a/tests/test_user_journeys.py b/tests/test_user_journeys.py
 new file mode 100644
-index 0000000..fc640f0
+index 0000000..82fc066
 --- /dev/null
 +++ b/tests/test_user_journeys.py
 @@ -0,0 +1,124 @@
 +"""RealWorld ("Conduit") user journeys, end to end through Django's test client.
 +
-+Added by hexvis: the upstream project ships without tests. Each test is one named user
-+behaviour, so each becomes one scenario in the HexVis viewer.
++Added by runshape: the upstream project ships without tests. Each test is one named user
++behaviour, so each becomes one scenario in the Runshape viewer.
 +"""
 +import json
 +

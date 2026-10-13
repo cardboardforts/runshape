@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 
-import { ZoneAdvisor, ZoneRules, ZoneRulesError, ZoneRuleStore, RULES_FILE } from "@hexvis/core";
+import { ZoneAdvisor, ZoneRules, ZoneRulesError, ZoneRuleStore, RULES_FILE } from "@runshape/core";
 
 import type { Logger } from "./logger";
 
 export interface LoadedRules {
   rules: ZoneRules;
-  /** Set when hexvis.json exists but can't be used; the view shows it and falls back to inference. */
+  /** Set when runshape.json exists but can't be used; the view shows it and falls back to inference. */
   problem: string | null;
 }
 
@@ -25,7 +25,7 @@ export async function readRules(projectRoot: vscode.Uri): Promise<LoadedRules> {
   }
 }
 
-/** Writes hexvis.json only after the person confirms the exact change, in a modal. */
+/** Writes runshape.json only after the person confirms the exact change, in a modal. */
 export function confirmingRuleStore(projectRoot: vscode.Uri, logger: Logger): ZoneRuleStore {
   return {
     async save(rules: ZoneRules, change: string): Promise<boolean> {
@@ -61,7 +61,7 @@ export function vscodeModelAdvisor(logger: Logger, available: boolean): ZoneAdvi
       const started = Date.now();
       const response = await model.sendRequest(
         [vscode.LanguageModelChatMessage.User(prompt)],
-        { justification: "HexVis asks a model which architectural zone a component belongs in." },
+        { justification: "Runshape asks a model which architectural zone a component belongs in." },
       );
       let text = "";
       for await (const part of response.text) text += part;

@@ -1,4 +1,4 @@
-import { CallStep, Change, ExecutionDiff, FunctionChange, ScenarioDiff } from "@hexvis/core";
+import { CallStep, Change, ExecutionDiff, FunctionChange, ScenarioDiff } from "@runshape/core";
 
 import { ExecutionCalls } from "./ExecutionDiffView";
 

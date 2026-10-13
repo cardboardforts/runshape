@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { FunctionView, LineView, ScenarioPath } from "@hexvis/core";
+import { FunctionView, LineView, ScenarioPath } from "@runshape/core";
 
 import { wireColor } from "../wire-colors";
 

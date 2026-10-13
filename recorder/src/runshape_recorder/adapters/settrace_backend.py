@@ -11,8 +11,8 @@ import threading
 from types import CodeType, FrameType
 from typing import Any, Callable, Dict, Optional
 
-from hexvis_recorder.domain.events import CodeRole
-from hexvis_recorder.domain.recorder import GENERATOR_LIKE_FLAGS, ScenarioRecorder
+from runshape_recorder.domain.events import CodeRole
+from runshape_recorder.domain.recorder import GENERATOR_LIKE_FLAGS, ScenarioRecorder
 
 TraceFunction = Callable[[FrameType, str, Any], Optional["TraceFunction"]]
 

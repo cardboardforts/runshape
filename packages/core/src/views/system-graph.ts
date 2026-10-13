@@ -12,7 +12,7 @@ import {
 } from "./components";
 
 /**
- * Where a component sits in the onion. A rule in hexvis.json decides when one matches;
+ * Where a component sits in the onion. A rule in runshape.json decides when one matches;
  * otherwise it is inferred from what the component was seen doing at runtime:
  * - inbound adapter: the framework hands it requests (a route handler, or a dependency
  *   the router calls directly)
@@ -231,7 +231,7 @@ class GraphBuilder {
         return {
           zone: DECLARED_ZONE[match.rule.zone],
           source: ZoneSource.Rule,
-          reason: `${decidedBy} in hexvis.json (${match.rule.match}): ${match.rule.reason}`,
+          reason: `${decidedBy} in runshape.json (${match.rule.match}): ${match.rule.reason}`,
         };
       }
     }

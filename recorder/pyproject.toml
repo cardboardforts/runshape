@@ -1,22 +1,22 @@
 [project]
-name = "hexvis-recorder"
+name = "runshape-recorder"
 version = "0.1.0"
-description = "pytest plugin that records execution traces for the HexVis viewer"
+description = "pytest plugin that records execution traces for the Runshape viewer"
 requires-python = ">=3.9"
 dependencies = ["pytest>=7.0"]
 
 [project.scripts]
-hexvis-review = "hexvis_recorder.review:main"
+runshape-review = "runshape_recorder.review:main"
 
 [project.entry-points.pytest11]
-hexvis = "hexvis_recorder.pytest_plugin"
+runshape = "runshape_recorder.pytest_plugin"
 
 [build-system]
 requires = ["hatchling>=1.18"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hexvis_recorder"]
+packages = ["src/runshape_recorder"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

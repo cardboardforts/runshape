@@ -1,4 +1,4 @@
-"""End-to-end: run the sample shop's own test suite with --hexvis and read back the traces.
+"""End-to-end: run the sample shop's own test suite with --runshape and read back the traces.
 
 The sample shop is a tiny hexagonal app (tests/sample_shop): a composition root wires an
 OrderService to a SqlOrderRepository adapter, which talks to `fakedb` — configured as a
@@ -27,8 +27,8 @@ def shop(pytester):
 
 
 def record(shop, *args):
-    result = shop.runpytest_subprocess("--hexvis", *args)
-    traces = shop.path / ".hexvis" / "traces"
+    result = shop.runpytest_subprocess("--runshape", *args)
+    traces = shop.path / ".runshape" / "traces"
     run_directory = traces / json.loads((traces / "latest.json").read_text())["run"]
     manifest = json.loads((run_directory / "manifest.json").read_text())
     scenarios = {s["nodeid"]: json.loads((run_directory / s["file"]).read_text()) for s in manifest["scenarios"]}
@@ -37,7 +37,7 @@ def record(shop, *args):
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_each_test_becomes_a_scenario_with_calls_objects_wiring_and_boundaries(shop, backend):
-    result, manifest, scenarios = record(shop, "-o", f"hexvis_backend={backend}")
+    result, manifest, scenarios = record(shop, "-o", f"runshape_backend={backend}")
 
     result.assert_outcomes(passed=4, xfailed=1)
     assert manifest["backend"] == backend
@@ -93,7 +93,7 @@ def test_each_test_becomes_a_scenario_with_calls_objects_wiring_and_boundaries(s
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_work_handed_to_another_thread_stays_under_the_span_that_handed_it_off(shop, backend):
-    _, _, scenarios = record(shop, "-o", f"hexvis_backend={backend}")
+    _, _, scenarios = record(shop, "-o", f"runshape_backend={backend}")
 
     # place_order runs on a worker thread, so its own stack has no recorded caller. The
     # recorder parents it to the span most recently running on another thread — the
@@ -114,7 +114,7 @@ def test_work_handed_to_another_thread_stays_under_the_span_that_handed_it_off(s
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_line_events_show_which_branch_each_scenario_took(shop, backend):
-    _, _, scenarios = record(shop, "-o", f"hexvis_backend={backend}")
+    _, _, scenarios = record(shop, "-o", f"runshape_backend={backend}")
 
     # place_order: line 11 is the empty-items guard, 12 its early return.
     rejected = call_tree(scenarios["tests/test_orders.py::test_rejects_empty_order"], show_lines=True)
@@ -161,7 +161,7 @@ def test_manifest_catalogs_every_project_function_including_uncalled_ones(shop):
 
 
 def test_each_run_remembers_the_one_before_it_as_the_baseline_for_comparison(shop):
-    traces = shop.path / ".hexvis" / "traces"
+    traces = shop.path / ".runshape" / "traces"
     record(shop)
     first_run = json.loads((traces / "latest.json").read_text())["run"]
 
@@ -177,18 +177,18 @@ def test_each_run_remembers_the_one_before_it_as_the_baseline_for_comparison(sho
 
 def test_misconfiguration_reports_every_problem_at_once(shop):
     result = shop.runpytest_subprocess(
-        "--hexvis",
-        "-o", "hexvis_source=",
-        "-o", "hexvis_backend=fast",
-        "-o", "hexvis_boundaries=nonsense",
+        "--runshape",
+        "-o", "runshape_source=",
+        "-o", "runshape_backend=fast",
+        "-o", "runshape_boundaries=nonsense",
     )
 
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(
         [
-            "*hexvis is misconfigured:",
-            "*hexvis_source is required*",
-            "*hexvis_backend='fast' is not one of: auto, settrace, monitoring",
-            "*hexvis_boundaries entry 'nonsense' must look like 'module.prefix = system' or*",
+            "*runshape is misconfigured:",
+            "*runshape_source is required*",
+            "*runshape_backend='fast' is not one of: auto, settrace, monitoring",
+            "*runshape_boundaries entry 'nonsense' must look like 'module.prefix = system' or*",
         ]
     )

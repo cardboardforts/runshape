@@ -4,9 +4,9 @@ from __future__ import annotations
 from types import FrameType
 from typing import Any, List, Optional, Tuple
 
-from hexvis_recorder.domain.events import LandmarkKind
-from hexvis_recorder.domain.scope import SQL_OPERATIONS, Boundary, CodeScope, Landmark
-from hexvis_recorder.domain.topology import ExternalSystem, FrameworkTopology, Route
+from runshape_recorder.domain.events import LandmarkKind
+from runshape_recorder.domain.scope import SQL_OPERATIONS, Boundary, CodeScope, Landmark
+from runshape_recorder.domain.topology import ExternalSystem, FrameworkTopology, Route
 
 FRAMEWORK_NAME = "django"
 DRF_IGNORED_METHODS = ("options", "head")

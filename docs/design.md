@@ -1,4 +1,4 @@
-# HexVis design
+# Runshape design
 
 ## What it's for
 
@@ -29,7 +29,7 @@ recorded **scenario**. Three views come out of the same recordings:
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
 | behavioural diff (compare with previous recording) | `packages/core/src/views/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
-| declared zones (`hexvis.json`), provenance, onion violations, LLM zone proposals | `packages/core/src/zones.ts`, `zone-advice.ts` | done; the model call runs end to end against a fake model in the e2e test, and was checked by hand with a real model (Copilot) on the Django example on 2026-10-13 |
+| declared zones (`runshape.json`), provenance, onion violations, LLM zone proposals | `packages/core/src/zones.ts`, `zone-advice.ts` | done; the model call runs end to end against a fake model in the e2e test, and was checked by hand with a real model (Copilot) on the Django example on 2026-10-13 |
 | 3D renderer (three.js): hexagon floor, tiles and objects, call arcs, replay packets | `packages/webview/src/three` | first version; layout tested, scene checked in a browser |
 
 ## Architecture
@@ -72,7 +72,7 @@ called on a `UsersRepository` belongs to `UsersRepository`: the runtime picture,
 inheritance tree.
 
 **Zones: declared where you've decided, inferred where you haven't.** A rule in the
-checked-in `hexvis.json` (an ordered list of dotted-name globs, each with a required reason)
+checked-in `runshape.json` (an ordered list of dotted-name globs, each with a required reason)
 wins over inference, and every node says which applied and why. Declaring is the point:
 inference can only describe behaviour, while a declaration can be *contradicted* by it. A
 declared-core class that queries the database, a handler calling a repository directly, or
@@ -100,7 +100,7 @@ An earlier "most recently active span on another thread" heuristic raced and was
 **2D first, 3D as a second renderer.** The hard problem is aggregation, not rendering, so
 every view is a view model in core and both renderers draw the same ones. The 3D scene
 borrows its visual language from Heapscape (wireframe containers, glowing arcs, packets with
-fading tails, bloom on the packets only) and gives it HexVis's meaning: the floor is the
+fading tails, bloom on the packets only) and gives it Runshape's meaning: the floor is the
 hexagon, with each zone on its own side.
 
 **Known bugs are scenarios too.** pytest `xfail` is recorded as `xfailed`, never as a skip
@@ -108,7 +108,7 @@ or a pass, so a known-broken flow can be replayed.
 
 ## Observability
 
-The extension logs logfmt lines to the **HexVis** output channel (VS Code adds timestamp and
+The extension logs logfmt lines to the **Runshape** output channel (VS Code adds timestamp and
 level):
 
 - `extension.activated` (version), `projects.found`, `panel.opened` / `panel.closed`
@@ -138,10 +138,10 @@ in a webview.
 | trace file → extension | **T/E**: a crafted trace (committed by anyone with repo access) names `../../.ssh/id_rsa` as a source file | `safeSegments` refuses absolute paths and `..` for every path from traces or the webview (unit-tested) | the viewer reads, and a click opens, arbitrary files |
 | trace file → webview | **T**: crafted strings become markup | React escapes all text; CSP allows scripts only with a per-load nonce, no inline or remote code; `localResourceRoots` limits the webview to the bundle | script injection into a webview with access to the extension's message API |
 | trace file → log | **T/R**: a value with a newline forges a log line | logger escapes newlines and quotes (unit-tested) | misleading audit trail |
-| recorder → disk | **I**: traces capture data from the test run | SQL text but never parameters; URLs without query strings (API keys); request method and path only, no headers or bodies; traces live under `.hexvis/`, which projects should git-ignore | credentials and personal data from test fixtures land in files people commit or share |
+| recorder → disk | **I**: traces capture data from the test run | SQL text but never parameters; URLs without query strings (API keys); request method and path only, no headers or bodies; traces live under `.runshape/`, which projects should git-ignore | credentials and personal data from test fixtures land in files people commit or share |
 | extension → language model | **I**: "Suggest a zone" sends the component's name, functions, recorded neighbours and its own source to whichever model VS Code provides (e.g. Copilot's) | only on an explicit click per component; VS Code asks the person to allow model access the first time; the log records prompt size, never content | code leaves the machine without the person deciding it should |
-| model answer → hexvis.json | **T**: a model's (or prompt-injected) answer rewrites the architecture rules | the answer is validated (known zone, non-empty reason) and shown as a proposal; writing requires a modal confirmation showing the exact rule as JSON and whether it replaces one; saving is refused while hexvis.json is unreadable, so a broken file is never overwritten; the request itself is validated | the rules file changes silently |
-| recorder → test process | **D**: tracing slows or breaks the suite | opt-in (`--hexvis`); callbacks never raise; `sys.monitoring` disables uninteresting code after first sight | a broken or unusably slow test run |
+| model answer → runshape.json | **T**: a model's (or prompt-injected) answer rewrites the architecture rules | the answer is validated (known zone, non-empty reason) and shown as a proposal; writing requires a modal confirmation showing the exact rule as JSON and whether it replaces one; saving is refused while runshape.json is unreadable, so a broken file is never overwritten; the request itself is validated | the rules file changes silently |
+| recorder → test process | **D**: tracing slows or breaks the suite | opt-in (`--runshape`); callbacks never raise; `sys.monitoring` disables uninteresting code after first sight | a broken or unusably slow test run |
 
 Accepted risks:
 
@@ -159,7 +159,7 @@ Accepted risks:
 - Threads that existed before recording started aren't traced on the settrace backend.
 - Celery, background tasks and multiple event loops are not followed.
 - A function's view ends at its last executable line, so a closing bracket after it is cut.
-- Inferred zones are heuristics; declare the ones that matter in `hexvis.json`. A leading
+- Inferred zones are heuristics; declare the ones that matter in `runshape.json`. A leading
   `**.` in a rule needs at least one segment (`**.models` doesn't match `models`); a
   trailing or inner `.**` may match none.
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clones the two example apps at pinned commits, applies hexvis's patches, and builds a
+# Clones the two example apps at pinned commits, applies runshape's patches, and builds a
 # venv for each with the recorder installed in editable mode. Safe to re-run.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -15,7 +15,7 @@ checkout() {  # name repo sha
   git -C "$1" fetch --quiet origin "$3" 2>/dev/null || true
   git -C "$1" checkout --quiet "$3"
   # Keep the example's own `git status` about code: venvs, recordings and caches are local.
-  for pattern in .venv/ .hexvis/ .pytest_cache/ db.sqlite3 .requirements.lock.txt; do
+  for pattern in .venv/ .runshape/ .pytest_cache/ db.sqlite3 .requirements.lock.txt; do
     grep -qxF "$pattern" "$1/.git/info/exclude" || echo "$pattern" >> "$1/.git/info/exclude"
   done
 }

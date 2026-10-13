@@ -1,14 +1,14 @@
 {
-  "name": "hexvis-fake-model",
-  "displayName": "HexVis test model",
+  "name": "runshape-fake-model",
+  "displayName": "Runshape test model",
   "description": "Test-only language model provider: answers every request with one fixed zone proposal.",
   "version": "0.0.1",
-  "publisher": "hexvis-test",
+  "publisher": "runshape-test",
   "private": true,
   "engines": { "vscode": "^1.104.0" },
   "main": "./extension.js",
   "activationEvents": ["*"],
   "contributes": {
-    "languageModelChatProviders": [{ "vendor": "hexvis-fake", "displayName": "HexVis test model" }]
+    "languageModelChatProviders": [{ "vendor": "runshape-fake", "displayName": "Runshape test model" }]
   }
 }

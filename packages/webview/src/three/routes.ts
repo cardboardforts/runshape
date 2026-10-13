@@ -1,4 +1,4 @@
-import { Zone, SystemGraph } from "@hexvis/core";
+import { Zone, SystemGraph } from "@runshape/core";
 
 import type { HexagonLayout } from "./hexagon-layout";
 

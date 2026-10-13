@@ -1,4 +1,4 @@
-import { Outcome, REVIEW_ORDER, ReviewCategory, ScenarioSummary } from "@hexvis/core";
+import { Outcome, REVIEW_ORDER, ReviewCategory, ScenarioSummary } from "@runshape/core";
 
 const OUTCOME_LABEL: Record<Outcome, string> = {
   [Outcome.Passed]: "passed",

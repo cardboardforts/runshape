@@ -1,31 +1,31 @@
 {
-  "name": "hexvis",
-  "displayName": "HexVis",
+  "name": "runshape",
+  "displayName": "Runshape",
   "description": "See how requests flow through your app, recorded from its tests.",
   "version": "0.1.0",
   "private": true,
-  "publisher": "hexvis",
+  "publisher": "runshape",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:**/.hexvis/traces/latest.json"
+    "workspaceContains:**/.runshape/traces/latest.json"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "hexvis.open",
-        "title": "HexVis: Open Runtime View"
+        "command": "runshape.open",
+        "title": "Runshape: Open Runtime View"
       },
       {
-        "command": "hexvis.reload",
-        "title": "HexVis: Reload Traces"
+        "command": "runshape.reload",
+        "title": "Runshape: Reload Traces"
       },
       {
-        "command": "hexvis.suggestZone",
-        "title": "HexVis: Suggest Zone for Component\u2026"
+        "command": "runshape.suggestZone",
+        "title": "Runshape: Suggest Zone for Component\u2026"
       }
     ]
   },
@@ -40,6 +40,6 @@
     "@vscode/test-electron": "3.1.0"
   },
   "dependencies": {
-    "@hexvis/core": "0.1.0"
+    "@runshape/core": "0.1.0"
   }
 }

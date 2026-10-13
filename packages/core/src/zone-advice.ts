@@ -1,5 +1,5 @@
 // Asking a language model where a component belongs. The model only proposes; a person
-// accepts, and only then does it become a rule in hexvis.json. Everything here is pure so
+// accepts, and only then does it become a rule in runshape.json. Everything here is pure so
 // the prompt and the validation of the answer are testable without a model.
 import { DeclaredZone } from "./zones";
 import type { ComponentView } from "./views/component-view";

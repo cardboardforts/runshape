@@ -1,5 +1,5 @@
 /**
- * "Suggest zone": the model proposes, a person accepts, only then does hexvis.json change.
+ * "Suggest zone": the model proposes, a person accepts, only then does runshape.json change.
  * The advisor and the rule store are ports; these fakes stand in for VS Code's language
  * model API and the file write (with its confirmation dialog).
  */
@@ -135,7 +135,7 @@ describe("suggest, then accept", () => {
         "by": "llm"
       }
 
-      It goes first in hexvis.json; the other 0 rule(s) are kept.",
+      It goes first in runshape.json; the other 0 rule(s) are kept.",
       ]
     `);
     expect(accepted).toEqual({ type: "rulesChanged", count: 1 });
@@ -155,7 +155,7 @@ describe("suggest, then accept", () => {
       "
     `);
     const node = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.id === USERS_REPOSITORY) : undefined;
-    expect(`${node?.zone} [${node?.zoneSource}] ${node?.zoneReason}`).toMatchInlineSnapshot(`"outbound-adapter [rule] proposed by a model, accepted in hexvis.json (app.db.repositories.users.UsersRepository): Repository over the users table."`);
+    expect(`${node?.zone} [${node?.zoneSource}] ${node?.zoneReason}`).toMatchInlineSnapshot(`"outbound-adapter [rule] proposed by a model, accepted in runshape.json (app.db.repositories.users.UsersRepository): Repository over the users table."`);
   });
 
   test("without a language model the viewer says so instead of failing", async () => {
@@ -170,14 +170,14 @@ describe("suggest, then accept", () => {
 });
 
 describe("saving rules safely", () => {
-  test("while hexvis.json can't be read, saving is refused instead of overwriting the file", async () => {
+  test("while runshape.json can't be read, saving is refused instead of overwriting the file", async () => {
     const run = await loadFixtureRun("fastapi");
     const store = new RecordingStore(true);
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rulesProblem: "zones[3].zone must be one of …" });
 
     const response = await session.handle({ type: "setZone", qualifiedName: "app.x.Y", zone: DeclaredZone.Core, reason: "r", by: "user" });
 
-    expect(response).toMatchObject({ type: "error", message: expect.stringContaining("Fix hexvis.json before adding rules") });
+    expect(response).toMatchObject({ type: "error", message: expect.stringContaining("Fix runshape.json before adding rules") });
     expect(store.asked).toEqual([]);
   });
 

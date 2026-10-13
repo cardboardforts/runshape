@@ -1,7 +1,7 @@
-// The hexvis trace format as written by the Python recorder (docs/trace-format.md).
+// The runshape trace format as written by the Python recorder (docs/trace-format.md).
 // These types describe the wire shape only; parse.ts maps them into the domain model.
 
-export const TRACE_FORMAT = "hexvis-trace";
+export const TRACE_FORMAT = "runshape-trace";
 export const SUPPORTED_VERSION = 1;
 
 export interface ManifestDto {

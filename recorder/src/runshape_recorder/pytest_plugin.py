@@ -1,6 +1,6 @@
 """pytest entry point and composition root: the only module that wires domain and adapters.
 
-Each test becomes one recorded scenario. Run with:  pytest --hexvis
+Each test becomes one recorded scenario. Run with:  pytest --runshape
 """
 from __future__ import annotations
 
@@ -11,17 +11,17 @@ from typing import Any, Dict, Generator, List, Optional
 
 import pytest
 
-from hexvis_recorder.adapters import monitoring_backend
-from hexvis_recorder.adapters.frameworks import django_introspector, fastapi_introspector
-from hexvis_recorder.adapters.json_store import JsonTraceStore
-from hexvis_recorder.adapters.monitoring_backend import MonitoringBackend
-from hexvis_recorder.adapters.settrace_backend import SettraceBackend
-from hexvis_recorder.adapters.source_catalog import SourceCatalog
-from hexvis_recorder.domain.events import Phase
-from hexvis_recorder.domain.recorder import ScenarioRecorder
-from hexvis_recorder.domain.scope import DEFAULT_BOUNDARIES, CodeScope
-from hexvis_recorder.domain.topology import FrameworkTopology
-from hexvis_recorder.settings import (
+from runshape_recorder.adapters import monitoring_backend
+from runshape_recorder.adapters.frameworks import django_introspector, fastapi_introspector
+from runshape_recorder.adapters.json_store import JsonTraceStore
+from runshape_recorder.adapters.monitoring_backend import MonitoringBackend
+from runshape_recorder.adapters.settrace_backend import SettraceBackend
+from runshape_recorder.adapters.source_catalog import SourceCatalog
+from runshape_recorder.domain.events import Phase
+from runshape_recorder.domain.recorder import ScenarioRecorder
+from runshape_recorder.domain.scope import DEFAULT_BOUNDARIES, CodeScope
+from runshape_recorder.domain.topology import FrameworkTopology
+from runshape_recorder.settings import (
     BackendChoice,
     FrameworkChoice,
     RawSettings,
@@ -30,34 +30,34 @@ from hexvis_recorder.settings import (
     validate,
 )
 
-PLUGIN_NAME = "hexvis-recording-session"
+PLUGIN_NAME = "runshape-recording-session"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    group = parser.getgroup("hexvis", "record execution traces for the HexVis viewer")
-    group.addoption("--hexvis", action="store_true", default=False, help="record one trace per test")
-    group.addoption("--hexvis-out", default=None, help="output directory (default .hexvis/traces)")
-    group.addoption("--hexvis-run-name", default=None, help="name this run's directory (default: the start time)")
-    parser.addini("hexvis_source", type="args", default=[], help="directories with app code, traced line by line")
-    parser.addini("hexvis_tests", type="args", default=[], help="directories with test code")
-    parser.addini("hexvis_backend", default=BackendChoice.AUTO.value, help="auto | settrace | monitoring")
-    parser.addini("hexvis_framework", default=FrameworkChoice.AUTO.value, help="auto | django | fastapi | none")
-    parser.addini("hexvis_app", default="", help="ASGI app import path for FastAPI, e.g. app.main:app")
-    parser.addini("hexvis_boundaries", type="linelist", default=[], help="extra 'module.prefix = system' lines")
+    group = parser.getgroup("runshape", "record execution traces for the Runshape viewer")
+    group.addoption("--runshape", action="store_true", default=False, help="record one trace per test")
+    group.addoption("--runshape-out", default=None, help="output directory (default .runshape/traces)")
+    group.addoption("--runshape-run-name", default=None, help="name this run's directory (default: the start time)")
+    parser.addini("runshape_source", type="args", default=[], help="directories with app code, traced line by line")
+    parser.addini("runshape_tests", type="args", default=[], help="directories with test code")
+    parser.addini("runshape_backend", default=BackendChoice.AUTO.value, help="auto | settrace | monitoring")
+    parser.addini("runshape_framework", default=FrameworkChoice.AUTO.value, help="auto | django | fastapi | none")
+    parser.addini("runshape_app", default="", help="ASGI app import path for FastAPI, e.g. app.main:app")
+    parser.addini("runshape_boundaries", type="linelist", default=[], help="extra 'module.prefix = system' lines")
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    if not config.getoption("hexvis"):
+    if not config.getoption("runshape"):
         return
     raw = RawSettings(
         root=str(config.rootpath),
-        source=list(config.getini("hexvis_source")),
-        tests=list(config.getini("hexvis_tests")),
-        out=config.getoption("hexvis_out"),
-        backend=config.getini("hexvis_backend"),
-        framework=config.getini("hexvis_framework"),
-        app=config.getini("hexvis_app"),
-        boundaries=list(config.getini("hexvis_boundaries")),
+        source=list(config.getini("runshape_source")),
+        tests=list(config.getini("runshape_tests")),
+        out=config.getoption("runshape_out"),
+        backend=config.getini("runshape_backend"),
+        framework=config.getini("runshape_framework"),
+        app=config.getini("runshape_app"),
+        boundaries=list(config.getini("runshape_boundaries")),
         coverage_active=_coverage_active(config),
         xdist_workers=_xdist_workers(config),
     )
@@ -76,7 +76,7 @@ def pytest_configure(config: pytest.Config) -> None:
         catalog=catalog,
         recorder=ScenarioRecorder(scope, catalog),
         backend=_choose_backend(settings.backend),
-        store=JsonTraceStore(settings.out_directory, config.getoption("hexvis_run_name")),
+        store=JsonTraceStore(settings.out_directory, config.getoption("runshape_run_name")),
     )
     config.pluginmanager.register(session, PLUGIN_NAME)
 
@@ -172,15 +172,15 @@ class RecordingSession:
         events = sum(s.event_count for s in scenarios)
         recorder_errors = sum(s.recorder_errors for s in scenarios)
         framework = self._topology.framework if self._topology else "none"
-        terminalreporter.write_sep("-", "hexvis")
+        terminalreporter.write_sep("-", "runshape")
         terminalreporter.write_line(
-            f"hexvis: recorded {len(scenarios)} scenarios, {events} events "
+            f"runshape: recorded {len(scenarios)} scenarios, {events} events "
             f"(backend={self._backend.name}, framework={framework}, "
             f"recorder_errors={recorder_errors}, {time.perf_counter() - self._started:.1f}s)"
         )
-        terminalreporter.write_line(f"hexvis: manifest {self._manifest_path}")
+        terminalreporter.write_line(f"runshape: manifest {self._manifest_path}")
         for problem in self._problems + [f"{p.file}: {p.reason}" for p in self._catalog.problems]:
-            terminalreporter.write_line(f"hexvis: WARNING {problem}", yellow=True)
+            terminalreporter.write_line(f"runshape: WARNING {problem}", yellow=True)
 
     def _introspect_framework_once(self) -> None:
         if self._framework_checked:
@@ -194,7 +194,7 @@ class RecordingSession:
             elif choice in (FrameworkChoice.DJANGO, FrameworkChoice.AUTO) and django_introspector.is_configured():
                 self._topology = django_introspector.introspect(self._scope)
             elif choice is FrameworkChoice.DJANGO:
-                self._problems.append("hexvis_framework=django but Django settings are not configured")
+                self._problems.append("runshape_framework=django but Django settings are not configured")
         except Exception as error:  # degrade: record without framework landmarks, but say so loudly
             self._problems.append(f"framework introspection failed ({choice.value}): {type(error).__name__}: {error}")
 

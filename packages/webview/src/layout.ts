@@ -1,7 +1,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import { ComponentKind, GraphNode, Zone, SystemGraph } from "@hexvis/core";
+import { ComponentKind, GraphNode, Zone, SystemGraph } from "@runshape/core";
 
 export const NODE_WIDTH = 188;
 export const NODE_HEIGHT = 46;

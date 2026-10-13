@@ -1,4 +1,4 @@
-import { CallStep, ExecutionDiff, FunctionExecutionDiff, Op } from "@hexvis/core";
+import { CallStep, ExecutionDiff, FunctionExecutionDiff, Op } from "@runshape/core";
 
 /** Unchanged calls kept around each change, so it's clear where in the flow it happened. */
 const CONTEXT = 2;

@@ -56,8 +56,8 @@ describe("loadLatestRun", () => {
 
     await expect(loadLatestRun(files)).rejects.toThrowError(TraceFormatError);
     await expect(loadLatestRun(files)).rejects.toThrowErrorMatchingInlineSnapshot(`
-      [Error: not a readable hexvis trace:
-        - format is "something-else", expected "hexvis-trace"
+      [Error: not a readable runshape trace:
+        - format is "something-else", expected "runshape-trace"
         - version 99 is not supported (this viewer reads version 1)]
     `);
   });
@@ -86,8 +86,8 @@ describe("loadLatestRun", () => {
     const files: TraceFiles = { readText: async () => Promise.reject(new Error("ENOENT: no such file")) };
 
     await expect(loadLatestRun(files)).rejects.toThrowErrorMatchingInlineSnapshot(`
-      [Error: not a readable hexvis trace:
-        - no recording found (ENOENT: no such file); record one by running your tests with \`pytest --hexvis\` (see the HexVis README)]
+      [Error: not a readable runshape trace:
+        - no recording found (ENOENT: no such file); record one by running your tests with \`pytest --runshape\` (see the Runshape README)]
     `);
   });
 });

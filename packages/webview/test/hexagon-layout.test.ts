@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, loadLatestRun, Zone } from "@hexvis/core";
+import { buildSystemGraph, loadLatestRun, Zone } from "@runshape/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 

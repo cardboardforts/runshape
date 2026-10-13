@@ -3,7 +3,7 @@ import { build } from "esbuild";
 
 await build({
   entryPoints: ["src/main.ts"],
-  outfile: "dist/hexvis-review-md.mjs",
+  outfile: "dist/runshape-review-md.mjs",
   bundle: true,
   platform: "node",
   format: "esm",

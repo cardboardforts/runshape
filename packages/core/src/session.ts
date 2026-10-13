@@ -17,7 +17,7 @@ export interface SourceReader {
   readLines(relativeFile: string): Promise<string[] | null>;
 }
 
-/** Port: persist hexvis.json. Resolves false when the person declined the change. */
+/** Port: persist runshape.json. Resolves false when the person declined the change. */
 export interface ZoneRuleStore {
   save(rules: ZoneRules, change: string): Promise<boolean>;
 }
@@ -27,7 +27,7 @@ export interface SessionDependencies {
   /** The previous recording, to compare against. */
   baseline?: Run | null;
   rules?: ZoneRules;
-  /** Set when hexvis.json exists but couldn't be read: saving would overwrite what's there. */
+  /** Set when runshape.json exists but couldn't be read: saving would overwrite what's there. */
   rulesProblem?: string | null;
   ruleStore?: ZoneRuleStore | null;
   advisor?: ZoneAdvisor | null;
@@ -82,7 +82,7 @@ export class ViewerSession {
     this.advisor = dependencies.advisor ?? null;
   }
 
-  /** hexvis.json changed on disk (edited by hand, or by another window). */
+  /** runshape.json changed on disk (edited by hand, or by another window). */
   replaceRules(rules: ZoneRules, problem: string | null): void {
     this.rules = rules;
     this.rulesProblem = problem;
@@ -166,7 +166,7 @@ export class ViewerSession {
         if (this.rulesProblem !== null) {
           // The session is showing inferred zones because the file couldn't be read; saving
           // now would replace every rule in it with this one.
-          return { type: "error", message: `Fix hexvis.json before adding rules: ${this.rulesProblem}` };
+          return { type: "error", message: `Fix runshape.json before adding rules: ${this.rulesProblem}` };
         }
         const invalid = invalidZoneRequest(request);
         if (invalid !== null) return { type: "error", message: invalid };
@@ -174,7 +174,7 @@ export class ViewerSession {
         const replaces = this.rules.rules.some((rule) => rule.match === request.qualifiedName);
         const change =
           `${JSON.stringify(next.rules[0], null, 2)}\n\n` +
-          `It goes first in hexvis.json${replaces ? ", replacing the existing rule for this name" : ""}; the other ${next.rules.length - 1} rule(s) are kept.`;
+          `It goes first in runshape.json${replaces ? ", replacing the existing rule for this name" : ""}; the other ${next.rules.length - 1} rule(s) are kept.`;
         const saved = await this.ruleStore.save(next, change);
         if (!saved) return null;
         this.rules = next;

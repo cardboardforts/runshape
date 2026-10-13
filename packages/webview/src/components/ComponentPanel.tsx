@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ComponentView, FunctionSummary } from "@hexvis/core";
+import { ComponentView, FunctionSummary } from "@runshape/core";
 
 interface Props {
   view: ComponentView;

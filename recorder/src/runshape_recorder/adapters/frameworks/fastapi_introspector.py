@@ -5,9 +5,9 @@ import importlib
 from types import FrameType
 from typing import Any, List, Optional, Tuple
 
-from hexvis_recorder.domain.events import LandmarkKind
-from hexvis_recorder.domain.scope import CodeScope, Landmark
-from hexvis_recorder.domain.topology import FrameworkTopology, Route
+from runshape_recorder.domain.events import LandmarkKind
+from runshape_recorder.domain.scope import CodeScope, Landmark
+from runshape_recorder.domain.topology import FrameworkTopology, Route
 
 FRAMEWORK_NAME = "fastapi"
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from types import CodeType, FrameType
 from typing import Callable, Dict, List, Optional, Protocol, Tuple
 
-from hexvis_recorder.domain.events import (
+from runshape_recorder.domain.events import (
     BoundaryCalled,
     CodeRole,
     FunctionRef,
@@ -29,7 +29,7 @@ from hexvis_recorder.domain.events import (
     SpanStarted,
     TraceEvent,
 )
-from hexvis_recorder.domain.scope import CodeScope
+from runshape_recorder.domain.scope import CodeScope
 
 MAX_STATEMENT_CHARS = 500
 HTTP_SYSTEM = "http"
@@ -43,7 +43,7 @@ GENERATOR_LIKE_FLAGS = 0x20 | 0x80 | 0x200  # CO_GENERATOR | CO_COROUTINE | CO_A
 # and anyio's threadpool copy the context into the worker thread, so work handed to another
 # thread can still find the span that handed it off. The generation stops a stale value from
 # an earlier scenario being mistaken for a span of this one.
-_CURRENT_SPAN: "ContextVar[Optional[Tuple[int, int]]]" = ContextVar("hexvis_current_span", default=None)
+_CURRENT_SPAN: "ContextVar[Optional[Tuple[int, int]]]" = ContextVar("runshape_current_span", default=None)
 
 
 class CodeNamer(Protocol):

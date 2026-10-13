@@ -10,12 +10,12 @@ import sys
 from types import CodeType
 from typing import Any, Optional
 
-from hexvis_recorder.domain.events import CodeRole
-from hexvis_recorder.domain.recorder import ScenarioRecorder
+from runshape_recorder.domain.events import CodeRole
+from runshape_recorder.domain.recorder import ScenarioRecorder
 
 # Tool ids 0-2 and 5 are reserved by convention (debugger, coverage, profiler, optimizer).
 CANDIDATE_TOOL_IDS = (3, 4)
-TOOL_NAME = "hexvis"
+TOOL_NAME = "runshape"
 LINE_RECORDING_ROLES = (CodeRole.SOURCE, CodeRole.TEST)
 SPAN_RECORDING_ROLES = (CodeRole.SOURCE, CodeRole.TEST, CodeRole.LANDMARK)
 
@@ -132,4 +132,4 @@ def _claim_tool_id() -> int:
         if monitoring.get_tool(tool_id) is None:
             monitoring.use_tool_id(tool_id, TOOL_NAME)
             return tool_id
-    raise RuntimeError(f"hexvis: no free sys.monitoring tool id among {CANDIDATE_TOOL_IDS}")
+    raise RuntimeError(f"runshape: no free sys.monitoring tool id among {CANDIDATE_TOOL_IDS}")

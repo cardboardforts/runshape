@@ -8,12 +8,12 @@ the base and on the branch, and compare how each one *executed*.
 
 ```sh
 cd your-project
-hexvis-review --base origin/main -- -q          # anything after -- goes to pytest
+runshape-review --base origin/main -- -q          # anything after -- goes to pytest
 ```
 
 The base is checked out into a temporary git worktree (your working tree is untouched), the
-tests run there and then on your working tree, both with `--hexvis`. Then, in VS Code:
-**HexVis: Open Runtime View**, tick **Compare with previous recording**. Tests are ordered for
+tests run there and then on your working tree, both with `--runshape`. Then, in VS Code:
+**Runshape: Open Runtime View**, tick **Compare with previous recording**. Tests are ordered for
 a reviewer:
 
 1. **now failing**
@@ -27,14 +27,14 @@ code around doesn't show up as a change.
 
 ## In CI, as a PR comment
 
-`hexvis-review-md` (packages/cli) prints the same review as Markdown: test and function
+`runshape-review-md` (packages/cli) prints the same review as Markdown: test and function
 names only, no SQL text or source.
 
 ```yaml
 # Sketch: adapt the setup steps to your project.
-- run: pip install -e path/to/hexvis/recorder
-- run: hexvis-review --base origin/${{ github.base_ref }} -- -q
-- run: node path/to/hexvis/packages/cli/dist/hexvis-review-md.mjs .hexvis/traces > review.md
+- run: pip install -e path/to/runshape/recorder
+- run: runshape-review --base origin/${{ github.base_ref }} -- -q
+- run: node path/to/runshape/packages/cli/dist/runshape-review-md.mjs .runshape/traces > review.md
 - run: gh pr comment ${{ github.event.number }} --body-file review.md
   env: { GH_TOKEN: "${{ github.token }}" }
 ```

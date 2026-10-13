@@ -1,5 +1,5 @@
 {
-  "name": "hexvis-workspace",
+  "name": "runshape-workspace",
   "private": true,
   "packageManager": "npm@11.21.0",
   "workspaces": [

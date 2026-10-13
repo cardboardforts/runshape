@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, ReplayStep, SystemGraph } from "@hexvis/core";
+import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, ReplayStep, SystemGraph } from "@runshape/core";
 
 import { Emphasis, HexScene } from "./hex-scene";
 import { layoutHexagon } from "./hexagon-layout";

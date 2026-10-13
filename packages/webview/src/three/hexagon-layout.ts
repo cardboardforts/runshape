@@ -1,4 +1,4 @@
-import { ComponentKind, GraphNode, Zone, SystemGraph } from "@hexvis/core";
+import { ComponentKind, GraphNode, Zone, SystemGraph } from "@runshape/core";
 
 /**
  * Places the system on a literal hexagon floor (XZ plane, Y up). The hexagon's vertices sit

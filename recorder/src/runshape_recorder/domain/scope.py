@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import CodeType, FrameType
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-from hexvis_recorder.domain.events import CodeRole, LandmarkKind
+from runshape_recorder.domain.events import CodeRole, LandmarkKind
 
 RequestLine = Tuple[str, str]  # (method, path)
 

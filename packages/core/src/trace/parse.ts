@@ -14,7 +14,7 @@ import { ManifestDto, ScenarioDto, SUPPORTED_VERSION, TRACE_FORMAT } from "./wir
 
 export class TraceFormatError extends Error {
   constructor(readonly problems: string[]) {
-    super(`not a readable hexvis trace:\n  - ${problems.join("\n  - ")}`);
+    super(`not a readable runshape trace:\n  - ${problems.join("\n  - ")}`);
   }
 }
 

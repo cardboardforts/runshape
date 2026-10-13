@@ -1,6 +1,6 @@
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 
-import { Change, GraphNode, Zone } from "@hexvis/core";
+import { Change, GraphNode, Zone } from "@runshape/core";
 
 import { SMELL_TEXT } from "./ZoneControls";
 

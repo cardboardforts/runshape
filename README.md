@@ -1,4 +1,4 @@
-# HexVis
+# Runshape
 
 See how a Python web app actually runs: record its tests, then watch each request travel from
 the client through middleware, router, handlers and services to the database — laid out as
@@ -13,7 +13,7 @@ the onion it is (or isn't).
   as candidates for consolidation.
 - **Declared zones.** Say where a component is *meant* to sit — by hand, or by accepting a
   language model's proposal — and it's saved as a rule with its reason in a checked-in
-  `hexvis.json`. Where behaviour contradicts a declaration (core code querying the database,
+  `runshape.json`. Where behaviour contradicts a declaration (core code querying the database,
   a request handler calling a repository directly), the graph flags it.
 - **3D.** The same views on a literal hexagon floor: core in the middle, inbound adapters on
   the three sides facing the incoming traffic, outbound adapters on the three facing the
@@ -21,7 +21,7 @@ the onion it is (or isn't).
   cubes above them, dashed lines joining objects that hold one another (per object once you
   pick a test); calls between zones run along shared trunks; replay steps are packets of
   light travelling them.
-- **Review a PR by behaviour.** `hexvis-review --base origin/main` records the tests on the
+- **Review a PR by behaviour.** `runshape-review --base origin/main` records the tests on the
   base and on your branch; the viewer then leads with the tests that are *still green but
   now run differently*. Also as a Markdown PR comment. See [docs/pr-review.md](docs/pr-review.md).
 - **Compare.** Re-record after a change (yours or an AI agent's) and see which journeys now
@@ -46,24 +46,24 @@ The demo renders real recordings of the two example apps, checked in under
 ## Recording your own app
 
 ```sh
-pip install -e path/to/hexvis/recorder      # a pytest plugin; Python 3.9+
+pip install -e path/to/runshape/recorder      # a pytest plugin; Python 3.9+
 ```
 
 ```ini
 # pytest.ini (or [tool.pytest.ini_options])
-hexvis_source = app          # your code: traced line by line
-hexvis_tests = tests         # your tests: each test becomes one scenario
-hexvis_app = app.main:app    # FastAPI only; Django is detected from its settings
+runshape_source = app          # your code: traced line by line
+runshape_tests = tests         # your tests: each test becomes one scenario
+runshape_app = app.main:app    # FastAPI only; Django is detected from its settings
 ```
 
 ```sh
-pytest --hexvis              # writes .hexvis/traces/ — add .hexvis/ to .gitignore
+pytest --runshape              # writes .runshape/traces/ — add .runshape/ to .gitignore
 ```
 
 On Python < 3.12 add `--no-cov` (the recorder and coverage can't share `sys.settrace`), and
 record without xdist (`-n0`). The recorder checks for both and tells you.
 
-Then in VS Code: **HexVis: Open Runtime View**. Re-running the tests updates the view.
+Then in VS Code: **Runshape: Open Runtime View**. Re-running the tests updates the view.
 
 ## Example apps
 
@@ -86,9 +86,9 @@ cd recorder && uv run pytest   # recorder; add --python 3.9 to check the settrac
 
 | path | what | may import |
 |---|---|---|
-| `recorder/src/hexvis_recorder/domain` | scopes, spans, recording | stdlib only |
-| `recorder/src/hexvis_recorder/adapters` | tracing backends, JSON store, catalog, framework introspection | domain |
-| `recorder/src/hexvis_recorder/pytest_plugin.py` | composition root | everything |
+| `recorder/src/runshape_recorder/domain` | scopes, spans, recording | stdlib only |
+| `recorder/src/runshape_recorder/adapters` | tracing backends, JSON store, catalog, framework introspection | domain |
+| `recorder/src/runshape_recorder/pytest_plugin.py` | composition root | everything |
 | `packages/core` | trace parsing and every view model | nothing outside itself |
 | `packages/webview` | React renderer of core's view models | core |
 | `packages/extension` | VS Code host, composition root | core, vscode |

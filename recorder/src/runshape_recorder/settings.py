@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
-from hexvis_recorder.domain.scope import Boundary
+from runshape_recorder.domain.scope import Boundary
 
 
 class BackendChoice(Enum):
@@ -26,7 +26,7 @@ class FrameworkChoice(Enum):
     NONE = "none"
 
 
-DEFAULT_OUT_DIRECTORY = ".hexvis/traces"
+DEFAULT_OUT_DIRECTORY = ".runshape/traces"
 MONITORING_MIN_PYTHON = (3, 12)
 
 
@@ -60,7 +60,7 @@ class RecorderSettings:
 
 class SettingsError(Exception):
     def __init__(self, problems: List[str]) -> None:
-        super().__init__("hexvis is misconfigured:\n  - " + "\n  - ".join(problems))
+        super().__init__("runshape is misconfigured:\n  - " + "\n  - ".join(problems))
         self.problems = problems
 
 
@@ -68,14 +68,14 @@ def validate(raw: RawSettings) -> RecorderSettings:
     problems: List[str] = []
 
     if not raw.source:
-        problems.append("hexvis_source is required: the directories holding your app's code (e.g. 'app').")
+        problems.append("runshape_source is required: the directories holding your app's code (e.g. 'app').")
     for directory in raw.source + raw.tests:
         if not os.path.isdir(os.path.join(raw.root, directory)):
             problems.append(f"directory {directory!r} does not exist under {raw.root}")
 
-    backend = _parse_enum(BackendChoice, raw.backend, "hexvis_backend", problems)
+    backend = _parse_enum(BackendChoice, raw.backend, "runshape_backend", problems)
     if backend is BackendChoice.MONITORING and sys.version_info < MONITORING_MIN_PYTHON:
-        problems.append("hexvis_backend=monitoring needs Python 3.12+; use 'settrace' or 'auto'.")
+        problems.append("runshape_backend=monitoring needs Python 3.12+; use 'settrace' or 'auto'.")
     uses_settrace = backend is BackendChoice.SETTRACE or (
         backend is BackendChoice.AUTO and sys.version_info < MONITORING_MIN_PYTHON
     )
@@ -84,9 +84,9 @@ def validate(raw: RawSettings) -> RecorderSettings:
     if raw.xdist_workers > 0:
         problems.append("recording across xdist workers isn't supported yet; add -n0.")
 
-    framework = _parse_enum(FrameworkChoice, raw.framework, "hexvis_framework", problems)
+    framework = _parse_enum(FrameworkChoice, raw.framework, "runshape_framework", problems)
     if framework is FrameworkChoice.FASTAPI and not raw.app:
-        problems.append("hexvis_framework=fastapi needs hexvis_app = 'module:attribute' (e.g. app.main:app).")
+        problems.append("runshape_framework=fastapi needs runshape_app = 'module:attribute' (e.g. app.main:app).")
 
     boundaries: List[Boundary] = []
     for line in raw.boundaries:
@@ -94,7 +94,7 @@ def validate(raw: RawSettings) -> RecorderSettings:
         system, _, operation_list = (part.strip() for part in target.partition(":"))
         if not separator or not prefix or not system:
             problems.append(
-                f"hexvis_boundaries entry {line!r} must look like 'module.prefix = system' "
+                f"runshape_boundaries entry {line!r} must look like 'module.prefix = system' "
                 "or 'module.prefix = system: operation, operation'"
             )
             continue

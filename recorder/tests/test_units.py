@@ -5,15 +5,15 @@ import textwrap
 
 import pytest
 
-from hexvis_recorder.adapters.settrace_backend import SettraceBackend
-from hexvis_recorder.adapters.source_catalog import SourceCatalog
-from hexvis_recorder.domain.events import SpanResumed, SpanStarted
-from hexvis_recorder.domain.recorder import ScenarioRecorder
-from hexvis_recorder.domain.scope import CodeScope
+from runshape_recorder.adapters.settrace_backend import SettraceBackend
+from runshape_recorder.adapters.source_catalog import SourceCatalog
+from runshape_recorder.domain.events import SpanResumed, SpanStarted
+from runshape_recorder.domain.recorder import ScenarioRecorder
+from runshape_recorder.domain.scope import CodeScope
 
 BACKENDS = [SettraceBackend]
 if sys.version_info >= (3, 12):
-    from hexvis_recorder.adapters.monitoring_backend import MonitoringBackend
+    from runshape_recorder.adapters.monitoring_backend import MonitoringBackend
 
     BACKENDS.append(MonitoringBackend)
 
@@ -26,7 +26,7 @@ def write_package(root, package, files):
 
 
 def test_catalog_names_modules_the_way_python_imports_them_in_a_src_layout(tmp_path, monkeypatch):
-    # With hexvis_source = src, src/shop/orders.py is imported as shop.orders, not
+    # With runshape_source = src, src/shop/orders.py is imported as shop.orders, not
     # src.shop.orders; the viewer matches catalog entries to recorded calls by that name.
     write_package(tmp_path / "src", "shop", {"__init__.py": "", "orders.py": "def total(): return 1\n"})
     monkeypatch.syspath_prepend(str(tmp_path / "src"))

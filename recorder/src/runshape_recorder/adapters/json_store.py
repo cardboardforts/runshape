@@ -1,4 +1,4 @@
-"""Writes recordings in the hexvis trace format (docs/trace-format.md).
+"""Writes recordings in the runshape trace format (docs/trace-format.md).
 
 Events are written as tagged arrays, not objects: a scenario holds tens of thousands of
 line events and the key names would dominate the file. The viewer maps them back to
@@ -13,8 +13,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from hexvis_recorder.adapters.source_catalog import CatalogFunction, CatalogProblem
-from hexvis_recorder.domain.events import (
+from runshape_recorder.adapters.source_catalog import CatalogFunction, CatalogProblem
+from runshape_recorder.domain.events import (
     BoundaryCalled,
     FunctionRef,
     LineExecuted,
@@ -28,9 +28,9 @@ from hexvis_recorder.domain.events import (
     SpanStarted,
     TraceEvent,
 )
-from hexvis_recorder.domain.topology import FrameworkTopology
+from runshape_recorder.domain.topology import FrameworkTopology
 
-FORMAT_NAME = "hexvis-trace"
+FORMAT_NAME = "runshape-trace"
 FORMAT_VERSION = 1
 LATEST_POINTER = "latest.json"
 # The run latest.json pointed at before this one: the baseline for "what changed".
@@ -143,7 +143,7 @@ def _recorder_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("hexvis-recorder")
+        return version("runshape-recorder")
     except Exception:  # running from a source checkout without installed metadata
         return "unknown"
 

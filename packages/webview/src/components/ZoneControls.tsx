@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { DeclaredZone, GraphNode, ZoneAdvice, ZoneSource, Smell } from "@hexvis/core";
+import { DeclaredZone, GraphNode, ZoneAdvice, ZoneSource, Smell } from "@runshape/core";
 
 export type AdviceState =
   | { kind: "idle" }
@@ -69,7 +69,7 @@ export function ZoneControls({ node, canEdit, canAdvise, advice, onSetZone, onAs
           </label>
           <label>
             because{" "}
-            <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="the reason goes in hexvis.json" required />
+            <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="the reason goes in runshape.json" required />
           </label>
           <button type="submit" disabled={reason.trim() === ""}>
             Save rule
@@ -100,7 +100,7 @@ export function ZoneControls({ node, canEdit, canAdvise, advice, onSetZone, onAs
               </p>
               <p>{advice.advice.reason}</p>
               <button type="button" onClick={() => onSetZone(advice.advice.zone, advice.advice.reason, "llm")}>
-                Accept into hexvis.json
+                Accept into runshape.json
               </button>{" "}
               <button type="button" className="link" onClick={onDismissAdvice}>
                 Dismiss

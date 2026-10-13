@@ -1,18 +1,18 @@
 // Composition root: the only module that wires VS Code, the adapters and the core together.
 import * as vscode from "vscode";
 
-import { LATEST_POINTER, RULES_FILE } from "@hexvis/core";
+import { LATEST_POINTER, RULES_FILE } from "@runshape/core";
 
 import { Logger } from "./logger";
 import { RuntimePanel } from "./runtime-panel";
 
-const TRACES_GLOB = `**/.hexvis/traces/${LATEST_POINTER}`;
+const TRACES_GLOB = `**/.runshape/traces/${LATEST_POINTER}`;
 const EXCLUDE_GLOB = "**/{node_modules,.venv,venv,.git}/**";
 const MAX_PROJECTS_SEARCHED = 20;
 const RELOAD_DEBOUNCE_MS = 400;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const channel = vscode.window.createOutputChannel("HexVis", { log: true });
+  const channel = vscode.window.createOutputChannel("Runshape", { log: true });
   const logger = new Logger(channel);
   const version = String(context.extension.packageJSON.version ?? "unknown");
   logger.info("extension.activated", { version, workspaceFolders: vscode.workspace.workspaceFolders?.length ?? 0 });
@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
       panels.set(projectRoot.toString(), panel);
     } catch (error) {
       logger.error("command.open.failed", error);
-      void vscode.window.showErrorMessage(`HexVis could not open: ${error instanceof Error ? error.message : String(error)}`);
+      void vscode.window.showErrorMessage(`Runshape could not open: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
   watcher.onDidChange(onRecording);
   watcher.onDidCreate(onRecording);
 
-  // hexvis.json sits at the project root, beside .hexvis/.
+  // runshape.json sits at the project root, beside .runshape/.
   const rulesWatcher = vscode.workspace.createFileSystemWatcher(`**/${RULES_FILE}`);
   const onRules = (uri: vscode.Uri) => {
     const projectRoot = vscode.Uri.joinPath(uri, "..");
@@ -78,18 +78,18 @@ export function activate(context: vscode.ExtensionContext): void {
     watcher,
     rulesWatcher,
     { dispose: () => pending.forEach((timer) => clearTimeout(timer)) },
-    vscode.commands.registerCommand("hexvis.open", open),
-    vscode.commands.registerCommand("hexvis.reload", () => reloadAll("command")),
-    vscode.commands.registerCommand("hexvis.suggestZone", async (componentId?: string) => {
+    vscode.commands.registerCommand("runshape.open", open),
+    vscode.commands.registerCommand("runshape.reload", () => reloadAll("command")),
+    vscode.commands.registerCommand("runshape.suggestZone", async (componentId?: string) => {
       const panel = [...panels.values()][0];
       if (panel === undefined) {
-        void vscode.window.showInformationMessage("Open the HexVis view first (HexVis: Open Runtime View).");
+        void vscode.window.showInformationMessage("Open the Runshape view first (Runshape: Open Runtime View).");
         return null;
       }
       try {
         return await panel.suggestZone(typeof componentId === "string" ? componentId : undefined);
       } catch (error) {
-        logger.error("command.suggest_ring.failed", error);
+        logger.error("command.suggest_zone.failed", error);
         throw error;
       }
     }),
@@ -106,7 +106,7 @@ async function pickProject(logger: Logger): Promise<vscode.Uri | undefined> {
   logger.info("projects.found", { count: projects.length });
   if (projects.length === 0) {
     void vscode.window.showInformationMessage(
-      "No HexVis recording in this workspace yet. Install the hexvis-recorder pytest plugin and run your tests with `pytest --hexvis`.",
+      "No Runshape recording in this workspace yet. Install the runshape-recorder pytest plugin and run your tests with `pytest --runshape`.",
     );
     return undefined;
   }
@@ -118,7 +118,7 @@ async function pickProject(logger: Logger): Promise<vscode.Uri | undefined> {
   return picked?.uri;
 }
 
-/** <project>/.hexvis/traces/latest.json -> <project> */
+/** <project>/.runshape/traces/latest.json -> <project> */
 function projectRootOf(latestPointer: vscode.Uri): vscode.Uri {
   return vscode.Uri.joinPath(latestPointer, "..", "..", "..");
 }

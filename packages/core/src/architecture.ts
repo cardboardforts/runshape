@@ -44,7 +44,7 @@ export const PROFILES: ArchitectureProfile[] = [
     name: "Hexagonal (ports and adapters)",
     layout: LayoutShape.Hexagon,
     zones: [
-      // Same ids as the viewer's zones (DeclaredZone), so a detected mapping is a valid hexvis.json.
+      // Same ids as the viewer's zones (DeclaredZone), so a detected mapping is a valid runshape.json.
       { id: "inbound-adapter", name: "Inbound adapters", meaning: "turn requests into calls on the core" },
       { id: "core", name: "Core", meaning: "domain and application logic; no I/O, no framework" },
       { id: "outbound-adapter", name: "Outbound adapters", meaning: "implement the core's ports against the outside world" },
@@ -116,7 +116,7 @@ export const PROFILES: ArchitectureProfile[] = [
 
 export interface ZoneProposal {
   zone: string;
-  /** Dotted-name globs, in the same form as hexvis.json rules. */
+  /** Dotted-name globs, in the same form as runshape.json rules. */
   patterns: string[];
 }
 

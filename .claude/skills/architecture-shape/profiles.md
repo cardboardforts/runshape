@@ -13,7 +13,7 @@ confirms or contradicts it.
 ## Backend
 
 ### Hexagonal / ports and adapters / onion / clean
-- **Zones**: `inbound-adapter` · `core` (domain + application) · `outbound-adapter`. Layout: hexagon. (These are the ids HexVis draws today.)
+- **Zones**: `inbound-adapter` · `core` (domain + application) · `outbound-adapter`. Layout: hexagon. (These are the ids Runshape draws today.)
 - **Allowed**: inbound → core; core → port interfaces (implemented by outbound adapters);
   outbound → core types. The core imports no framework, ORM or HTTP client.
 - **Vocabulary**: `domain`, `core`, `ports`, `adapters`, `application`, `usecases`, `infrastructure`.
@@ -39,7 +39,7 @@ confirms or contradicts it.
 
 ## Frontend
 
-Recording frontends needs a JavaScript recorder, which HexVis doesn't have yet; static
+Recording frontends needs a JavaScript recorder, which Runshape doesn't have yet; static
 evidence (imports, folder layout) still works for the shape.
 
 ### MVVM (Vue with Pinia/composables, Angular, Knockout, SwiftUI/WPF)

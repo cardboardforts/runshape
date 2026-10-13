@@ -1,4 +1,4 @@
-import type { UiRequest, UiResponse } from "@hexvis/core";
+import type { UiRequest, UiResponse } from "@runshape/core";
 
 /** Where the webview's requests go: the VS Code extension, or the standalone demo. */
 export interface Host {

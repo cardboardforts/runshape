@@ -1,10 +1,10 @@
 # Beyond the hexagon: architecture profiles (proposal)
 
-HexVis draws every app as an onion because that's the architecture it was built to check.
+Runshape draws every app as an onion because that's the architecture it was built to check.
 Most apps aren't one: Django is MVT, many FastAPI/Express apps are layered, React and Vue
 apps have their own shapes. This is the plan for drawing each app in its own shape, and for
 the rename that would come with it. Status: **ring → zone is done** (code, UI, docs, and
-`hexvis.json` version 2 with a `"style"` field, still reading version 1). Profiles beyond
+`runshape.json` version 2 with a `"style"` field, still reading version 1). Profiles beyond
 the hexagon are a **proposal + prototype**: the viewer still only draws `"hexagonal"`.
 
 ## What changes conceptually
@@ -14,7 +14,7 @@ the hexagon are a **proposal + prototype**: the viewer still only draws `"hexago
 | "ring": inbound adapter / core / outbound adapter | **zone**, defined by the active profile |
 | one rule for violations (calls against the onion) | each profile lists its **allowed calls between zones**; anything else is a finding |
 | hexagon floor in 3D, ring-coloured columns in 2D | the profile's **layout**: hexagon, bands (layered, feature-sliced), triangle (MVC/MVVM/MVP), cycle (Flux) |
-| `hexvis.json` v1: `{ "rings": [{ match, ring, reason }] }` | v2 (done): `{ "style": "hexagonal", "zones": [{ match, zone, reason, by }] }`; layout to come from the style |
+| `runshape.json` v1: `{ "rings": [{ match, ring, reason }] }` | v2 (done): `{ "style": "hexagonal", "zones": [{ match, zone, reason, by }] }`; layout to come from the style |
 | inferred ring when no rule matches | inferred zone from the profile's vocabulary and runtime evidence |
 
 Framework, test-double and external zones stay fixed: they're facts about the code, not
@@ -65,7 +65,7 @@ recorder would write the same files. Framework landmarks become router and store
 ## The rename
 
 Renaming now is cheap and gets cheaper never: ~350 mentions in 77 files, almost all
-mechanical (Python package, pytest options `--hexvis`/`hexvis_*`, `.hexvis/`, `hexvis.json`,
+mechanical (Python package, pytest options `--runshape`/`runshape_*`, `.runshape/`, `runshape.json`,
 trace format name, VS Code ids, npm scope, docs). With the tests and the e2e run it's an hour
 of work and a reviewable single commit. The trace format name would change too; fixtures
 can be rewritten, since there are no outside users.

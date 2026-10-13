@@ -1,4 +1,4 @@
-# HexVis trace format, version 1
+# Runshape trace format, version 1
 
 The contract between the Python recorder (`recorder/`) and the viewer (`packages/core`). The
 recorder writes it; `packages/core/src/trace/parse.ts` is the only code that reads it.
@@ -7,7 +7,7 @@ Changing anything here means bumping `version` in both places.
 ## Layout
 
 ```
-<project>/.hexvis/traces/
+<project>/.runshape/traces/
   latest.json                 {"run": "<run directory name>"}
   <run>/                      one directory per pytest session, named by start time
     manifest.json
@@ -21,9 +21,9 @@ half-written run.
 
 | field | meaning |
 |---|---|
-| `format`, `version` | `"hexvis-trace"`, `1`. A reader must refuse anything else. |
+| `format`, `version` | `"runshape-trace"`, `1`. A reader must refuse anything else. |
 | `createdAt`, `python`, `backend` | when, which interpreter, `settrace` or `monitoring` |
-| `recorder` | hexvis-recorder version (optional; absent in the earliest recordings). Runs from different recorder versions or backends may differ for reasons other than the code |
+| `recorder` | runshape-recorder version (optional; absent in the earliest recordings). Runs from different recorder versions or backends may differ for reasons other than the code |
 | `root` | absolute path the recording was made in (informational; file paths below are relative to it) |
 | `framework` | `null`, or `{framework, entry, middleware[], router, routes[{methods, path, handler}], externals[{name, kind}]}` read from the app at startup |
 | `catalog[]` | every function in the source and test directories: `{file, module, qualname, firstLine, lastLine, lines[]}`; `lines` are the executable lines. Built by compiling, never importing, the source. |

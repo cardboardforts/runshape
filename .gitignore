@@ -6,7 +6,7 @@ out/
 __pycache__/
 *.egg-info/
 .pytest_cache/
-.hexvis/
+.runshape/
 # Example apps are cloned + patched by examples/setup.sh, never committed here.
 examples/django-realworld/
 examples/fastapi-realworld/

@@ -1,9 +1,9 @@
-"""hexvis-review end to end: a git repo with a committed base and an uncommitted change."""
+"""runshape-review end to end: a git repo with a committed base and an uncommitted change."""
 import json
 import shutil
 import subprocess
 
-from hexvis_recorder import review
+from runshape_recorder import review
 from test_recording import SAMPLE_SHOP
 
 
@@ -24,7 +24,7 @@ def test_records_the_base_in_a_worktree_and_the_working_tree_as_latest(tmp_path,
 
     exit_code = review.main(["--base", "HEAD", "--", "-q", "-p", "no:cacheprovider"])
 
-    traces = repo / ".hexvis" / "traces"
+    traces = repo / ".runshape" / "traces"
     latest = json.loads((traces / "latest.json").read_text())["run"]
     previous = json.loads((traces / "previous.json").read_text())["run"]
     assert exit_code == 0
@@ -50,4 +50,4 @@ def test_an_unknown_base_is_reported_without_recording_anything(tmp_path, monkey
 
     assert exit_code == 2
     assert "no-such-branch" in capsys.readouterr().err
-    assert not (repo / ".hexvis").exists()
+    assert not (repo / ".runshape").exists()

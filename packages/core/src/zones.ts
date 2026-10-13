@@ -1,8 +1,8 @@
-// Declared zones: the architecture the team intends, checked into the repo as hexvis.json.
+// Declared zones: the architecture the team intends, checked into the repo as runshape.json.
 // Inference says what a component *does*; a rule says what it *is supposed to be*. Where the
 // two disagree is the architecture finding.
 
-export const RULES_FILE = "hexvis.json";
+export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */
 export const RULES_VERSION = 2;
 /** The only style the viewer draws so far; see docs/architecture-profiles.md for the rest. */
@@ -30,7 +30,7 @@ export interface ZoneRulesFile {
   zones: ZoneRule[];
 }
 
-/** hexvis.json version 1, from before zones were called zones. */
+/** runshape.json version 1, from before zones were called zones. */
 interface RingRulesFileV1 {
   version: 1;
   rings: { match?: string; ring?: string; reason?: string; by?: string }[];
