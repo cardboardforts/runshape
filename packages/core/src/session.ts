@@ -243,8 +243,7 @@ export class ViewerSession {
       .filter((fn) => fn !== undefined);
     const first = Math.min(...ranges.map((fn) => fn.firstLine));
     const last = Math.max(...ranges.map((fn) => fn.lastLine));
-    // One line above the first method usually holds the class statement.
-    return lines.slice(Math.max(first - 2, 0), last);
+    return lines.slice(classStatementLine(lines, first, view.label) - 1, last);
   }
 }
 
@@ -256,4 +255,16 @@ function invalidRingRequest(request: Extract<UiRequest, { type: "setRing" }>): s
   if (typeof request.reason !== "string" || request.reason.trim() === "") problems.push("no reason");
   if (request.by !== "user" && request.by !== "llm") problems.push(`unknown decider ${JSON.stringify(request.by)}`);
   return problems.length > 0 ? `Can't save that rule: ${problems.join("; ")}` : null;
+}
+
+/** How far above its first method a class statement (bases, docstring, decorators) may start. */
+const MAX_CLASS_HEADER_LINES = 40;
+
+/** The line of `class Name` above a class's first method, so the model sees its bases. */
+function classStatementLine(lines: string[], firstMethodLine: number, className: string): number {
+  const header = new RegExp(`^\\s*class\\s+${className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+  for (let line = firstMethodLine - 1; line >= Math.max(1, firstMethodLine - MAX_CLASS_HEADER_LINES); line -= 1) {
+    if (header.test(lines[line - 1] ?? "")) return line;
+  }
+  return Math.max(firstMethodLine - 1, 1);
 }

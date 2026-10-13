@@ -16,15 +16,20 @@ const here = dirname(fileURLToPath(import.meta.url));
 const extensionRoot = resolve(here, "..", "..");
 const workspace = resolve(extensionRoot, "..", "..", "examples", "django-realworld");
 const userDataDir = resolve(extensionRoot, ".vscode-test", "user-data");
+const fakeModel = join(here, "fake-model");
+const modelLog = resolve(extensionRoot, ".vscode-test", "fake-model-prompts.jsonl");
 
 await rm(userDataDir, { recursive: true, force: true });
+await rm(modelLog, { force: true });
 // A declared ring, so the run proves hexvis.json is read; removed afterwards.
 const rulesFile = join(workspace, "hexvis.json");
 await writeFile(rulesFile, JSON.stringify({ version: 1, rings: [{ match: "conduit.apps.*.models.*", ring: "core", reason: "e2e" }] }));
 try {
   await runTests({
-    extensionDevelopmentPath: extensionRoot,
+    // HexVis plus a fake language model, so "suggest a ring" runs through the real API.
+    extensionDevelopmentPath: [extensionRoot, fakeModel],
     extensionTestsPath: join(here, "suite.cjs"),
+    extensionTestsEnv: { HEXVIS_FAKE_MODEL_LOG: modelLog },
     launchArgs: [workspace, "--disable-extensions", `--user-data-dir=${userDataDir}`, "--skip-welcome", "--skip-release-notes"],
   });
 } finally {
@@ -42,8 +47,16 @@ const expected = [
   "event=webview.request request=2 type=graph",
   "event=webview.response request=2 type=graph",
 ];
+expected.push("event=command.suggest_ring", "event=advice.requested model=hexvis-fake-1", "event=advice.received model=hexvis-fake-1");
 const missing = expected.filter((needle) => !log.includes(needle));
-const failures = log.split("\n").filter((line) => line.includes("event=webview.failed"));
+const failures = log.split("\n").filter((line) => line.includes("event=webview.failed") || line.includes(".failed "));
+// The model must have been sent the component's recorded evidence and its source.
+const prompts = (await readFile(modelLog, "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+if (prompts.length !== 1) failures.push(`fake model received ${prompts.length} prompts, expected 1`);
+for (const needle of ["conduit.apps.articles.views.ArticleViewSet", "Called by", "class ArticleViewSet"]) {
+  if (!prompts[0]?.includes(needle)) failures.push(`prompt is missing ${JSON.stringify(needle)}`);
+}
+
 // The webview's first requests arrive together; they must share a single load.
 const loads = log.split("\n").filter((line) => line.includes("event=run.loaded")).length;
 if (loads !== 1) failures.push(`run.loaded ${loads} times, expected once`);

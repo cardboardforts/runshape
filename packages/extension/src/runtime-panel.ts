@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { loadLatestRun, loadPreviousRun, Run, UiRequest, UiResponse, ViewerSession } from "@hexvis/core";
+import { DeclaredRing, loadLatestRun, loadPreviousRun, Phase, RingSource, Run, UiRequest, UiResponse, ViewerSession } from "@hexvis/core";
 
 import type { Logger } from "./logger";
 import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./ring-adapters";
@@ -72,6 +72,44 @@ export class RuntimePanel {
       // No recording loaded yet (or it failed): the rules apply on the next load anyway.
       this.logger.error("rules.reload_failed", error, { project: this.projectRoot.fsPath });
     }
+  }
+
+  /**
+   * Ask the language model where a component belongs, from the command palette. With a
+   * component id (scripts, tests) it returns the proposal without any UI; without one it
+   * offers a pick list, shows the proposal, and on "Accept" goes through the same
+   * confirmed save as the view.
+   */
+  async suggestRing(componentId?: string): Promise<UiResponse | null> {
+    const requestId = this.nextRequestId++;
+    const session = await this.loadSession(requestId);
+    const grouping = { collapseMiddleware: true };
+    let target = componentId;
+    if (target === undefined) {
+      const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping });
+      const placeable = graph?.type === "graph" ? graph.graph.nodes.filter((n) => n.qualifiedName !== null && n.ringSource !== RingSource.Fixed) : [];
+      const picked = await vscode.window.showQuickPick(
+        placeable.map((node) => ({ label: node.label, description: `${node.ring} (${node.ringSource})`, detail: node.qualifiedName ?? "", id: node.id })),
+        { placeHolder: "Which component should the model place?" },
+      );
+      if (picked === undefined) return null;
+      target = picked.id;
+    }
+    this.logger.info("command.suggest_ring", { request: requestId, component: target });
+    const response = await session.handle({ type: "adviseRing", componentId: target, grouping });
+    if (response !== null) await this.post(response);
+    if (componentId === undefined && response?.type === "ringAdvice") {
+      const { advice } = response;
+      const accept = await vscode.window.showInformationMessage(
+        `Proposed ring: ${advice.ring} (${advice.confidence} confidence). ${advice.reason}`,
+        "Accept into hexvis.json",
+      );
+      const qualifiedName = target.replace(/^(class|module):/, "");
+      if (accept) await this.respond({ type: "setRing", qualifiedName, ring: advice.ring as DeclaredRing, reason: advice.reason, by: "llm" }, requestId);
+    } else if (componentId === undefined && response?.type === "ringAdviceFailed") {
+      void vscode.window.showWarningMessage(response.message);
+    }
+    return response;
   }
 
   /** Drops the loaded run; the next request loads the latest recording again. */

@@ -22,6 +22,10 @@
       {
         "command": "hexvis.reload",
         "title": "HexVis: Reload Traces"
+      },
+      {
+        "command": "hexvis.suggestRing",
+        "title": "HexVis: Suggest Ring for Component\u2026"
       }
     ]
   },

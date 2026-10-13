@@ -1,7 +1,9 @@
 // Runs inside the VS Code extension host.
+const assert = require("node:assert");
 const vscode = require("vscode");
 
 const WEBVIEW_SETTLE_MS = 6000;
+const COMPONENT = "class:conduit.apps.articles.views.ArticleViewSet";
 
 exports.run = async function run() {
   await vscode.commands.executeCommand("hexvis.open");
@@ -10,7 +12,14 @@ exports.run = async function run() {
   const panels = vscode.window.tabGroups.all
     .flatMap((group) => group.tabs)
     .filter((tab) => tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes("hexvis.runtime"));
-  if (panels.length !== 1) {
-    throw new Error(`expected one HexVis panel, found ${panels.length}`);
-  }
+  assert.strictEqual(panels.length, 1, `expected one HexVis panel, found ${panels.length}`);
+
+  // "Suggest a ring" through VS Code's language model API, answered by the fake model
+  // extension loaded beside HexVis. With an id the command returns the proposal, no UI.
+  const response = await vscode.commands.executeCommand("hexvis.suggestRing", COMPONENT);
+  assert.deepStrictEqual(response, {
+    type: "ringAdvice",
+    componentId: COMPONENT,
+    advice: { ring: "core", reason: "Fake model: domain logic with no I/O of its own.", confidence: "medium" },
+  });
 };

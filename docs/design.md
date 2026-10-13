@@ -29,7 +29,7 @@ recorded **scenario**. Three views come out of the same recordings:
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
 | behavioural diff (compare with previous recording) | `packages/core/src/views/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
-| declared rings (`hexvis.json`), provenance, onion violations, LLM ring proposals | `packages/core/src/rings.ts`, `ring-advice.ts` | done |
+| declared rings (`hexvis.json`), provenance, onion violations, LLM ring proposals | `packages/core/src/rings.ts`, `ring-advice.ts` | done; the model call runs end to end against a fake model in the e2e test, and was checked by hand with a real model (Copilot) on the Django example on 2026-10-13 |
 | 3D renderer (three.js): hexagon floor, tiles and objects, call arcs, replay packets | `packages/webview/src/three` | first version; layout tested, scene checked in a browser |
 
 ## Architecture

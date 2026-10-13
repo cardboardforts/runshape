@@ -86,6 +86,22 @@ describe("ring facts and the model's answer", () => {
   });
 });
 
+describe("the source the model is shown", () => {
+  test("starts at the class statement, even when its bases span several lines", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const advisor = new ScriptedAdvisor('{"ring": "outbound-adapter", "reason": "r"}');
+    const lines = ["from x import y", "", "class UsersRepository(", "    BaseRepository,", "):", '    """Users."""', ""];
+    // Pad so the first method sits where the recording says it does.
+    const firstMethod = run.catalogFunction("app.db.repositories.users", "UsersRepository.get_user_by_email")!.firstLine;
+    while (lines.length < firstMethod - 1) lines.push("");
+    const sources = { readLines: async () => [...lines, ...Array(200).fill("    pass")] };
+
+    await new ViewerSession(run, { sources, advisor }).handle({ type: "adviseRing", componentId: USERS_REPOSITORY, grouping: GROUPING });
+
+    expect(advisor.prompts[0]).toContain("class UsersRepository(\n    BaseRepository,\n):");
+  });
+});
+
 describe("suggest, then accept", () => {
   test("nothing changes until the proposal is accepted; then the graph shows who decided", async () => {
     const run = await loadFixtureRun("fastapi");
