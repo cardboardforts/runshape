@@ -58,6 +58,10 @@ export async function layoutGraph(graph: SystemGraph): Promise<Map<string, Posit
       "elk.spacing.nodeNode": "18",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.crossingMinimization.semiInteractive": "false",
+      // Long request chains make a very wide, short graph; wrap it into rows nearer the
+      // canvas's shape so it stays legible when fitted.
+      "elk.layered.wrapping.strategy": "MULTI_EDGE",
+      "elk.aspectRatio": "1.6",
     },
     children: graph.nodes.map((node) => ({
       id: node.id,

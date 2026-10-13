@@ -16,6 +16,7 @@ import {
 } from "@hexvis/core";
 
 import { ComponentPanel } from "./components/ComponentPanel";
+import { AdviceState, RingControls } from "./components/RingControls";
 import { FunctionPanel } from "./components/FunctionPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { ReplayBar } from "./components/ReplayBar";
@@ -55,11 +56,18 @@ export function App({ host }: { host: Host }) {
   const [grouping, setGrouping] = useState<Grouping>(INITIAL_GROUPING);
   const [graph, setGraph] = useState<SystemGraph | null>(null);
   const [positions, setPositions] = useState<Map<string, Positioned> | null>(null);
+  // Bumped per layout: the canvas remounts and fits the new layout instead of keeping a
+  // viewport chosen for the previous one.
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail>({ component: null, fn: null });
   const [replay, setReplay] = useState<Replay | null>(null);
   const [compare, setCompare] = useState(false);
   const [diff, setDiff] = useState<RunDiff | null>(null);
+  const [advice, setAdvice] = useState<{ componentId: string; state: AdviceState }>({ componentId: "", state: { kind: "idle" } });
+  const openComponentId = useRef<string | null>(null);
+  // Kept apart from the summary, which only arrives when a recording loads.
+  const [ruleCount, setRuleCount] = useState(0);
   // Read inside the host listener, which is subscribed once and would see stale state.
   const runLoaded = useRef(false);
   const loadFailed = useRef(false);
@@ -111,12 +119,14 @@ export function App({ host }: { host: Host }) {
           runLoaded.current = true;
           loadFailed.current = false;
           setSummary(response.summary);
+          setRuleCount(response.summary.ringRules);
           setStatus(response.summary.scenarios.length === 0 ? { kind: "empty", message: "This recording has no scenarios." } : { kind: "ready" });
           break;
         case "graph":
           setGraph(response.graph);
           break;
         case "component":
+          openComponentId.current = response.view.id;
           setDetail({ component: response.view, fn: null });
           break;
         case "function":
@@ -124,6 +134,22 @@ export function App({ host }: { host: Host }) {
           break;
         case "diff":
           setDiff(response.diff);
+          break;
+        case "rulesChanged": {
+          setRuleCount(response.count);
+          // Rings changed: everything coloured by ring is stale.
+          const { phases, grouping: currentGrouping, compare: comparing } = viewOptions.current;
+          setAdvice({ componentId: "", state: { kind: "idle" } });
+          host.post({ type: "graph", phases, grouping: currentGrouping });
+          if (comparing) host.post({ type: "diff", phases, grouping: currentGrouping });
+          if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
+          break;
+        }
+        case "ringAdvice":
+          setAdvice({ componentId: response.componentId, state: { kind: "proposed", advice: response.advice } });
+          break;
+        case "ringAdviceFailed":
+          setAdvice({ componentId: response.componentId, state: { kind: "failed", message: response.message } });
           break;
         case "replay":
           setSelected(response.scenarioId);
@@ -143,7 +169,9 @@ export function App({ host }: { host: Host }) {
     setPositions(null);
     layoutGraph(displayed)
       .then((laidOut) => {
-        if (!cancelled) setPositions(laidOut);
+        if (cancelled) return;
+        setPositions(laidOut);
+        setLayoutVersion((version) => version + 1);
       })
       .catch((error: unknown) => setNotice(`Layout failed: ${error instanceof Error ? error.message : String(error)}`));
     return () => {
@@ -206,6 +234,7 @@ export function App({ host }: { host: Host }) {
   const nodeChanges = compare && diff ? new Map(diff.nodes.map((node) => [node.id, node.change])) : null;
   const edgeChanges = compare && diff ? new Map(diff.edges.map((edge) => [edge.id, edge.change])) : null;
   const scenarioChanges = compare && diff ? new Map(diff.scenarios.map((scenario) => [scenario.id, scenario.change])) : null;
+  const componentNode = detail.component ? (displayed?.nodes.find((node) => node.id === detail.component?.id) ?? null) : null;
   const selectedDiff = compare && diff ? (diff.scenarios.find((scenario) => scenario.id === selected) ?? null) : null;
   const openComponent = (node: GraphNode) => host.post({ type: "component", id: node.id, grouping });
   const openFunction = (fn: Pick<FunctionSummary, "module" | "qualname">) => host.post({ type: "function", module: fn.module, qualname: fn.qualname });
@@ -253,7 +282,7 @@ export function App({ host }: { host: Host }) {
           onSelect={setSelected}
           onReplay={startReplay}
         />
-        <Legend />
+        <Legend ruleCount={ruleCount} />
       </aside>
 
       <main className="canvas">
@@ -271,6 +300,7 @@ export function App({ host }: { host: Host }) {
           <p className="muted centered">Nothing ran in the selected phases.</p>
         ) : (
           <GraphCanvas
+            key={layoutVersion}
             graph={displayed}
             positions={positions}
             nodeChanges={nodeChanges}
@@ -308,14 +338,45 @@ export function App({ host }: { host: Host }) {
                 ← {detail.component.label}
               </button>
             )}
-            <button type="button" className="link close" onClick={() => setDetail({ component: null, fn: null })}>
+            <button
+              type="button"
+              className="link close"
+              onClick={() => {
+                openComponentId.current = null;
+                setDetail({ component: null, fn: null });
+              }}
+            >
               Close ✕
             </button>
           </nav>
           {detail.fn ? (
             <FunctionPanel view={detail.fn} selectedScenario={selected} onSelectScenario={setSelected} onOpenSource={openSource} />
           ) : detail.component ? (
-            <ComponentPanel view={detail.component} onOpenFunction={openFunction} />
+            <ComponentPanel
+              view={detail.component}
+              onOpenFunction={openFunction}
+              ring={
+                componentNode && (
+                  <RingControls
+                    // A new ring (after saving a rule) starts the form afresh.
+                    key={`${componentNode.id}|${componentNode.ring}|${componentNode.ringReason}`}
+                    node={componentNode}
+                    canEdit={summary.canEditRules}
+                    canAdvise={summary.canAdviseRings}
+                    advice={advice.componentId === componentNode.id ? advice.state : { kind: "idle" }}
+                    onSetRing={(ring, reason, by) =>
+                      componentNode.qualifiedName !== null &&
+                      host.post({ type: "setRing", qualifiedName: componentNode.qualifiedName, ring, reason, by })
+                    }
+                    onAskAdvice={() => {
+                      setAdvice({ componentId: componentNode.id, state: { kind: "asking" } });
+                      host.post({ type: "adviseRing", componentId: componentNode.id, grouping });
+                    }}
+                    onDismissAdvice={() => setAdvice({ componentId: "", state: { kind: "idle" } })}
+                  />
+                )
+              }
+            />
           ) : selectedDiff ? (
             <ScenarioDiffPanel diff={selectedDiff} onOpenFunction={openFunction} />
           ) : null}
@@ -357,10 +418,15 @@ function DiffSummary({ diff }: { diff: RunDiff }) {
   );
 }
 
-function Legend() {
+function Legend({ ruleCount }: { ruleCount: number }) {
   return (
     <section className="legend-rings" aria-label="Legend">
-      <h2>Rings (from runtime behaviour)</h2>
+      <h2>
+        Rings{" "}
+        {ruleCount > 0
+          ? `(${ruleCount} rule${ruleCount === 1 ? "" : "s"} in hexvis.json, the rest inferred)`
+          : "(inferred from runtime behaviour)"}
+      </h2>
       <ul>
         <li><span className="dot ring-edge" /> framework: entry, middleware, router</li>
         <li><span className="dot ring-inbound-adapter" /> inbound adapter: the framework hands it requests</li>
@@ -368,6 +434,7 @@ function Legend() {
         <li><span className="dot ring-outbound-adapter" /> outbound adapter: calls an external system</li>
         <li><span className="dot ring-test-double" /> test double: test code the app calls</li>
         <li><span className="dot ring-external" /> external system</li>
+        <li><span className="line-violation" /> call against the onion (hover it)</li>
       </ul>
     </section>
   );

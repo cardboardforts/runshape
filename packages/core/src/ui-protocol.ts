@@ -1,6 +1,8 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
 import { Phase } from "./model";
+import type { RingAdvice } from "./ring-advice";
+import type { DeclaredRing, RingRule } from "./rings";
 import type { Grouping } from "./views/components";
 import type { RunSummary } from "./session";
 import type { ComponentView } from "./views/component-view";
@@ -17,6 +19,8 @@ export type UiRequest =
   | { type: "function"; module: string; qualname: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping }
+  | { type: "setRing"; qualifiedName: string; ring: DeclaredRing; reason: string; by: RingRule["by"] }
+  | { type: "adviseRing"; componentId: string; grouping: Grouping }
   | { type: "openSource"; file: string; line: number };
 
 export type UiResponse =
@@ -28,4 +32,7 @@ export type UiResponse =
   | { type: "component"; view: ComponentView }
   | { type: "function"; view: FunctionView }
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
-  | { type: "diff"; diff: RunDiff };
+  | { type: "diff"; diff: RunDiff }
+  | { type: "rulesChanged"; count: number }
+  | { type: "ringAdvice"; componentId: string; advice: RingAdvice }
+  | { type: "ringAdviceFailed"; componentId: string; message: string };

@@ -1,6 +1,6 @@
 import { BaseEdge, Edge, EdgeProps, getBezierPath } from "@xyflow/react";
 
-import { Change, StepKind } from "@hexvis/core";
+import { Change, EdgeViolation, StepKind } from "@hexvis/core";
 
 import type { Emphasis } from "./ComponentNode";
 
@@ -14,7 +14,13 @@ export type PulseEdgeData = {
   calls: number;
   emphasis: Emphasis;
   change: Change | null;
+  violation: EdgeViolation | null;
   pulse: Pulse | null;
+};
+
+const VIOLATION_TEXT: Record<EdgeViolation, string> = {
+  [EdgeViolation.CallsIntoInboundAdapter]: "Calls back into a request handler: the dependency points outward",
+  [EdgeViolation.SkipsCore]: "A request handler using an outbound adapter directly: no core in between",
 };
 
 export type PulseFlowEdge = Edge<PulseEdgeData, "pulse">;
@@ -29,13 +35,24 @@ export function PulseEdge(props: EdgeProps<PulseFlowEdge>) {
   const emphasis = data?.emphasis ?? "normal";
   const pulse = data?.pulse ?? null;
   const change = data?.change ?? null;
+  const violation = data?.violation ?? null;
   // Log scale: one call is a hairline, a thousand is thick but not a wall.
   const width = 1 + Math.log2(calls + 1) * 0.8;
   const travelsBackwards = pulse?.kind === StepKind.Return;
 
   return (
     <>
-      <BaseEdge id={id} path={path} className={`flow-edge emphasis-${emphasis}${change ? ` change-${change}` : ""}`} style={{ strokeWidth: width }} />
+      <BaseEdge
+        id={id}
+        path={path}
+        className={`flow-edge emphasis-${emphasis}${change ? ` change-${change}` : ""}${violation ? " violation" : ""}`}
+        style={{ strokeWidth: width }}
+      />
+      {violation && (
+        <path d={path} className="violation-hit" fill="none">
+          <title>{VIOLATION_TEXT[violation]}</title>
+        </path>
+      )}
       {pulse && (
         <circle key={pulse.key} r={5} className={`pulse pulse-${pulse.kind}`}>
           <animateMotion

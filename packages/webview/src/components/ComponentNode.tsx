@@ -1,6 +1,8 @@
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 
-import { Change, GraphNode, Ring, Smell } from "@hexvis/core";
+import { Change, GraphNode, Ring } from "@hexvis/core";
+
+import { SMELL_TEXT } from "./RingControls";
 
 export type Emphasis = "normal" | "highlighted" | "dimmed";
 
@@ -23,10 +25,6 @@ const RING_LABEL: Record<Ring, string> = {
   [Ring.External]: "external system",
 };
 
-const SMELL_TEXT: Record<Smell, string> = {
-  [Smell.HandlerTouchesExternal]: "Handles requests and talks to an external system directly, bypassing the core",
-};
-
 export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
   const { node, emphasis, active, change, onOpen } = data;
   const smells = node.smells.map((smell) => SMELL_TEXT[smell]);
@@ -36,7 +34,7 @@ export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
       <button
         type="button"
         className={`component ring-${node.ring} emphasis-${emphasis}${active ? " active" : ""}${change ? ` change-${change}` : ""}`}
-        title={[node.qualifiedName ?? node.label, ...smells, ...(change && change !== Change.Unchanged ? [`${change} since the previous recording`] : [])].join("\n")}
+        title={[node.qualifiedName ?? node.label, `${node.ring}: ${node.ringReason}`, ...smells, ...(change && change !== Change.Unchanged ? [`${change} since the previous recording`] : [])].join("\n")}
         onClick={() => onOpen(node)}
       >
         <span className="component-label">

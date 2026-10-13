@@ -1,7 +1,7 @@
 // Composition root: the only module that wires VS Code, the adapters and the core together.
 import * as vscode from "vscode";
 
-import { LATEST_POINTER } from "@hexvis/core";
+import { LATEST_POINTER, RULES_FILE } from "@hexvis/core";
 
 import { Logger } from "./logger";
 import { RuntimePanel } from "./runtime-panel";
@@ -62,9 +62,21 @@ export function activate(context: vscode.ExtensionContext): void {
   watcher.onDidChange(onRecording);
   watcher.onDidCreate(onRecording);
 
+  // hexvis.json sits at the project root, beside .hexvis/.
+  const rulesWatcher = vscode.workspace.createFileSystemWatcher(`**/${RULES_FILE}`);
+  const onRules = (uri: vscode.Uri) => {
+    const projectRoot = vscode.Uri.joinPath(uri, "..");
+    logger.info("rules.changed", { project: projectRoot.fsPath });
+    void panels.get(projectRoot.toString())?.reloadRules();
+  };
+  rulesWatcher.onDidChange(onRules);
+  rulesWatcher.onDidCreate(onRules);
+  rulesWatcher.onDidDelete(onRules);
+
   context.subscriptions.push(
     channel,
     watcher,
+    rulesWatcher,
     { dispose: () => pending.forEach((timer) => clearTimeout(timer)) },
     vscode.commands.registerCommand("hexvis.open", open),
     vscode.commands.registerCommand("hexvis.reload", () => reloadAll("command")),

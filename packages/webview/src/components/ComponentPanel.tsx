@@ -1,16 +1,21 @@
+import type { ReactNode } from "react";
+
 import { ComponentView, FunctionSummary } from "@hexvis/core";
 
 interface Props {
   view: ComponentView;
+  /** Where the component sits in the onion, and the controls to change that. */
+  ring: ReactNode;
   onOpenFunction: (fn: FunctionSummary) => void;
 }
 
 /** A component opened up: every function it has, and how much of each the tests reach. */
-export function ComponentPanel({ view, onOpenFunction }: Props) {
+export function ComponentPanel({ view, ring, onOpenFunction }: Props) {
   if (view.functions.length === 0) {
     return (
       <section className="panel">
         <h2>{view.label}</h2>
+        {ring}
         <p className="muted">Framework code: recorded as a step in the request, not line by line.</p>
       </section>
     );
@@ -19,6 +24,7 @@ export function ComponentPanel({ view, onOpenFunction }: Props) {
     <section className="panel">
       <h2>{view.label}</h2>
       {view.qualifiedName && <p className="muted mono">{view.qualifiedName}</p>}
+      {ring}
       <table className="functions">
         <thead>
           <tr>

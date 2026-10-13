@@ -1,6 +1,9 @@
 import { Outcome, Run } from "./model";
+import { parseRingAdvice, RingAdviceError, RingAdvisor, ringAdvicePrompt, ringFacts } from "./ring-advice";
+import { RingRules } from "./rings";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
+import { Grouping } from "./views/components";
 import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
 import { buildReplay } from "./views/replay";
 import { diffRuns } from "./views/run-diff";
@@ -9,6 +12,20 @@ import { buildSystemGraph } from "./views/system-graph";
 /** Port: source lines of a project file, by path relative to the recorded root. */
 export interface SourceReader {
   readLines(relativeFile: string): Promise<string[] | null>;
+}
+
+/** Port: persist hexvis.json. Resolves false when the person declined the change. */
+export interface RingRuleStore {
+  save(rules: RingRules, change: string): Promise<boolean>;
+}
+
+export interface SessionDependencies {
+  sources: SourceReader;
+  /** The previous recording, to compare against. */
+  baseline?: Run | null;
+  rules?: RingRules;
+  ruleStore?: RingRuleStore | null;
+  advisor?: RingAdvisor | null;
 }
 
 export interface ScenarioSummary {
@@ -31,6 +48,9 @@ export interface RunSummary {
   scenarios: ScenarioSummary[];
   /** When the previous recording was made, if there is one to compare against. */
   baselineCreatedAt: string | null;
+  ringRules: number;
+  canEditRules: boolean;
+  canAdviseRings: boolean;
 }
 
 /**
@@ -38,11 +58,27 @@ export interface RunSummary {
  * webview messages here; the standalone demo calls it directly.
  */
 export class ViewerSession {
+  private readonly sources: SourceReader;
+  private readonly baseline: Run | null;
+  private readonly ruleStore: RingRuleStore | null;
+  private readonly advisor: RingAdvisor | null;
+  private rules: RingRules;
+
   constructor(
     private readonly run: Run,
-    private readonly sources: SourceReader,
-    private readonly baseline: Run | null = null,
-  ) {}
+    dependencies: SessionDependencies,
+  ) {
+    this.sources = dependencies.sources;
+    this.baseline = dependencies.baseline ?? null;
+    this.rules = dependencies.rules ?? RingRules.none();
+    this.ruleStore = dependencies.ruleStore ?? null;
+    this.advisor = dependencies.advisor ?? null;
+  }
+
+  /** hexvis.json changed on disk (edited by hand, or by another window). */
+  replaceRules(rules: RingRules): void {
+    this.rules = rules;
+  }
 
   summary(): RunSummary {
     const run = this.run;
@@ -63,6 +99,9 @@ export class ViewerSession {
         requests: scenario.requests().map((span) => `${span.request?.method} ${span.request?.path}`),
       })),
       baselineCreatedAt: this.baseline?.createdAt ?? null,
+      ringRules: this.rules.rules.length,
+      canEditRules: this.ruleStore !== null,
+      canAdviseRings: this.advisor?.available ?? false,
     };
   }
 
@@ -74,7 +113,7 @@ export class ViewerSession {
         return {
           type: "graph",
           phases: request.phases,
-          graph: buildSystemGraph(this.run, { phases: request.phases, grouping: request.grouping }),
+          graph: buildSystemGraph(this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
         };
       case "component":
         return { type: "component", view: buildComponentView(this.run, request.id, request.grouping) };
@@ -99,10 +138,59 @@ export class ViewerSession {
       }
       case "diff":
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
-        return { type: "diff", diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping }) };
+        return {
+          type: "diff",
+          diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
+        };
+      case "setRing": {
+        if (this.ruleStore === null) return { type: "error", message: "Rings can't be saved from here." };
+        const next = this.rules.withRuleFor(request.qualifiedName, request.ring, request.reason, request.by);
+        const saved = await this.ruleStore.save(next, `${request.qualifiedName} → ${request.ring}: ${request.reason}`);
+        if (!saved) return null;
+        this.rules = next;
+        return { type: "rulesChanged", count: next.rules.length };
+      }
+      case "adviseRing":
+        return this.adviseRing(request.componentId, request.grouping);
       case "openSource":
       case "reload":
         return null; // host concerns: the extension handles these itself
     }
+  }
+
+  private async adviseRing(componentId: string, grouping: Grouping): Promise<UiResponse> {
+    if (this.advisor === null || !this.advisor.available) {
+      return { type: "ringAdviceFailed", componentId, message: "No language model is available (in VS Code, one comes with e.g. GitHub Copilot)." };
+    }
+    const graph = buildSystemGraph(this.run, { grouping, rules: this.rules });
+    const node = graph.nodes.find((candidate) => candidate.id === componentId);
+    if (node === undefined || node.qualifiedName === null) {
+      return { type: "ringAdviceFailed", componentId, message: "Only project classes and modules can be placed in a ring." };
+    }
+    const view = buildComponentView(this.run, componentId, grouping);
+    const prompt = ringAdvicePrompt(ringFacts(graph, node, view), await this.componentSource(view));
+    try {
+      return { type: "ringAdvice", componentId, advice: parseRingAdvice(await this.advisor.complete(prompt)) };
+    } catch (error) {
+      if (error instanceof RingAdviceError) return { type: "ringAdviceFailed", componentId, message: error.message };
+      throw error;
+    }
+  }
+
+  /** The component's own functions, from the first to the last line, in their file. */
+  private async componentSource(view: ReturnType<typeof buildComponentView>): Promise<string[] | null> {
+    const own = view.functions.filter((fn) => fn.inheritedFrom === null);
+    const file = own[0]?.file;
+    if (file === undefined) return null;
+    const lines = await this.sources.readLines(file);
+    if (lines === null) return null;
+    const ranges = own
+      .filter((fn) => fn.file === file)
+      .map((fn) => this.run.catalogFunction(fn.module, fn.qualname))
+      .filter((fn) => fn !== undefined);
+    const first = Math.min(...ranges.map((fn) => fn.firstLine));
+    const last = Math.max(...ranges.map((fn) => fn.lastLine));
+    // One line above the first method usually holds the class statement.
+    return lines.slice(Math.max(first - 2, 0), last);
   }
 }

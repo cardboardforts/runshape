@@ -39,8 +39,10 @@ function demoHost(app: string): Host {
     return local ? ((await local()) as string) : readFixtureSource(file);
   };
   const sources = { readLines: (file: string) => readSource(file).then((text) => text.split("\n"), () => null) };
+  // Rules live in memory here (nothing to write to); the confirm mirrors the extension's modal.
+  const ruleStore = { save: async (_rules: unknown, change: string) => window.confirm(`Add this rule to hexvis.json?\n\n${change}`) };
   const session = Promise.all([loadLatestRun(traces), loadPreviousRun(traces)]).then(
-    ([run, baseline]) => new ViewerSession(run, sources, baseline),
+    ([run, baseline]) => new ViewerSession(run, { sources, baseline, ruleStore }),
   );
 
   return {

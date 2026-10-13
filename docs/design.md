@@ -26,7 +26,8 @@ recorded **scenario**. Three views come out of the same recordings:
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
 | behavioural diff (compare with previous recording) | `packages/core/src/views/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
-| 3D renderer, ring overrides, LLM layer advice | — | not started |
+| declared rings (`hexvis.json`), provenance, onion violations, LLM ring proposals | `packages/core/src/rings.ts`, `ring-advice.ts` | done |
+| 3D renderer | — | not started |
 
 ## Architecture
 
@@ -67,7 +68,17 @@ version recorded `quote_name()` as database traffic.
 called on a `UsersRepository` belongs to `UsersRepository`: the runtime picture, not the
 inheritance tree.
 
-**Rings are inferred from behaviour, and labelled as such.** Inbound adapter: the framework
+**Rings: declared where you've decided, inferred where you haven't.** A rule in the
+checked-in `hexvis.json` (an ordered list of dotted-name globs, each with a required reason)
+wins over inference, and every node says which applied and why. Declaring is the point:
+inference can only describe behaviour, while a declaration can be *contradicted* by it. A
+declared-core class that queries the database, a handler calling a repository directly, or
+anything further in calling back into a handler is flagged. Constructor-only calls are
+exempt (building an adapter is dependency injection). A language model can propose a ring
+from the recorded facts and the component's source; nothing is written until the person
+accepts it in a confirmation dialog, and the rule records `"by": "llm"`.
+
+**Inference, when no rule applies, is labelled as such.** Inbound adapter: the framework
 calls it inside the package that holds the route handlers. Outbound adapter: it calls an
 external system. Core: neither. Inbound and also calling an external system is flagged
 (`handler-touches-external`): the handler skips the core. On the Django example this flags
@@ -124,6 +135,8 @@ in a webview.
 | trace file → webview | **T**: crafted strings become markup | React escapes all text; CSP allows scripts only with a per-load nonce, no inline or remote code; `localResourceRoots` limits the webview to the bundle | script injection into a webview with access to the extension's message API |
 | trace file → log | **T/R**: a value with a newline forges a log line | logger escapes newlines and quotes (unit-tested) | misleading audit trail |
 | recorder → disk | **I**: traces capture data from the test run | SQL text but never parameters; URLs without query strings (API keys); request method and path only, no headers or bodies; traces live under `.hexvis/`, which projects should git-ignore | credentials and personal data from test fixtures land in files people commit or share |
+| extension → language model | **I**: "Suggest a ring" sends the component's name, functions, recorded neighbours and its own source to whichever model VS Code provides (e.g. Copilot's) | only on an explicit click per component; VS Code asks the person to allow model access the first time; the log records prompt size, never content | code leaves the machine without the person deciding it should |
+| model answer → hexvis.json | **T**: a model's (or prompt-injected) answer rewrites the architecture rules | the answer is validated (known ring, non-empty reason) and shown as a proposal; writing requires a modal confirmation showing the exact rule | the rules file changes silently |
 | recorder → test process | **D**: tracing slows or breaks the suite | opt-in (`--hexvis`); callbacks never raise; `sys.monitoring` disables uninteresting code after first sight | a broken or unusably slow test run |
 
 Accepted risks:
@@ -157,8 +170,6 @@ Accepted risks:
 1. **Diff inside the function view**: before/after wires side by side. Today the diff lists
    lines by number, which is only meaningful when the function's own lines didn't move;
    matching lines by content (via the two source versions) fixes that.
-2. **Ring overrides**: a checked-in `.hexvis/layers.json` mapping module patterns to rings,
-   applied before inference; then LLM-proposed entries you confirm.
-3. **3D renderer** over the same view models: classes on the floor, instances above, wires
+2. **3D renderer** over the same view models: classes on the floor, instances above, wires
    between them from the `W` events.
-4. Recording across xdist workers; Celery tasks as their own entry landmark.
+3. Recording across xdist workers; Celery tasks as their own entry landmark.

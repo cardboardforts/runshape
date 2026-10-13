@@ -2,7 +2,7 @@
 // installed one) on the recorded Django example, open the HexVis view, then read the
 // extension's own structured log to prove the whole loop ran: extension activated, webview
 // script executed under its CSP and asked for data, the core answered.
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,11 +18,18 @@ const workspace = resolve(extensionRoot, "..", "..", "examples", "django-realwor
 const userDataDir = resolve(extensionRoot, ".vscode-test", "user-data");
 
 await rm(userDataDir, { recursive: true, force: true });
-await runTests({
-  extensionDevelopmentPath: extensionRoot,
-  extensionTestsPath: join(here, "suite.cjs"),
-  launchArgs: [workspace, "--disable-extensions", `--user-data-dir=${userDataDir}`, "--skip-welcome", "--skip-release-notes"],
-});
+// A declared ring, so the run proves hexvis.json is read; removed afterwards.
+const rulesFile = join(workspace, "hexvis.json");
+await writeFile(rulesFile, JSON.stringify({ version: 1, rings: [{ match: "conduit.apps.*.models.*", ring: "core", reason: "e2e" }] }));
+try {
+  await runTests({
+    extensionDevelopmentPath: extensionRoot,
+    extensionTestsPath: join(here, "suite.cjs"),
+    launchArgs: [workspace, "--disable-extensions", `--user-data-dir=${userDataDir}`, "--skip-welcome", "--skip-release-notes"],
+  });
+} finally {
+  await rm(rulesFile, { force: true });
+}
 
 const log = await readHexvisLog(join(userDataDir, "logs"));
 const expected = [
@@ -31,6 +38,7 @@ const expected = [
   "event=webview.request request=1 type=ready",
   "event=run.loaded",
   "framework=django",
+  "rules=1",
   "event=webview.request request=2 type=graph",
   "event=webview.response request=2 type=graph",
 ];

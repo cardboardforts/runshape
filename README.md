@@ -11,6 +11,10 @@ the onion it is (or isn't).
 - **Test wires.** Open a function: one wire per test runs down its source and splits where
   tests branch. Lines with no wire are untested; tests that take identical paths are grouped
   as candidates for consolidation.
+- **Declared rings.** Say where a component is *meant* to sit — by hand, or by accepting a
+  language model's proposal — and it's saved as a rule with its reason in a checked-in
+  `hexvis.json`. Where behaviour contradicts a declaration (core code querying the database,
+  a request handler calling a repository directly), the graph flags it.
 - **Compare.** Re-record after a change (yours or an AI agent's) and see which journeys now
   behave differently: new and lost hops, SQL that appeared or vanished, lines that started or
   stopped running, outcomes that flipped.

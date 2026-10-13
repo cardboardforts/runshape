@@ -61,6 +61,7 @@ export function GraphCanvas({
       calls: edge.calls,
       emphasis: emphasisOf(edge.scenarioIds),
       change: edgeChanges?.get(edge.id) ?? null,
+      violation: edge.violation,
       pulse: step !== null && step.edgeId === edge.id ? { key: stepIndex, kind: step.kind } : null,
     },
   }));

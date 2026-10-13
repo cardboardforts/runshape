@@ -648,3 +648,71 @@ button {
   margin-top: 4px;
   color: var(--muted);
 }
+
+/* ---- rings: provenance, rules, advice, violations ---- */
+
+.ring-controls {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.ring-controls p {
+  margin: 4px 0;
+}
+
+.smell-note {
+  color: var(--ring-outbound);
+}
+
+.set-ring {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.set-ring input {
+  min-width: 220px;
+}
+
+.set-ring input,
+.set-ring select,
+.ring-controls button:not(.link) {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.advice {
+  margin-top: 8px;
+}
+
+.proposal {
+  border-left: 3px solid var(--ring-external);
+  padding-left: 8px;
+}
+
+.react-flow__edge-path.flow-edge.violation {
+  stroke: #e5534b;
+  stroke-dasharray: 2 3;
+}
+
+.violation-hit {
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+}
+
+.line-violation {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px dotted #e5534b;
+  margin-right: 6px;
+  vertical-align: 3px;
+}

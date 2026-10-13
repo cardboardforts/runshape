@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { loadLatestRun, loadPreviousRun, Run, UiRequest, UiResponse, ViewerSession } from "@hexvis/core";
 
 import type { Logger } from "./logger";
+import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./ring-adapters";
 import { childUri, sourceReaderAt, traceFilesAt } from "./workspace-files";
 
 const VIEW_TYPE = "hexvis.runtime";
@@ -49,6 +50,20 @@ export class RuntimePanel {
 
   reveal(): void {
     this.panel.reveal();
+  }
+
+  /** hexvis.json changed on disk: re-read it and tell the view to redraw. */
+  async reloadRules(): Promise<void> {
+    if (this.session === null) return;
+    const session = await this.session;
+    const { rules, problem } = await readRules(this.projectRoot);
+    if (problem !== null) {
+      this.logger.warn("rules.invalid", { problem });
+      await this.post({ type: "error", message: problem });
+    }
+    session.replaceRules(rules);
+    this.logger.info("rules.reloaded", { count: rules.rules.length });
+    await this.post({ type: "rulesChanged", count: rules.rules.length });
   }
 
   /** Drops the loaded run; the next request loads the latest recording again. */
@@ -106,6 +121,7 @@ export class RuntimePanel {
     const traces = traceFilesAt(vscode.Uri.joinPath(this.projectRoot, ".hexvis", "traces"));
     const run = await loadLatestRun(traces);
     const baseline = await this.loadBaseline(traces, requestId);
+    const { rules, problem } = await readRules(this.projectRoot);
     this.logger.info("run.loaded", {
       request: requestId,
       project: this.projectRoot.fsPath,
@@ -114,10 +130,21 @@ export class RuntimePanel {
       framework: run.topology?.framework ?? "none",
       problems: run.problems.length,
       baseline: baseline?.createdAt ?? "none",
+      rules: rules.rules.length,
       durationMs: Date.now() - started,
     });
     for (const problem of run.problems) this.logger.warn("run.problem", { request: requestId, problem });
-    return new ViewerSession(run, sourceReaderAt(this.projectRoot), baseline);
+    if (problem !== null) {
+      this.logger.warn("rules.invalid", { request: requestId, problem });
+      run.problems.push(problem);
+    }
+    return new ViewerSession(run, {
+      sources: sourceReaderAt(this.projectRoot),
+      baseline,
+      rules,
+      ruleStore: confirmingRuleStore(this.projectRoot, this.logger),
+      advisor: vscodeModelAdvisor(this.logger, await languageModelAvailable()),
+    });
   }
 
   /** The comparison is optional: a missing or unreadable previous run must not block the view. */
