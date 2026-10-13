@@ -448,6 +448,9 @@ export function App({ host }: { host: Host }) {
             stepOp={replay?.ops?.[replay.index] ?? null}
             stepIndex={replay?.index ?? 0}
             stepMs={stepMs[replayIndex] ?? 0}
+            // A change replay interleaves two recordings; their objects and clocks don't mix.
+            clockUs={replay && !replay.ops && step ? step.tUs : null}
+            focusObject={replay && !replay.ops ? (step?.objectId ?? null) : null}
             onOpenComponent={openComponent}
           />
         ) : displayed === null || positions === null ? (

@@ -13,12 +13,16 @@ export interface ObjectNode {
   className: string;
   /** The function that constructed it, e.g. "compose" or "get_repository.<locals>._get_repo"; null if built outside project code. */
   builtBy: string | null;
+  /** When it appeared, in the scenario's microseconds: a replay shows it from then on. */
+  seenUs: number;
 }
 
 export interface ObjectWire {
   from: number;
   to: number;
   attribute: string;
+  /** When the holder's __init__ finished: a replay draws the wire from then on. */
+  atUs: number;
 }
 
 export interface ObjectGraph {
@@ -43,10 +47,11 @@ export function buildObjectGraph(scenario: Scenario): ObjectGraph {
     componentId: classComponentId(obj.className),
     className: obj.className,
     builtBy: obj.createdIn?.parent?.fn.qualname ?? null,
+    seenUs: obj.seenUs,
   }));
   const wires: ObjectWire[] = [];
   for (const obj of scenario.objects) {
-    for (const wire of obj.wires) wires.push({ from: obj.id, to: wire.target.id, attribute: wire.attribute });
+    for (const wire of obj.wires) wires.push({ from: obj.id, to: wire.target.id, attribute: wire.attribute, atUs: wire.atUs });
   }
   return { scenarioId: scenario.nodeid, objects, wires };
 }

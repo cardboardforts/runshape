@@ -12,6 +12,7 @@ import { zoneColor } from "../zone-style";
 
 import type { FloorLayout, FloorPiece, Tile } from "./floor";
 import { OBJECT_SIDE, objectSlots } from "./hexagon-layout";
+import { advanceClock, ClockedObject, popPose } from "./object-clock";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
 
@@ -62,6 +63,20 @@ interface TrunkParts {
   edgeIds: string[];
 }
 
+interface ObjectInstanceView extends ClockedObject {
+  objectId: number;
+  mesh: THREE.InstancedMesh;
+  index: number;
+  /** Where it floats once built, and the tile surface it rises from. */
+  slot: THREE.Vector3;
+  ground: number;
+}
+
+const FOCUS_SCALE = 1.7;
+const FOCUS_COLOR = new THREE.Color(0xfde047);
+/** Instance colours multiply the material's: white leaves the zone colour as it is. */
+const PLAIN_OBJECT = new THREE.Color(0xffffff);
+
 interface Packet {
   curve: THREE.Curve<THREE.Vector3>;
   reverse: boolean;
@@ -92,7 +107,12 @@ export class HexScene {
   /** Live objects and the references between them; rebuilt on its own, without the graph. */
   private readonly objectLayer = new THREE.Group();
   private readonly objectMeshes = new Map<string, THREE.InstancedMesh>();
-  private readonly wireLines: { from: string; to: string; line: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> }[] = [];
+  private readonly wireLines: { from: string; to: string; atUs: number | null; line: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial> }[] = [];
+  /** One per drawn object of the selected scenario: what the replay clock shows, hides and pops. */
+  private readonly objectInstances: ObjectInstanceView[] = [];
+  /** The replay's current time and the object doing the work; null when not replaying. */
+  private clockUs: number | null = null;
+  private focusObject: number | null = null;
   private readonly packets: Packet[] = [];
   private readonly resize: ResizeObserver;
   private frame = 0;
@@ -183,6 +203,7 @@ export class HexScene {
     this.clearGroup(this.objectLayer);
     this.objectMeshes.clear();
     this.wireLines.length = 0;
+    this.objectInstances.length = 0;
 
     const slotsByObject = new Map<number, THREE.Vector3>();
     const cloudCentre = new Map<string, THREE.Vector3>();
@@ -203,7 +224,19 @@ export class HexScene {
         mesh.setMatrixAt(index, matrix.makeTranslation(x, y, z));
         centre.add(new THREE.Vector3(x, y, z));
         const object = own?.[index];
-        if (object) slotsByObject.set(object.id, new THREE.Vector3(x, y, z));
+        if (object) {
+          slotsByObject.set(object.id, new THREE.Vector3(x, y, z));
+          this.objectInstances.push({
+            objectId: object.id,
+            seenUs: object.seenUs,
+            mesh,
+            index,
+            slot: new THREE.Vector3(x, y, z),
+            ground: tile.layout.y + TILE_HEIGHT,
+            shown: true,
+            poppedAt: null,
+          });
+        }
       });
       cloudCentre.set(id, centre.divideScalar(slots.length));
       this.objectLayer.add(mesh);
@@ -215,18 +248,57 @@ export class HexScene {
       for (const wire of objects.wires) {
         const from = slotsByObject.get(wire.from);
         const to = slotsByObject.get(wire.to);
-        if (from && to) this.addWire(from, to, component.get(wire.from)!, component.get(wire.to)!);
+        if (from && to) this.addWire(from, to, component.get(wire.from)!, component.get(wire.to)!, wire.atUs);
       }
     } else {
       for (const held of wiring) {
         const from = cloudCentre.get(held.from);
         const to = cloudCentre.get(held.to);
-        if (from && to) this.addWire(from, to, held.from, held.to);
+        if (from && to) this.addWire(from, to, held.from, held.to, null);
       }
+    }
+    // A replay already under way keeps its clock across a new object graph.
+    this.setObjectClock(this.clockUs, this.focusObject);
+  }
+
+  /**
+   * Replay time: objects not yet built are hidden, and pop up out of their class's tile when
+   * the clock passes the moment they were first seen; wires appear when their holder's
+   * __init__ finished. The object doing the current step's work is lit. Null: show everything.
+   */
+  setObjectClock(tUs: number | null, focusObject: number | null): void {
+    this.clockUs = tUs;
+    this.focusObject = focusObject;
+    advanceClock(this.objectInstances, tUs, performance.now());
+    for (const wire of this.wireLines) wire.line.visible = tUs === null || wire.atUs === null || wire.atUs <= tUs;
+  }
+
+  /** Each frame: place every object at its scale and height, mid-pop or not. */
+  private updateObjects(now: number): void {
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    const rotation = new THREE.Quaternion();
+    const touched = new Set<THREE.InstancedMesh>();
+    for (const instance of this.objectInstances) {
+      // Rises out of its class's tile and overshoots a little before settling: a box popping out.
+      const pose = popPose(instance, now);
+      if (pose.settled) instance.poppedAt = null;
+      position.copy(instance.slot);
+      position.y = instance.ground + (instance.slot.y - instance.ground) * pose.risen;
+      const size = instance.objectId === this.focusObject ? pose.size * FOCUS_SCALE : pose.size;
+      matrix.compose(position, rotation, scale.setScalar(size));
+      instance.mesh.setMatrixAt(instance.index, matrix);
+      instance.mesh.setColorAt(instance.index, instance.objectId === this.focusObject ? FOCUS_COLOR : PLAIN_OBJECT);
+      touched.add(instance.mesh);
+    }
+    for (const mesh of touched) {
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
   }
 
-  private addWire(from: THREE.Vector3, to: THREE.Vector3, fromId: string, toId: string): void {
+  private addWire(from: THREE.Vector3, to: THREE.Vector3, fromId: string, toId: string, atUs: number | null): void {
     const control = from.clone().lerp(to, 0.5);
     control.y += WIRE_LIFT + from.distanceTo(to) * 0.1;
     const curve = new THREE.QuadraticBezierCurve3(from, control, to);
@@ -236,7 +308,7 @@ export class HexScene {
     );
     line.computeLineDistances();
     this.objectLayer.add(line);
-    this.wireLines.push({ from: fromId, to: toId, line });
+    this.wireLines.push({ from: fromId, to: toId, atUs, line });
   }
 
   /** Who is lit: the selected scenario's path, the replay's current hop, compare-mode changes. */
@@ -395,6 +467,7 @@ export class HexScene {
     this.trunks.length = 0;
     this.objectMeshes.clear();
     this.wireLines.length = 0;
+    this.objectInstances.length = 0;
     this.world.add(this.objectLayer); // emptied, not discarded: setObjects refills it
   }
 
@@ -429,6 +502,7 @@ export class HexScene {
     this.frame = requestAnimationFrame(this.animate);
     this.controls.update();
     this.advancePackets(now);
+    this.updateObjects(now);
     this.composer.render();
     this.labels.render(this.scene, this.camera);
     this.framesDrawn += 1;

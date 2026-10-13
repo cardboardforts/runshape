@@ -73,7 +73,7 @@ export function parseScenario(dto: ScenarioDto): Scenario {
   const createdIn = new Map<number, number>();
   for (const event of dto.events) {
     if (event[0] === "O") {
-      objects.set(event[2], new ObjectInstance(event[2], event[3]));
+      objects.set(event[2], new ObjectInstance(event[2], event[3], event[1]));
       if (event[4] !== null) createdIn.set(event[2], event[4]);
     }
   }
@@ -114,10 +114,10 @@ export function parseScenario(dto: ScenarioDto): Scenario {
       case "O":
         break;
       case "W": {
-        const [, , from, attribute, to] = event;
+        const [, atUs, from, attribute, to] = event;
         const source = objects.get(from);
         const target = objects.get(to);
-        if (source && target) source.wires.push({ attribute, target });
+        if (source && target) source.wires.push({ attribute, target, atUs });
         break;
       }
       case "B": {

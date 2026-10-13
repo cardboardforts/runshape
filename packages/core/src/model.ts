@@ -80,6 +80,8 @@ export interface BoundaryCall {
 export interface Wire {
   attribute: string;
   target: ObjectInstance;
+  /** When the holder's __init__ finished and the reference was recorded. */
+  atUs: number;
 }
 
 export class ObjectInstance {
@@ -90,6 +92,8 @@ export class ObjectInstance {
   constructor(
     readonly id: number,
     readonly className: string,
+    /** When the recorder first saw it: its construction, or its first use if built earlier. */
+    readonly seenUs: number,
   ) {}
 
   get shortClassName(): string {

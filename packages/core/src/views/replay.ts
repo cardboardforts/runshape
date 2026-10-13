@@ -22,6 +22,8 @@ export interface ReplayStep {
   /** Source location to highlight while this step plays, when it is project code. */
   file: string | null;
   line: number | null;
+  /** The project object doing the work (self): the callee for calls and returns, the caller for external calls. */
+  objectId: number | null;
 }
 
 export function buildReplay(
@@ -54,6 +56,7 @@ export function buildReplay(
       label: call.statement ?? call.operation,
       file: call.caller.fn.file,
       line: call.caller.fn.firstLine,
+      objectId: call.caller.obj?.id ?? null,
     });
   }
   // Stable: a call and the external call it makes in the same microsecond keep their order.
@@ -64,7 +67,7 @@ export function buildReplay(
 }
 
 function step(tUs: number, kind: StepKind, from: string, to: string, label: string, span: Span): ReplayStep {
-  return { tUs, kind, from, to, edgeId: `${from}->${to}`, label, file: span.fn.file, line: span.fn.firstLine };
+  return { tUs, kind, from, to, edgeId: `${from}->${to}`, label, file: span.fn.file, line: span.fn.firstLine, objectId: span.obj?.id ?? null };
 }
 
 export enum ReplayPace {

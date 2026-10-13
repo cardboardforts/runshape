@@ -17,11 +17,14 @@ interface Props {
   stepOp: Op | null;
   stepIndex: number;
   stepMs: number;
+  /** Replay time, so objects appear as they were built; null when not replaying one recording. */
+  clockUs: number | null;
+  focusObject: number | null;
   onOpenComponent: (node: GraphNode) => void;
 }
 
 /** The 3D renderer: same inputs as the 2D graph canvas, drawn on a hexagon floor. */
-export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, onOpenComponent }: Props) {
+export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, clockUs, focusObject, onOpenComponent }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<HexScene | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -55,6 +58,10 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
   useEffect(() => {
     scene.current?.setObjects(wiring, objects);
   }, [graph, wiring, objects]);
+
+  useEffect(() => {
+    scene.current?.setObjectClock(clockUs, focusObject);
+  }, [clockUs, focusObject, objects]);
 
   useEffect(() => {
     const emphasisOf = (scenarioIds: string[]): Emphasis => {
