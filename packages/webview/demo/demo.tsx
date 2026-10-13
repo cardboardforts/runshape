@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
-import { loadLatestRun, loadPreviousRun, TraceFiles, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
+import { loadLatestRun, loadPreviousRun, RuleChange, TraceFiles, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
@@ -42,7 +42,7 @@ function demoHost(app: string): Host {
   };
   const sources = { readLines: (file: string) => readSource(file).then((text) => text.split("\n"), () => null) };
   // Rules live in memory here (nothing to write to); the confirm mirrors the extension's modal.
-  const ruleStore = { save: async (_rules: unknown, change: string) => window.confirm(`Add this rule to runshape.json?\n\n${change}`) };
+  const ruleStore = { save: async (_rules: unknown, change: RuleChange) => window.confirm(`${change.question}\n\n${change.detail}`) };
   const session = Promise.all([loadLatestRun(traces), loadPreviousRun(traces)]).then(
     ([run, baseline]) => new ViewerSession(run, { sources, baseline, ruleStore }),
   );

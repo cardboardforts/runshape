@@ -1,6 +1,7 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
 import { Phase } from "./model";
+import type { ArchitectureCandidate } from "./architecture";
 import type { ZoneAdvice } from "./zone-advice";
 import type { ZoneRule } from "./zones";
 import type { Grouping } from "./views/components";
@@ -23,6 +24,10 @@ export type UiRequest =
   | { type: "function"; module: string; qualname: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
+  /** Rank the styles against this recording. */
+  | { type: "detectArchitecture" }
+  /** Write runshape.json from the detected candidate for `style`: its style and proposed rules. */
+  | { type: "adoptArchitecture"; style: string }
   | { type: "setZone"; qualifiedName: string; zone: string; reason: string; by: ZoneRule["by"] }
   | { type: "adviseZone"; componentId: string; grouping: Grouping }
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
@@ -41,7 +46,8 @@ export type UiResponse =
   | { type: "function"; view: FunctionView }
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
   | { type: "diff"; diff: RunDiff; review: ReviewSummary }
-  | { type: "rulesChanged"; count: number }
+  | { type: "rulesChanged"; count: number; style: string }
+  | { type: "architecture"; candidates: ArchitectureCandidate[] }
   | { type: "executionDiff"; diff: ExecutionDiff; replay: MergedReplayStep[] }
   | { type: "functionExecutionDiff"; diff: FunctionExecutionDiff }
   | { type: "zoneAdvice"; componentId: string; advice: ZoneAdvice }

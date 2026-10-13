@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { ArchitectureCandidate, detectArchitecture } from "../src/architecture";
+import { ArchitectureCandidate, detectArchitecture, proposedRules } from "../src/architecture";
 import { ArchitectureStyle } from "../src/profiles";
 import { loadFixtureRun } from "./fixtures";
 
@@ -178,5 +178,27 @@ describe("detectArchitecture", () => {
         },
       ]
     `);
+  });
+});
+
+describe("proposedRules", () => {
+  test("nested packages that match two zones get the inner one first, so first-match-wins keeps it; same-zone nesting is left out", async () => {
+    // app.models.domain is business ("domain") inside app.models, which is data ("models").
+    const layered = detectArchitecture(await loadFixtureRun("fastapi")).find((c) => c.style === ArchitectureStyle.Layered)!;
+
+    const rules = proposedRules(layered);
+
+    expect(rules.profile.style).toBe("layered");
+    expect(rules.rules.map((rule) => `${rule.match.padEnd(26)} ${rule.zone.padEnd(13)} ${rule.by}: ${rule.reason}`)).toMatchInlineSnapshot(`
+      [
+        "app.models.domain.**       business      detected: business: the package is named "domain"",
+        "app.api.**                 presentation  detected: presentation: the package is named "api"",
+        "app.db.**                  data          detected: data access: the package is named "db"",
+        "app.models.**              data          detected: data access: the package is named "models"",
+        "app.services.**            business      detected: business: the package is named "services"",
+      ]
+    `);
+    expect(rules.matchFor("app.models.domain.users.UserInDB")?.rule.zone).toBe("business");
+    expect(rules.matchFor("app.models.common.DateTimeModelMixin")?.rule.zone).toBe("data");
   });
 });

@@ -841,3 +841,51 @@ button {
 .style-picker select {
   max-width: 100%;
 }
+
+.architecture-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+}
+
+.architecture-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.architecture-panel h2 {
+  margin: 0;
+  font-size: 1em;
+}
+
+.architecture-panel ol {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.architecture-panel ol > li {
+  margin-bottom: 8px;
+}
+
+.architecture-panel ol > li.drawn {
+  border-left: 3px solid var(--focus);
+  padding-left: 6px;
+}
+
+.architecture-panel meter {
+  width: 60px;
+  vertical-align: middle;
+}
+
+.architecture-panel .evidence {
+  margin: 2px 0;
+  padding-left: 14px;
+  font-size: 0.9em;
+  color: var(--muted, inherit);
+}
+
+.architecture-panel .actions {
+  margin: 2px 0 0;
+}

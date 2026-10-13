@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  ArchitectureCandidate,
   ArchitectureProfile,
+  ArchitectureStyle,
   PROFILES,
   describeGap,
   ReplayPace,
@@ -31,6 +33,7 @@ import {
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";
+import { ArchitecturePanel } from "./components/ArchitecturePanel";
 import { FunctionPanel } from "./components/FunctionPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { ReplayBar } from "./components/ReplayBar";
@@ -98,6 +101,8 @@ export function App({ host }: { host: Host }) {
   const loadFailed = useRef(false);
   // The style to draw in when it isn't runshape.json's own; never saved.
   const [drawStyle, setDrawStyle] = useState<string | undefined>(undefined);
+  // Closed: null. Open: the ranked candidates, or null inside while the session ranks them.
+  const [detection, setDetection] = useState<{ candidates: ArchitectureCandidate[] | null } | null>(null);
   const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined }>({
     phases: TEST_BODY_ONLY,
     grouping: INITIAL_GROUPING,
@@ -177,6 +182,12 @@ export function App({ host }: { host: Host }) {
           break;
         case "rulesChanged": {
           setRuleCount(response.count);
+          // Adopting a style makes it the file's own: the default drawing, no preview left over.
+          setSummary((current) => (current === null || current.style === response.style ? current : { ...current, style: response.style as ArchitectureStyle }));
+          if (viewOptions.current.style === response.style) {
+            setDrawStyle(undefined);
+            viewOptions.current.style = undefined;
+          }
           // Zones changed: everything coloured by zone is stale.
           const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
           setAdvice({ componentId: "", state: { kind: "idle" } });
@@ -185,6 +196,9 @@ export function App({ host }: { host: Host }) {
           if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
           break;
         }
+        case "architecture":
+          setDetection({ candidates: response.candidates });
+          break;
         case "zoneAdvice":
           setAdvice({ componentId: response.componentId, state: { kind: "proposed", advice: response.advice } });
           break;
@@ -363,6 +377,27 @@ export function App({ host }: { host: Host }) {
               ))}
             </select>
           </label>
+          {detection === null ? (
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                setDetection({ candidates: null });
+                host.post({ type: "detectArchitecture" });
+              }}
+            >
+              Detect the shape from this recording…
+            </button>
+          ) : (
+            <ArchitecturePanel
+              candidates={detection.candidates}
+              drawnStyle={drawStyle ?? summary.style}
+              canAdopt={summary.canEditRules}
+              onPreview={changeStyle}
+              onAdopt={(style) => host.post({ type: "adoptArchitecture", style })}
+              onClose={() => setDetection(null)}
+            />
+          )}
           {summary.baselineCreatedAt !== null && (
             <label className="toggle">
               <input type="checkbox" checked={compare} onChange={toggleCompare} /> Compare with previous recording

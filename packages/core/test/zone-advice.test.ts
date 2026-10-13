@@ -9,7 +9,7 @@ import { Phase } from "../src/model";
 import { parseZoneAdvice, ZoneAdvisor, zoneFacts } from "../src/zone-advice";
 import { HexagonalZone, HEXAGONAL } from "../src/profiles";
 import { ZoneRules } from "../src/zones";
-import { ZoneRuleStore, ViewerSession } from "../src/session";
+import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
 import { buildComponentView } from "../src/views/component-view";
 import { buildSystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
@@ -31,8 +31,8 @@ class RecordingStore implements ZoneRuleStore {
   readonly asked: string[] = [];
   saved: ZoneRules | null = null;
   constructor(private readonly accept: boolean) {}
-  async save(rules: ZoneRules, change: string): Promise<boolean> {
-    this.asked.push(change);
+  async save(rules: ZoneRules, change: RuleChange): Promise<boolean> {
+    this.asked.push(`${change.question} [${change.confirm}]\n${change.detail}`);
     if (this.accept) this.saved = rules;
     return this.accept;
   }
@@ -129,7 +129,8 @@ describe("suggest, then accept", () => {
     expect(declined).toBeNull();
     expect(declining.asked).toMatchInlineSnapshot(`
       [
-        "{
+        "Add this rule to runshape.json? [Add rule]
+      {
         "match": "app.db.repositories.users.UsersRepository",
         "zone": "outbound-adapter",
         "reason": "Repository over the users table.",
@@ -139,7 +140,7 @@ describe("suggest, then accept", () => {
       It goes first in runshape.json; the other 0 rule(s) are kept.",
       ]
     `);
-    expect(accepted).toEqual({ type: "rulesChanged", count: 1 });
+    expect(accepted).toEqual({ type: "rulesChanged", count: 1, style: "hexagonal" });
     expect(accepting.saved?.serialize()).toMatchInlineSnapshot(`
       "{
         "version": 2,

@@ -1,11 +1,17 @@
-# Beyond the hexagon: architecture profiles (proposal)
+# Beyond the hexagon: architecture profiles
 
 Runshape draws every app as an onion because that's the architecture it was built to check.
 Most apps aren't one: Django is MVT, many FastAPI/Express apps are layered, React and Vue
 apps have their own shapes. This is the plan for drawing each app in its own shape, and for
 the rename that would come with it. Status: **ring → zone is done** (code, UI, docs, and
-`runshape.json` version 2 with a `"style"` field, still reading version 1). Profiles beyond
-the hexagon are a **proposal + prototype**: the viewer still only draws `"hexagonal"`.
+`runshape.json` version 2 with a `"style"` field, still reading version 1). **Profiles are
+built** (2026-10-13): `packages/core/src/profiles.ts` defines hexagonal, layered, MVC, MVVM
+and MVP; zones, rules, smells and violations come from the active profile. The viewer can
+draw any style ("Draw as", never saved), lays layered out top to bottom in 2D and as
+terraces in 3D, MVC/MVVM/MVP as a triangle, and "Detect the shape from this recording"
+ranks the styles with their evidence; adopting one rewrites `runshape.json` (style plus
+proposed rules, most specific first, `by: "detected"`) after the person confirms. Not yet:
+the skill behind a model call in VS Code, frontend styles, the cycle (Flux) layout.
 
 ## What changes conceptually
 
@@ -24,7 +30,7 @@ choices in a style.
 
 Three layers, cheapest and most explainable first, mirroring how rings work today:
 
-1. **Deterministic scoring** (`packages/core/src/architecture.ts`, prototype). Scores each
+1. **Deterministic scoring** (`packages/core/src/architecture.ts`). Scores each
    profile on module vocabulary *and* runtime behaviour, and proposes zone globs with the
    evidence for each. On the examples: FastAPI RealWorld → **layered** (0.96) over hexagonal
    (0.77) — the deciding evidence is behavioural: route handlers call repositories

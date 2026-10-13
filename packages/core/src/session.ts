@@ -1,7 +1,8 @@
+import { detectArchitecture, proposedRules } from "./architecture";
 import { Outcome, Run } from "./model";
 import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
-import { ZoneRules } from "./zones";
+import { RULES_FILE, ZoneRules } from "./zones";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
 import { Grouping } from "./views/components";
@@ -18,9 +19,16 @@ export interface SourceReader {
   readLines(relativeFile: string): Promise<string[] | null>;
 }
 
+/** What a save asks the person: the question, the exact change, and the button that agrees. */
+export interface RuleChange {
+  question: string;
+  detail: string;
+  confirm: string;
+}
+
 /** Port: persist runshape.json. Resolves false when the person declined the change. */
 export interface ZoneRuleStore {
-  save(rules: ZoneRules, change: string): Promise<boolean>;
+  save(rules: ZoneRules, change: RuleChange): Promise<boolean>;
 }
 
 export interface SessionDependencies {
@@ -185,11 +193,15 @@ export class ViewerSession {
         const change =
           `${JSON.stringify(next.rules[0], null, 2)}\n\n` +
           `It goes first in runshape.json${replaces ? ", replacing the existing rule for this name" : ""}; the other ${next.rules.length - 1} rule(s) are kept.`;
-        const saved = await this.ruleStore.save(next, change);
+        const saved = await this.ruleStore.save(next, { question: `Add this rule to ${RULES_FILE}?`, detail: change, confirm: "Add rule" });
         if (!saved) return null;
         this.rules = next;
-        return { type: "rulesChanged", count: next.rules.length };
+        return { type: "rulesChanged", count: next.rules.length, style: next.profile.style };
       }
+      case "detectArchitecture":
+        return { type: "architecture", candidates: detectArchitecture(this.run) };
+      case "adoptArchitecture":
+        return this.adoptArchitecture(request.style);
       case "adviseZone":
         return this.adviseZone(request.componentId, request.grouping);
       case "executionDiff": {
@@ -220,6 +232,25 @@ export class ViewerSession {
   private drawingStyle(style: string | undefined): ArchitectureProfile | null {
     if (style === undefined) return this.rules.profile;
     return profileFor(style) ?? null;
+  }
+
+  /** Replaces runshape.json with the detected style and its rules, once the person confirms. */
+  private async adoptArchitecture(style: string): Promise<UiResponse | null> {
+    if (this.ruleStore === null) return { type: "error", message: "Zones can't be saved from here." };
+    const candidate = detectArchitecture(this.run).find((c) => c.style === style);
+    if (candidate === undefined) return { type: "error", message: unknownStyle(style) };
+    const next = proposedRules(candidate);
+    const current =
+      this.rulesProblem !== null
+        ? `runshape.json can't be read now (${this.rulesProblem}); it is replaced.`
+        : `It replaces runshape.json's ${this.rules.rules.length} rule(s) (${this.rules.profile.style} style).`;
+    const lines = next.rules.map((rule) => `  ${rule.match} → ${rule.zone}`);
+    const change = `Style: ${candidate.name}\n${lines.length ? lines.join("\n") : "  (no rules: every zone inferred)"}\n\n${current}`;
+    const saved = await this.ruleStore.save(next, { question: `Rewrite ${RULES_FILE} as ${candidate.name}?`, detail: change, confirm: `Rewrite ${RULES_FILE}` });
+    if (!saved) return null;
+    this.rules = next;
+    this.rulesProblem = null;
+    return { type: "rulesChanged", count: next.rules.length, style: next.profile.style };
   }
 
   private async adviseZone(componentId: string, grouping: Grouping): Promise<UiResponse> {

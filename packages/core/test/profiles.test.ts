@@ -6,7 +6,7 @@
 import { describe, expect, test } from "vitest";
 
 import { ArchitectureStyle, HexagonalZone, profileFor } from "../src/profiles";
-import { ViewerSession } from "../src/session";
+import { ViewerSession, ZoneRuleStore } from "../src/session";
 import { ZoneRules } from "../src/zones";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { Phase } from "../src/model";
@@ -124,5 +124,55 @@ describe("drawing in another style", () => {
     expect(await usersRepository()).toBe("hexagonal: core (rule)");
     expect(await usersRepository("layered")).toBe("layered: data (inferred)");
     expect(await usersRepository("microservices")).toEqual({ type: "error", message: 'unknown style "microservices"; one of hexagonal, layered, mvc, mvvm, mvp' });
+  });
+});
+
+describe("detect and adopt", () => {
+  test("the viewer ranks the styles, and adopting one rewrites runshape.json only once the person confirms", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const asked: string[] = [];
+    let saved: string | null = null;
+    let confirm = false;
+    const store: ZoneRuleStore = {
+      save: async (rules, change) => {
+        asked.push(`${change.question} [${change.confirm}]\n${change.detail}`);
+        if (confirm) saved = rules.serialize();
+        return confirm;
+      },
+    };
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store });
+
+    const detected = await session.handle({ type: "detectArchitecture" });
+    const declined = await session.handle({ type: "adoptArchitecture", style: "layered" });
+    confirm = true;
+    const adopted = await session.handle({ type: "adoptArchitecture", style: "layered" });
+    const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
+
+    expect(detected?.type === "architecture" && detected.candidates.map((c) => `${c.style} ${c.score}`)).toMatchInlineSnapshot(`
+      [
+        "layered 0.96",
+        "hexagonal 0.77",
+        "mvc 0.26",
+        "mvvm 0.03",
+        "mvp 0.03",
+      ]
+    `);
+    expect(declined).toBeNull();
+    expect(asked[0]).toMatchInlineSnapshot(`
+      "Rewrite runshape.json as Layered (n-tier, relaxed)? [Rewrite runshape.json]
+      Style: Layered (n-tier, relaxed)
+        app.models.domain.** → business
+        app.api.** → presentation
+        app.db.** → data
+        app.models.** → data
+        app.services.** → business
+
+      It replaces runshape.json's 0 rule(s) (hexagonal style)."
+    `);
+    expect(adopted).toEqual({ type: "rulesChanged", count: 5, style: "layered" });
+    expect(JSON.parse(saved!).style).toBe("layered");
+    expect(session.summary().style).toBe("layered");
+    const userInDb = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.label === "UserInDB") : undefined;
+    expect(`${userInDb?.zone} (${userInDb?.zoneSource}: ${userInDb?.zoneReason})`).toMatchInlineSnapshot(`"business (rule: declared in runshape.json (app.models.domain.**): business: the package is named "domain")"`);
   });
 });

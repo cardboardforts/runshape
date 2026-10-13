@@ -6,6 +6,7 @@
 import { Run } from "./model";
 import { ArchitectureStyle, HexagonalZone, LayoutShape, PROFILES } from "./profiles";
 import { buildSystemGraph } from "./views/system-graph";
+import { ZoneRule, ZoneRules } from "./zones";
 
 export interface ZoneProposal {
   zone: string;
@@ -86,6 +87,34 @@ export function detectArchitecture(run: Run): ArchitectureCandidate[] {
     return { style: profile.style, name: profile.name, layout: profile.layout, score: clamp(score / 1.3), evidence, zones };
   });
   return candidates.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * The candidate as runshape.json rules. First match wins, so deeper packages go first: a
+ * package matching one zone inside a package matching another (app.models.domain inside
+ * app.models) keeps its own zone. One inside a package of the same zone is left out.
+ */
+export function proposedRules(candidate: ArchitectureCandidate): ZoneRules {
+  const profile = PROFILES.find((p) => p.style === candidate.style)!;
+  const rules: ZoneRule[] = [];
+  for (const proposal of candidate.zones) {
+    const zoneName = profile.zones.find((zone) => zone.id === proposal.zone)?.name ?? proposal.zone;
+    for (const pattern of proposal.patterns) {
+      const word = lastSegment(pattern.replace(/\.\*\*$/, ""));
+      rules.push({ match: pattern, zone: proposal.zone, reason: `${zoneName.toLowerCase()}: the package is named "${word}"`, by: "detected" });
+    }
+  }
+  const packageOf = (rule: ZoneRule) => rule.match.replace(/\.\*\*$/, "");
+  const depth = (rule: ZoneRule) => packageOf(rule).split(".").length;
+  // A rule inside a broader one that already says the same zone adds nothing.
+  const needed = rules.filter((rule) => {
+    const enclosing = rules
+      .filter((other) => other !== rule && packageOf(rule).startsWith(`${packageOf(other)}.`))
+      .sort((a, b) => depth(b) - depth(a))[0];
+    return enclosing === undefined || enclosing.zone !== rule.zone;
+  });
+  needed.sort((a, b) => depth(b) - depth(a) || a.match.localeCompare(b.match));
+  return new ZoneRules(needed, profile);
 }
 
 /**

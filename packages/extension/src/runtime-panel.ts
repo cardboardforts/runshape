@@ -70,8 +70,8 @@ export class RuntimePanel {
       const unchanged = problem === null && rules.serialize() === session.currentRules().serialize();
       session.replaceRules(rules, problem);
       if (unchanged) return;
-      this.logger.info("rules.reloaded", { count: rules.rules.length });
-      await this.post({ type: "rulesChanged", count: rules.rules.length });
+      this.logger.info("rules.reloaded", { count: rules.rules.length, style: rules.profile.style });
+      await this.post({ type: "rulesChanged", count: rules.rules.length, style: rules.profile.style });
     } catch (error) {
       // No recording loaded yet (or it failed): the rules apply on the next load anyway.
       this.logger.error("rules.reload_failed", error, { project: this.projectRoot.fsPath });

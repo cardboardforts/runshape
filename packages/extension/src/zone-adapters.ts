@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { ZoneAdvisor, ZoneRules, ZoneRulesError, ZoneRuleStore, RULES_FILE } from "@runshape/core";
+import { RuleChange, RULES_FILE, ZoneAdvisor, ZoneRules, ZoneRulesError, ZoneRuleStore } from "@runshape/core";
 
 import type { Logger } from "./logger";
 
@@ -28,13 +28,9 @@ export async function readRules(projectRoot: vscode.Uri): Promise<LoadedRules> {
 /** Writes runshape.json only after the person confirms the exact change, in a modal. */
 export function confirmingRuleStore(projectRoot: vscode.Uri, logger: Logger): ZoneRuleStore {
   return {
-    async save(rules: ZoneRules, change: string): Promise<boolean> {
-      const choice = await vscode.window.showInformationMessage(
-        `Add this rule to ${RULES_FILE}?`,
-        { modal: true, detail: change },
-        "Add rule",
-      );
-      if (choice !== "Add rule") {
+    async save(rules: ZoneRules, change: RuleChange): Promise<boolean> {
+      const choice = await vscode.window.showInformationMessage(change.question, { modal: true, detail: change.detail }, change.confirm);
+      if (choice !== change.confirm) {
         logger.info("rules.declined");
         return false;
       }

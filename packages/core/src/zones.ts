@@ -14,9 +14,11 @@ export interface ZoneRule {
   /** One of the style's zone ids (profiles.ts). Framework, external and test-double zones are facts, not choices. */
   zone: string;
   reason: string;
-  /** Who decided: a person, or a model's proposal a person accepted. */
-  by: "user" | "llm";
+  /** Who decided: a person, or a model's or the detector's proposal a person accepted. */
+  by: "user" | "llm" | "detected";
 }
+
+const DECIDERS: ZoneRule["by"][] = ["user", "llm", "detected"];
 
 export interface ZoneRulesFile {
   version: number;
@@ -84,7 +86,7 @@ export class ZoneRules {
         problems.push(`${where}.zone must be one of ${allowed.join(", ")} (the ${profile.style} zones)`);
       }
       if (typeof candidate?.reason !== "string" || candidate.reason.trim() === "") problems.push(`${where}.reason must say why`);
-      if (candidate?.by !== undefined && candidate.by !== "user" && candidate.by !== "llm") problems.push(`${where}.by must be "user" or "llm"`);
+      if (candidate?.by !== undefined && !DECIDERS.includes(candidate.by)) problems.push(`${where}.by must be "user", "llm" or "detected"`);
       if (problems.length === before) {
         rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user" });
       }

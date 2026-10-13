@@ -37,7 +37,7 @@ describe("ZoneRules", () => {
         - zones[1].match must be a non-empty string
         - zones[1].zone must be one of inbound-adapter, core, outbound-adapter (the hexagonal zones)
         - zones[1].reason must say why
-        - zones[2].by must be "user" or "llm"]
+        - zones[2].by must be "user", "llm" or "detected"]
     `);
   });
 
