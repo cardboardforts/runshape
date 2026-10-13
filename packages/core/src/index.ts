@@ -16,3 +16,4 @@ export * from "./align";
 export * from "./views/execution-diff";
 export * from "./views/object-graph";
 export * from "./views/review";
+export * from "./architecture";

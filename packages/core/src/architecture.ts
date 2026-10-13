@@ -1,0 +1,219 @@
+// Prototype: which architecture is this app shaped like? The rest of the viewer assumes the
+// onion; this module is the first step to drawing each app in its own shape. It scores a
+// catalogue of styles against evidence from a recording and proposes how the app's
+// modules map onto that style's zones. A person (or a model, see
+// .claude/skills/architecture-shape) decides; this only proposes, and says why.
+import { Run } from "./model";
+import { buildSystemGraph, EdgeViolation, Ring } from "./views/system-graph";
+
+export enum ArchitectureStyle {
+  Hexagonal = "hexagonal",
+  Layered = "layered",
+  Mvc = "mvc",
+  Mvvm = "mvvm",
+  Mvp = "mvp",
+}
+
+/** How a style is drawn: the hexagon floor, stacked bands, or a triangle of three roles. */
+export enum LayoutShape {
+  Hexagon = "hexagon",
+  Bands = "bands",
+  Triangle = "triangle",
+}
+
+export interface Zone {
+  id: string;
+  name: string;
+  meaning: string;
+}
+
+export interface ArchitectureProfile {
+  style: ArchitectureStyle;
+  name: string;
+  layout: LayoutShape;
+  zones: Zone[];
+  /** Calls the style permits between different zones; every other cross-zone call is a finding. */
+  allowedCalls: [from: string, to: string][];
+  /** Words that, in module or class names, suggest each zone. */
+  vocabulary: Record<string, string[]>;
+}
+
+export const PROFILES: ArchitectureProfile[] = [
+  {
+    style: ArchitectureStyle.Hexagonal,
+    name: "Hexagonal (ports and adapters)",
+    layout: LayoutShape.Hexagon,
+    zones: [
+      { id: "inbound", name: "Inbound adapters", meaning: "turn requests into calls on the core" },
+      { id: "core", name: "Core", meaning: "domain and application logic; no I/O, no framework" },
+      { id: "outbound", name: "Outbound adapters", meaning: "implement the core's ports against the outside world" },
+    ],
+    allowedCalls: [["inbound", "core"], ["core", "outbound"], ["outbound", "core"]],
+    vocabulary: {
+      inbound: ["api", "routes", "handlers", "controllers", "cli", "consumers"],
+      core: ["domain", "core", "usecases", "use_cases", "services", "entities", "ports"],
+      outbound: ["adapters", "infrastructure", "infra", "repositories", "gateways", "clients", "db"],
+    },
+  },
+  {
+    style: ArchitectureStyle.Layered,
+    name: "Layered (n-tier)",
+    layout: LayoutShape.Bands,
+    zones: [
+      { id: "presentation", name: "Presentation", meaning: "HTTP routes, views, serialisation" },
+      { id: "business", name: "Business", meaning: "services, rules, workflows" },
+      { id: "data", name: "Data access", meaning: "repositories, queries, persistence" },
+    ],
+    allowedCalls: [["presentation", "business"], ["business", "data"]],
+    vocabulary: {
+      presentation: ["api", "routes", "views", "controllers", "schemas", "serializers", "web"],
+      business: ["services", "business", "logic", "domain", "managers"],
+      data: ["db", "repositories", "dal", "dao", "queries", "persistence", "models"],
+    },
+  },
+  {
+    style: ArchitectureStyle.Mvc,
+    name: "Model–View–Controller (incl. Django's MVT)",
+    layout: LayoutShape.Triangle,
+    zones: [
+      { id: "controller", name: "Controller", meaning: "receives the request, picks the model and the view" },
+      { id: "model", name: "Model", meaning: "data and the rules on it (often active record)" },
+      { id: "view", name: "View", meaning: "renders the response" },
+    ],
+    allowedCalls: [["controller", "model"], ["controller", "view"], ["view", "model"]],
+    vocabulary: {
+      controller: ["views", "controllers", "viewsets", "handlers"],
+      model: ["models", "managers", "signals"],
+      view: ["templates", "renderers", "serializers", "presenters"],
+    },
+  },
+  {
+    style: ArchitectureStyle.Mvvm,
+    name: "Model–View–ViewModel",
+    layout: LayoutShape.Triangle,
+    zones: [
+      { id: "view", name: "View", meaning: "binds to the view model; no logic" },
+      { id: "viewmodel", name: "View model", meaning: "state and commands for one view" },
+      { id: "model", name: "Model", meaning: "data and services" },
+    ],
+    allowedCalls: [["view", "viewmodel"], ["viewmodel", "model"]],
+    vocabulary: { view: ["views", "components", "pages"], viewmodel: ["viewmodels", "viewmodel", "stores", "composables"], model: ["models", "services", "api"] },
+  },
+  {
+    style: ArchitectureStyle.Mvp,
+    name: "Model–View–Presenter",
+    layout: LayoutShape.Triangle,
+    zones: [
+      { id: "view", name: "View", meaning: "passive; forwards events to the presenter" },
+      { id: "presenter", name: "Presenter", meaning: "decides what the view shows" },
+      { id: "model", name: "Model", meaning: "data and services" },
+    ],
+    allowedCalls: [["view", "presenter"], ["presenter", "view"], ["presenter", "model"]],
+    vocabulary: { view: ["views", "screens"], presenter: ["presenters", "presenter"], model: ["models", "services", "repositories"] },
+  },
+];
+
+export interface ZoneProposal {
+  zone: string;
+  /** Dotted-name globs, in the same form as hexvis.json rules. */
+  patterns: string[];
+}
+
+export interface ArchitectureCandidate {
+  style: ArchitectureStyle;
+  name: string;
+  layout: LayoutShape;
+  /** 0–1; relative, for ranking candidates against each other, not a probability. */
+  score: number;
+  evidence: string[];
+  zones: ZoneProposal[];
+}
+
+/**
+ * Scores every profile on two kinds of evidence from the recording:
+ * - vocabulary: how many of the app's packages are named the way the style names its zones;
+ * - behaviour: whether what talks to the database, and what receives requests, fits the
+ *   style (data mappers suggest layered or hexagonal; models that query for themselves
+ *   suggest MVC with active record).
+ */
+export function detectArchitecture(run: Run): ArchitectureCandidate[] {
+  const packages = projectPackages(run);
+  const graph = buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
+  const talksToStorage = graph.nodes.filter((n) => n.ring === Ring.OutboundAdapter).map((n) => n.qualifiedName ?? n.label);
+  const receivesRequests = graph.nodes.filter((n) => n.ring === Ring.InboundAdapter).map((n) => n.qualifiedName ?? n.label);
+  const activeRecord = talksToStorage.filter((name) => /\.models\./.test(name));
+  const dataMappers = talksToStorage.filter((name) => /(repositor|dao|gateway|queries)/i.test(name));
+  const handlerToStorage = graph.edges.filter((e) => e.violation === EdgeViolation.SkipsCore).length;
+
+  const candidates = PROFILES.map((profile): ArchitectureCandidate => {
+    const evidence: string[] = [];
+    const zones: ZoneProposal[] = [];
+    let matchedZones = 0;
+    for (const zone of profile.zones) {
+      const words = profile.vocabulary[zone.id] ?? [];
+      const patterns = packages.filter((pkg) => words.includes(lastSegment(pkg))).map((pkg) => `${pkg}.**`);
+      zones.push({ zone: zone.id, patterns });
+      if (patterns.length > 0) {
+        matchedZones += 1;
+        evidence.push(`${zone.name}: ${patterns.map((p) => p.replace(/\.\*\*$/, "")).join(", ")}`);
+      }
+    }
+    let score = matchedZones / profile.zones.length;
+
+    if (profile.style === ArchitectureStyle.Mvc && activeRecord.length > 0) {
+      score += 0.3;
+      evidence.push(`models query the database themselves (active record): ${short(activeRecord)}`);
+    }
+    if ((profile.style === ArchitectureStyle.Layered || profile.style === ArchitectureStyle.Hexagonal) && dataMappers.length > 0) {
+      score += 0.25;
+      evidence.push(`persistence sits behind repositories/gateways: ${short(dataMappers)}`);
+    }
+    if (profile.style === ArchitectureStyle.Hexagonal && !packages.some((pkg) => /\b(ports|adapters|domain)$/.test(pkg))) {
+      score -= 0.2;
+      evidence.push("no ports/adapters/domain package: nothing names the hexagon's boundary");
+    }
+    // Behaviour separates styles that share vocabulary: request handlers reaching straight
+    // into persistence is ordinary in a (relaxed) layered app and a contradiction in a hexagon.
+    if (handlerToStorage > 0 && profile.style === ArchitectureStyle.Hexagonal) {
+      score -= 0.25;
+      evidence.push(`request handlers call persistence directly (${handlerToStorage} call paths), bypassing any core`);
+    }
+    if (handlerToStorage > 0 && profile.style === ArchitectureStyle.Layered) {
+      evidence.push(`request handlers call persistence directly (${handlerToStorage} call paths): a relaxed layering`);
+    }
+    if ((profile.style === ArchitectureStyle.Mvvm || profile.style === ArchitectureStyle.Mvp) && receivesRequests.length > 0) {
+      score -= 0.3;
+      evidence.push("a request/response backend: MVVM and MVP are UI patterns");
+    }
+    return { style: profile.style, name: profile.name, layout: profile.layout, score: clamp(score / 1.3), evidence, zones };
+  });
+  return candidates.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Every package and module in the app's own code. Modules count too: Django names its roles
+ * per module (app/views.py, app/models.py), other frameworks per package (app/api/routes/).
+ */
+function projectPackages(run: Run): string[] {
+  const testFiles = /(^|\/)tests?\//;
+  const packages = new Set<string>();
+  for (const fn of run.catalog) {
+    if (testFiles.test(fn.file)) continue;
+    const segments = fn.module.split(".");
+    for (let length = 1; length <= segments.length; length += 1) packages.add(segments.slice(0, length).join("."));
+  }
+  return [...packages].sort();
+}
+
+function lastSegment(name: string): string {
+  return name.slice(name.lastIndexOf(".") + 1);
+}
+
+function short(names: string[]): string {
+  const labels = [...new Set(names.map(lastSegment))];
+  return labels.length > 3 ? `${labels.slice(0, 3).join(", ")} and ${labels.length - 3} more` : labels.join(", ");
+}
+
+function clamp(value: number): number {
+  return Math.round(Math.max(0, Math.min(1, value)) * 100) / 100;
+}
