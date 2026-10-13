@@ -13,7 +13,7 @@ export enum DeclaredRing {
 }
 
 export interface RingRule {
-  /** Dotted-name glob: `*` is any text within one segment, `**` any number of segments. */
+  /** Dotted-name glob: `*` is any text within one segment, `**` any number of segments (zero too: `app.**` matches `app`). */
   match: string;
   ring: DeclaredRing;
   reason: string;
@@ -103,7 +103,11 @@ function globToRegExp(glob: string): RegExp {
   let source = "";
   for (let i = 0; i < glob.length; i += 1) {
     const char = glob[i]!;
-    if (char === "*" && glob[i + 1] === "*") {
+    // ".**" and "**." may stand for no segments at all, taking their dot with them.
+    if (glob.startsWith(".**", i) && (i + 3 === glob.length || glob[i + 3] === ".")) {
+      source += "(?:\\..*)?";
+      i += 2;
+    } else if (char === "*" && glob[i + 1] === "*") {
       source += ".*";
       i += 1;
     } else if (char === "*") {

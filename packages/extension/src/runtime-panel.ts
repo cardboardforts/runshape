@@ -55,15 +55,23 @@ export class RuntimePanel {
   /** hexvis.json changed on disk: re-read it and tell the view to redraw. */
   async reloadRules(): Promise<void> {
     if (this.session === null) return;
-    const session = await this.session;
-    const { rules, problem } = await readRules(this.projectRoot);
-    if (problem !== null) {
-      this.logger.warn("rules.invalid", { problem });
-      await this.post({ type: "error", message: problem });
+    try {
+      const session = await this.session;
+      const { rules, problem } = await readRules(this.projectRoot);
+      if (problem !== null) {
+        this.logger.warn("rules.invalid", { problem });
+        await this.post({ type: "error", message: problem });
+      }
+      // Our own save already updated the session; the watcher seeing that write is no news.
+      const unchanged = problem === null && rules.serialize() === session.currentRules().serialize();
+      session.replaceRules(rules, problem);
+      if (unchanged) return;
+      this.logger.info("rules.reloaded", { count: rules.rules.length });
+      await this.post({ type: "rulesChanged", count: rules.rules.length });
+    } catch (error) {
+      // No recording loaded yet (or it failed): the rules apply on the next load anyway.
+      this.logger.error("rules.reload_failed", error, { project: this.projectRoot.fsPath });
     }
-    session.replaceRules(rules);
-    this.logger.info("rules.reloaded", { count: rules.rules.length });
-    await this.post({ type: "rulesChanged", count: rules.rules.length });
   }
 
   /** Drops the loaded run; the next request loads the latest recording again. */
@@ -142,6 +150,7 @@ export class RuntimePanel {
       sources: sourceReaderAt(this.projectRoot),
       baseline,
       rules,
+      rulesProblem: problem,
       ruleStore: confirmingRuleStore(this.projectRoot, this.logger),
       advisor: vscodeModelAdvisor(this.logger, await languageModelAvailable()),
     });

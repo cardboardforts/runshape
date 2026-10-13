@@ -57,6 +57,11 @@ describe("RingRules", () => {
       "app.main -> top-level modules",
       "app.services.jwt -> no rule",
     ]);
+    // `**` also stands for no segments, so a package's own module matches its subtree rule.
+    const subtree = new RingRules([{ match: "app.db.**", ring: DeclaredRing.OutboundAdapter, reason: "persistence", by: "user" }]);
+    expect(["app.db", "app.db.users", "app.dbx"].map((name) => subtree.matchFor(name) !== null)).toEqual([true, true, false]);
+    const middle = new RingRules([{ match: "a.**.b", ring: DeclaredRing.Core, reason: "r", by: "user" }]);
+    expect(["a.b", "a.x.b", "a.x.y.b", "ab"].map((name) => middle.matchFor(name) !== null)).toEqual([true, true, true, false]);
   });
 
   test("setting the ring of one component adds the most specific rule first and round-trips", () => {

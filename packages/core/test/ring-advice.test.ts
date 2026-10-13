@@ -110,7 +110,18 @@ describe("suggest, then accept", () => {
       advice: { ring: "outbound-adapter", reason: "Repository over the users table.", confidence: "high" },
     });
     expect(declined).toBeNull();
-    expect(declining.asked).toEqual(["app.db.repositories.users.UsersRepository → outbound-adapter: Repository over the users table."]);
+    expect(declining.asked).toMatchInlineSnapshot(`
+      [
+        "{
+        "match": "app.db.repositories.users.UsersRepository",
+        "ring": "outbound-adapter",
+        "reason": "Repository over the users table.",
+        "by": "llm"
+      }
+
+      It goes first in hexvis.json; the other 0 rule(s) are kept.",
+      ]
+    `);
     expect(accepted).toEqual({ type: "rulesChanged", count: 1 });
     expect(accepting.saved?.serialize()).toMatchInlineSnapshot(`
       "{
@@ -138,5 +149,40 @@ describe("suggest, then accept", () => {
     });
 
     expect(response).toMatchObject({ type: "ringAdviceFailed", message: expect.stringContaining("No language model") });
+  });
+});
+
+describe("saving rules safely", () => {
+  test("while hexvis.json can't be read, saving is refused instead of overwriting the file", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const store = new RecordingStore(true);
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rulesProblem: "rings[3].ring must be one of …" });
+
+    const response = await session.handle({ type: "setRing", qualifiedName: "app.x.Y", ring: DeclaredRing.Core, reason: "r", by: "user" });
+
+    expect(response).toMatchObject({ type: "error", message: expect.stringContaining("Fix hexvis.json before adding rules") });
+    expect(store.asked).toEqual([]);
+  });
+
+  test("a malformed request from the view never reaches the confirmation", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const store = new RecordingStore(true);
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store });
+
+    const response = await session.handle({ type: "setRing", qualifiedName: "", ring: "domain" as DeclaredRing, reason: " ", by: "robot" as "user" });
+
+    expect(response).toEqual({ type: "error", message: 'Can\'t save that rule: no component name; unknown ring "domain"; no reason; unknown decider "robot"' });
+    expect(store.asked).toEqual([]);
+  });
+
+  test("a failed model request ends the 'asking' state with a message", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const failing: RingAdvisor = { available: true, complete: async () => Promise.reject(new Error("access denied by the user")) };
+
+    const response = await new ViewerSession(run, { sources: { readLines: async () => null }, advisor: failing }).handle({
+      type: "adviseRing", componentId: USERS_REPOSITORY, grouping: GROUPING,
+    });
+
+    expect(response).toEqual({ type: "ringAdviceFailed", componentId: USERS_REPOSITORY, message: "The model request failed: access denied by the user" });
   });
 });

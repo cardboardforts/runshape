@@ -1,6 +1,6 @@
 import { Outcome, Run } from "./model";
 import { parseRingAdvice, RingAdviceError, RingAdvisor, ringAdvicePrompt, ringFacts } from "./ring-advice";
-import { RingRules } from "./rings";
+import { DeclaredRing, RingRules } from "./rings";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
 import { Grouping } from "./views/components";
@@ -26,6 +26,8 @@ export interface SessionDependencies {
   /** The previous recording, to compare against. */
   baseline?: Run | null;
   rules?: RingRules;
+  /** Set when hexvis.json exists but couldn't be read: saving would overwrite what's there. */
+  rulesProblem?: string | null;
   ruleStore?: RingRuleStore | null;
   advisor?: RingAdvisor | null;
 }
@@ -65,6 +67,7 @@ export class ViewerSession {
   private readonly ruleStore: RingRuleStore | null;
   private readonly advisor: RingAdvisor | null;
   private rules: RingRules;
+  private rulesProblem: string | null;
 
   constructor(
     private readonly run: Run,
@@ -73,13 +76,19 @@ export class ViewerSession {
     this.sources = dependencies.sources;
     this.baseline = dependencies.baseline ?? null;
     this.rules = dependencies.rules ?? RingRules.none();
+    this.rulesProblem = dependencies.rulesProblem ?? null;
     this.ruleStore = dependencies.ruleStore ?? null;
     this.advisor = dependencies.advisor ?? null;
   }
 
   /** hexvis.json changed on disk (edited by hand, or by another window). */
-  replaceRules(rules: RingRules): void {
+  replaceRules(rules: RingRules, problem: string | null): void {
     this.rules = rules;
+    this.rulesProblem = problem;
+  }
+
+  currentRules(): RingRules {
+    return this.rules;
   }
 
   summary(): RunSummary {
@@ -152,8 +161,19 @@ export class ViewerSession {
         };
       case "setRing": {
         if (this.ruleStore === null) return { type: "error", message: "Rings can't be saved from here." };
+        if (this.rulesProblem !== null) {
+          // The session is showing inferred rings because the file couldn't be read; saving
+          // now would replace every rule in it with this one.
+          return { type: "error", message: `Fix hexvis.json before adding rules: ${this.rulesProblem}` };
+        }
+        const invalid = invalidRingRequest(request);
+        if (invalid !== null) return { type: "error", message: invalid };
         const next = this.rules.withRuleFor(request.qualifiedName, request.ring, request.reason, request.by);
-        const saved = await this.ruleStore.save(next, `${request.qualifiedName} → ${request.ring}: ${request.reason}`);
+        const replaces = this.rules.rules.some((rule) => rule.match === request.qualifiedName);
+        const change =
+          `${JSON.stringify(next.rules[0], null, 2)}\n\n` +
+          `It goes first in hexvis.json${replaces ? ", replacing the existing rule for this name" : ""}; the other ${next.rules.length - 1} rule(s) are kept.`;
+        const saved = await this.ruleStore.save(next, change);
         if (!saved) return null;
         this.rules = next;
         return { type: "rulesChanged", count: next.rules.length };
@@ -195,8 +215,15 @@ export class ViewerSession {
     }
     const view = buildComponentView(this.run, componentId, grouping);
     const prompt = ringAdvicePrompt(ringFacts(graph, node, view), await this.componentSource(view));
+    let answer: string;
     try {
-      return { type: "ringAdvice", componentId, advice: parseRingAdvice(await this.advisor.complete(prompt)) };
+      answer = await this.advisor.complete(prompt);
+    } catch (error) {
+      // Access denied, quota, network: the view must leave its "asking" state either way.
+      return { type: "ringAdviceFailed", componentId, message: `The model request failed: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    try {
+      return { type: "ringAdvice", componentId, advice: parseRingAdvice(answer) };
     } catch (error) {
       if (error instanceof RingAdviceError) return { type: "ringAdviceFailed", componentId, message: error.message };
       throw error;
@@ -219,4 +246,14 @@ export class ViewerSession {
     // One line above the first method usually holds the class statement.
     return lines.slice(Math.max(first - 2, 0), last);
   }
+}
+
+/** setRing arrives from the webview: check it like any input crossing into the session. */
+function invalidRingRequest(request: Extract<UiRequest, { type: "setRing" }>): string | null {
+  const problems: string[] = [];
+  if (typeof request.qualifiedName !== "string" || request.qualifiedName.trim() === "") problems.push("no component name");
+  if (!(Object.values(DeclaredRing) as string[]).includes(request.ring)) problems.push(`unknown ring ${JSON.stringify(request.ring)}`);
+  if (typeof request.reason !== "string" || request.reason.trim() === "") problems.push("no reason");
+  if (request.by !== "user" && request.by !== "llm") problems.push(`unknown decider ${JSON.stringify(request.by)}`);
+  return problems.length > 0 ? `Can't save that rule: ${problems.join("; ")}` : null;
 }
