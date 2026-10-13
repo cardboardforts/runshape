@@ -1,0 +1,58 @@
+/**
+ * Reviewing a change by behaviour, on the two real before/after fixtures. The output is the
+ * Markdown a PR comment would carry, so the snapshots read as the review itself.
+ */
+import { describe, expect, test } from "vitest";
+
+import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
+import { buildReview, ReviewCategory, reviewMarkdown } from "../src/views/review";
+import { FixtureApp, fixtureFiles } from "./fixtures";
+
+async function review(app: FixtureApp) {
+  const files = fixtureFiles(app);
+  return buildReview((await loadPreviousRun(files))!, await loadLatestRun(files));
+}
+
+describe("buildReview", () => {
+  test("a pure refactor: every test still green, two of them now run differently", async () => {
+    const summary = await review("fastapi-slug-refactor");
+
+    expect(summary.counts[ReviewCategory.SilentChange]).toBe(2);
+    expect(reviewMarkdown(summary)).toMatchInlineSnapshot(`
+      "## Behaviour changes (HexVis)
+
+      4 tests recorded on the base and on this branch.
+
+      **2 tests still pass but now run differently** — the changes a green CI won't show you.
+
+      ### Still passing, but now run differently (2)
+
+      | Test | What changed |
+      |---|---|
+      | \`test_user_can_not_create_article_with_duplicated_slug\` | now calls \`ensure_slug_available\`, \`_normalize_title\`; 17 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` |
+      | \`test_user_can_create_article\` | now calls \`ensure_slug_available\`, \`_normalize_title\`; 4 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` |
+
+      2 tests behave exactly as before.
+      "
+    `);
+  });
+
+  test("a bug fix: the known-broken journey now passes, and nothing else moved", async () => {
+    const summary = await review("django-feed-fix");
+
+    expect(reviewMarkdown(summary)).toMatchInlineSnapshot(`
+      "## Behaviour changes (HexVis)
+
+      8 tests recorded on the base and on this branch.
+
+      ### Now passing (1)
+
+      | Test | What changed |
+      |---|---|
+      | \`test_follower_sees_followed_authors_in_their_feed\` | xfailed → passed; now calls \`ArticlesFeedAPIView.list\`, \`ArticlesFeedAPIView.get_queryset\`, \`ProfileSerializer.get_image\`, \`ProfileSerializer.get_following\`, \`Profile.is_following\` and 6 more; no longer calls \`ArticleViewSet.retrieve\`, \`core_exception_handler\`, \`_handle_not_found_error\`; +9 external calls; −1 external call; different lines run in \`ConduitJSONRenderer.render\` |
+
+      7 tests behave exactly as before.
+      "
+    `);
+  });
+});
