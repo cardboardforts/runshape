@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ComponentView, FunctionSummary } from "@runshape/core";
+import { ComponentView, formatMicros, FunctionSummary } from "@runshape/core";
 
 interface Props {
   view: ComponentView;
@@ -34,6 +34,9 @@ export function ComponentPanel({ view, zone, relations, onOpenFunction }: Props)
             <th scope="col">Function</th>
             <th scope="col">Lines reached</th>
             <th scope="col">Tests</th>
+            <th scope="col" title="Wall time over all calls, and in brackets its own share: total minus the project code it called. Tracing slows project code, so compare these with each other.">
+              Time (self)
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -49,6 +52,13 @@ export function ComponentPanel({ view, zone, relations, onOpenFunction }: Props)
                 <CoverageBar covered={fn.coveredLines} total={fn.executableLines} />
               </td>
               <td className="number">{fn.scenarioIds.length}</td>
+              <td className="number">
+                {fn.calls === 0 ? "—" : (
+                  <>
+                    {formatMicros(fn.totalUs)} <span className="muted">({formatMicros(fn.selfUs)})</span>
+                  </>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

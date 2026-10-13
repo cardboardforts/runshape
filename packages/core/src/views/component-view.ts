@@ -1,4 +1,4 @@
-import { CatalogFunction, lastSegment, Run } from "../model";
+import { CatalogFunction, lastSegment, Run, Span } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 
 /** One box from the system graph opened up: its functions and how much the tests reach. */
@@ -20,11 +20,17 @@ export interface FunctionSummary {
   executableLines: number;
   coveredLines: number;
   calls: number;
+  /** Wall time over all its calls, inclusive; a recursive call inside another isn't counted again. */
+  totalUs: number;
+  /** totalUs minus the project code it called: its own lines, plus library and database time. */
+  selfUs: number;
   scenarioIds: string[];
 }
 
 interface Tally {
   calls: number;
+  totalUs: number;
+  selfUs: number;
   lines: Set<number>;
   scenarioIds: Set<string>;
 }
@@ -43,10 +49,16 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
       const key = `${span.fn.module}:${span.fn.qualname}`;
       let tally = tallies.get(key);
       if (tally === undefined) {
-        tally = { calls: 0, lines: new Set(), scenarioIds: new Set() };
+        tally = { calls: 0, totalUs: 0, selfUs: 0, lines: new Set(), scenarioIds: new Set() };
         tallies.set(key, tally);
       }
       tally.calls += 1;
+      if (!insideItself(span)) {
+        const total = span.endUs - span.startUs;
+        const inChildren = span.children.reduce((sum, child) => sum + (child.endUs - child.startUs), 0);
+        tally.totalUs += total;
+        tally.selfUs += Math.max(0, total - inChildren);
+      }
       tally.scenarioIds.add(scenario.nodeid);
       for (const line of span.lines) tally.lines.add(line);
     }
@@ -71,6 +83,14 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
     functions.push(summarize(fn, tally, owner));
   }
   return { id: componentId, label, qualifiedName, functions };
+}
+
+/** A call nested in a call of the same function: its time is already in the outer one's. */
+function insideItself(span: Span): boolean {
+  for (let ancestor = span.parent; ancestor !== null; ancestor = ancestor.parent) {
+    if (ancestor.fn === span.fn) return true;
+  }
+  return false;
 }
 
 function ownFunctions(run: Run, qualifiedName: string | null): CatalogFunction[] {
@@ -105,6 +125,8 @@ function summarize(fn: CatalogFunction, tally: Tally | undefined, inheritedFrom:
     executableLines: executable.size,
     coveredLines: covered,
     calls: tally?.calls ?? 0,
+    totalUs: tally?.totalUs ?? 0,
+    selfUs: tally?.selfUs ?? 0,
     scenarioIds: [...(tally?.scenarioIds ?? [])].sort(),
   };
 }

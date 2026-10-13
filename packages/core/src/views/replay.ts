@@ -103,8 +103,12 @@ export function stepDurationsMs(steps: ReplayStep[], pace: ReplayPace): number[]
 /** "742 µs", "3.1 ms", "1.20 s": the recorded gap after a step, for the replay bar. */
 export function describeGap(steps: ReplayStep[], index: number): string {
   const gap = gapAfterUs(steps, index);
-  if (gap === null) return "end";
-  if (gap < 1000) return `${gap} µs`;
-  if (gap < 1_000_000) return `${(gap / 1000).toFixed(gap < 10_000 ? 1 : 0)} ms`;
-  return `${(gap / 1_000_000).toFixed(2)} s`;
+  return gap === null ? "end" : formatMicros(gap);
+}
+
+/** "742 µs", "3.1 ms", "12 ms", "1.20 s". */
+export function formatMicros(us: number): string {
+  if (us < 1000) return `${Math.round(us)} µs`;
+  if (us < 1_000_000) return `${(us / 1000).toFixed(us < 10_000 ? 1 : 0)} ms`;
+  return `${(us / 1_000_000).toFixed(2)} s`;
 }

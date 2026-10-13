@@ -32,7 +32,7 @@ export function smellText(profile: ArchitectureProfile, node: GraphNode, smell: 
 
 /** Where this component sits, why, and how to change it — by hand or from a model's proposal. */
 export function ZoneControls({ node, profile, canEdit, canAdvise, advice, onSetZone, onAskAdvice, onDismissAdvice }: Props) {
-  const [zone, setZone] = useState<string>(profile.zones[0]!.id);
+  const [zone, setZone] = useState<string>(profile.zones.some((option) => option.id === node.zone) ? node.zone : profile.zones[0]!.id);
   const [reason, setReason] = useState("");
   const placeable = node.qualifiedName !== null && node.zoneSource !== ZoneSource.Fixed;
 
