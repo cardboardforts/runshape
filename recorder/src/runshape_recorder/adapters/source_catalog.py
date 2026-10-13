@@ -12,7 +12,7 @@ import sys
 import warnings
 from dataclasses import dataclass
 from types import CodeType
-from typing import Dict, Iterator, List, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 CO_OPTIMIZED = 0x1  # set on function bodies, never on module or class bodies
 SKIPPED_DIRECTORIES = {"__pycache__", ".venv", "venv", "node_modules", ".git", "migrations"}
@@ -44,12 +44,13 @@ class SourceCatalog:
         self.sources: Dict[str, List[str]] = {}
         self.problems: List[CatalogProblem] = []
 
-    def qualname(self, code: CodeType) -> str:
-        """CodeNamer port: co_qualname exists only from 3.11; derive it from source before that."""
+    def qualname(self, code: CodeType, filename: Optional[str] = None) -> str:
+        """CodeNamer port: co_qualname exists only from 3.11; derive it from source before that.
+        `filename` is where the code lives now, if known (see CodeScope.source_file)."""
         qualname = getattr(code, "co_qualname", None)
         if qualname:
             return qualname
-        filename = os.path.realpath(code.co_filename)
+        filename = os.path.realpath(filename or code.co_filename)
         if filename not in self._compiled_files:
             self._compile(filename)
         return self._by_location.get((filename, code.co_firstlineno, code.co_name), code.co_name)

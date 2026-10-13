@@ -69,6 +69,7 @@ class CodeScope:
         self._boundaries = sorted(boundaries, key=lambda b: len(b.module_prefix), reverse=True)
         self._landmarks: Dict[CodeType, Landmark] = {}
         self._roles: Dict[CodeType, CodeRole] = {}
+        self._files: Dict[CodeType, str] = {}
         self._project_classes: Dict[type, bool] = {}
 
     @property
@@ -97,9 +98,24 @@ class CodeScope:
         code = frame.f_code
         role = self._roles.get(code)
         if role is None:
-            role = self._classify(code, frame.f_globals.get("__name__", ""))
+            role = self._classify(code, frame.f_globals.get("__name__", ""), self.source_file(frame))
             self._roles[code] = role
         return role
+
+    def source_file(self, frame: FrameType) -> str:
+        """The file the running code lives in now. Prefers the defining module's __file__:
+        co_filename is frozen when the code is compiled, and pytest's assertion-rewrite cache
+        keeps it across a repository move, so it can name a directory that no longer exists."""
+        code = frame.f_code
+        filename = self._files.get(code)
+        if filename is None:
+            module_file = frame.f_globals.get("__file__")
+            if isinstance(module_file, str) and module_file.endswith(".py") and code.co_filename.endswith(os.path.basename(module_file)):
+                filename = os.path.realpath(module_file)
+            else:
+                filename = os.path.realpath(code.co_filename)
+            self._files[code] = filename
+        return filename
 
     def boundary_for(self, module: str) -> Optional[Boundary]:
         for boundary in self._boundaries:
@@ -119,10 +135,9 @@ class CodeScope:
     def relative_path(self, filename: str) -> str:
         return os.path.relpath(os.path.realpath(filename), self.root)
 
-    def _classify(self, code: CodeType, module: str) -> CodeRole:
+    def _classify(self, code: CodeType, module: str, filename: str) -> CodeRole:
         if code in self._landmarks:
             return CodeRole.LANDMARK
-        filename = os.path.realpath(code.co_filename)
         if _under_any(filename, self._test_roots):
             return CodeRole.TEST
         if _under_any(filename, self._source_roots):

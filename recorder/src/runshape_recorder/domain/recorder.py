@@ -47,7 +47,7 @@ _CURRENT_SPAN: "ContextVar[Optional[Tuple[int, int]]]" = ContextVar("runshape_cu
 
 
 class CodeNamer(Protocol):
-    def qualname(self, code: CodeType) -> str: ...
+    def qualname(self, code: CodeType, filename: Optional[str] = None) -> str: ...
 
 
 @dataclass
@@ -266,7 +266,8 @@ class ScenarioRecorder:
         if index is not None:
             return index
         module = frame.f_globals.get("__name__", "")
-        qualname = self._namer.qualname(code)
+        filename = self.scope.source_file(frame)
+        qualname = self._namer.qualname(code, filename)
         if role is CodeRole.LANDMARK:
             landmark = self.scope.landmark_for(code)
             kind = landmark.kind if landmark is not None else None
@@ -278,7 +279,7 @@ class ScenarioRecorder:
                 role,
                 module,
                 qualname,
-                self.scope.relative_path(code.co_filename),
+                self.scope.relative_path(filename),
                 code.co_firstlineno,
             )
         index = len(self._functions)

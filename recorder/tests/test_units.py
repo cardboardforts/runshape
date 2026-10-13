@@ -1,5 +1,6 @@
 """Recorder pieces exercised directly, for behaviours the end-to-end sample can't reach."""
 import importlib
+import types
 import sys
 import textwrap
 
@@ -92,3 +93,30 @@ def test_source_snapshot_keeps_python_line_numbers_and_only_project_files(tmp_pa
 
     assert sorted(sources) == ["pkg/__init__.py", "pkg/m.py"]
     assert sources["pkg/m.py"][2] == "    return 2"  # line 3
+
+
+@pytest.mark.parametrize("backend_class", BACKENDS, ids=lambda b: b.name)
+def test_code_compiled_under_an_old_path_is_still_project_code(tmp_path, backend_class):
+    # pytest's assertion-rewrite cache keeps the path a test module was first compiled under,
+    # so after the repository moves, co_filename points at the old location and the tests
+    # would silently drop out of the recording. The module's __file__ is current.
+    write_package(tmp_path, "tests", {"__init__.py": "", "test_moved.py": "class Helper:\n    def value(self):\n        return 1\n\ndef test_moved():\n    return Helper().value()\n"})
+    path = tmp_path / "tests" / "test_moved.py"
+    module = types.ModuleType("tests.test_moved")
+    module.__file__ = str(path)
+    exec(compile(path.read_text(), "/old/checkout/tests/test_moved.py", "exec"), module.__dict__)
+    recorder = ScenarioRecorder(CodeScope(str(tmp_path), [], ["tests"]), SourceCatalog(str(tmp_path)))
+    backend = backend_class()
+
+    recorder.begin("moved")
+    backend.start(recorder)
+    try:
+        module.test_moved()
+    finally:
+        backend.stop()
+    recording = recorder.finish("passed")
+
+    assert [(f.qualname, f.file) for f in recording.functions] == [
+        ("test_moved", "tests/test_moved.py"),
+        ("Helper.value", "tests/test_moved.py"),
+    ]
