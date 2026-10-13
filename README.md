@@ -21,6 +21,9 @@ the onion it is (or isn't).
   cubes above them, dashed lines joining objects that hold one another (per object once you
   pick a test); calls between rings run along shared trunks; replay steps are packets of
   light travelling them.
+- **Review a PR by behaviour.** `hexvis-review --base origin/main` records the tests on the
+  base and on your branch; the viewer then leads with the tests that are *still green but
+  now run differently*. Also as a Markdown PR comment. See [docs/pr-review.md](docs/pr-review.md).
 - **Compare.** Re-record after a change (yours or an AI agent's) and see which journeys now
   behave differently: new and lost hops, SQL that appeared or vanished, lines that started or
   stopped running, outcomes that flipped.

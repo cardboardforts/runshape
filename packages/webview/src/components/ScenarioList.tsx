@@ -1,4 +1,4 @@
-import { Change, Outcome, ScenarioSummary } from "@hexvis/core";
+import { Outcome, REVIEW_ORDER, ReviewCategory, ScenarioSummary } from "@hexvis/core";
 
 const OUTCOME_LABEL: Record<Outcome, string> = {
   [Outcome.Passed]: "passed",
@@ -13,23 +13,33 @@ const OUTCOME_LABEL: Record<Outcome, string> = {
 interface Props {
   scenarios: ScenarioSummary[];
   selected: string | null;
-  /** Set in compare mode: how each journey differs from the previous recording. */
-  changes: Map<string, Change> | null;
+  /** Set in compare mode: what each test's change means for a reviewer. */
+  review: Map<string, ReviewCategory> | null;
   onSelect: (id: string | null) => void;
   onReplay: (id: string) => void;
 }
 
 /** Each scenario is a test, i.e. one named user behaviour. Selecting one lights up its path. */
-export function ScenarioList({ scenarios, selected, changes, onSelect, onReplay }: Props) {
+const REVIEW_BADGE: Record<ReviewCategory, string | null> = {
+  [ReviewCategory.NowFailing]: "now failing",
+  [ReviewCategory.SilentChange]: "green, runs differently",
+  [ReviewCategory.NowPassing]: "now passing",
+  [ReviewCategory.Added]: "new test",
+  [ReviewCategory.Removed]: "removed",
+  [ReviewCategory.Unchanged]: null,
+};
+
+export function ScenarioList({ scenarios, selected, review, onSelect, onReplay }: Props) {
   if (scenarios.length === 0) {
     return <p className="muted">This run recorded no scenarios.</p>;
   }
   return (
     <ul className="scenarios" aria-label="Scenarios">
-      {scenarios.map((scenario) => {
+      {orderForReview(scenarios, review).map((scenario) => {
         const isSelected = scenario.id === selected;
-        const change = changes?.get(scenario.id) ?? null;
-        const classes = [isSelected ? "selected" : "", change === Change.Unchanged ? "unchanged" : ""].join(" ").trim();
+        const category = review?.get(scenario.id) ?? null;
+        const badge = category ? REVIEW_BADGE[category] : null;
+        const classes = [isSelected ? "selected" : "", category === ReviewCategory.Unchanged ? "unchanged" : ""].join(" ").trim();
         return (
           <li key={scenario.id} className={classes || undefined}>
             <button
@@ -43,7 +53,7 @@ export function ScenarioList({ scenarios, selected, changes, onSelect, onReplay 
                 {OUTCOME_LABEL[scenario.outcome]}
               </span>
               <span className="scenario-name">
-                {change !== null && change !== Change.Unchanged && <span className={`change-badge change-${change}`}>{change}</span>}
+                {badge && <span className={`change-badge review-${category}`}>{badge}</span>}
                 {scenario.name}
               </span>
               {scenario.requests.length > 0 && (
@@ -60,6 +70,13 @@ export function ScenarioList({ scenarios, selected, changes, onSelect, onReplay 
       })}
     </ul>
   );
+}
+
+/** In compare mode, what needs a reviewer's eyes comes first; otherwise the recorded order. */
+function orderForReview(scenarios: ScenarioSummary[], review: Map<string, ReviewCategory> | null): ScenarioSummary[] {
+  if (review === null) return scenarios;
+  const rank = (id: string) => REVIEW_ORDER.indexOf(review.get(id) ?? ReviewCategory.Unchanged);
+  return [...scenarios].sort((a, b) => rank(a.id) - rank(b.id));
 }
 
 const MAX_REQUESTS_SHOWN = 3;

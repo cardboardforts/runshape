@@ -10,6 +10,7 @@ import type { FunctionView } from "./views/function-view";
 import type { ReplayStep } from "./views/replay";
 import type { RunDiff } from "./views/run-diff";
 import type { ComponentWiring, ObjectGraph } from "./views/object-graph";
+import type { ReviewSummary } from "./views/review";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "./views/execution-diff";
 import type { SystemGraph } from "./views/system-graph";
 
@@ -38,7 +39,7 @@ export type UiResponse =
   | { type: "component"; view: ComponentView }
   | { type: "function"; view: FunctionView }
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
-  | { type: "diff"; diff: RunDiff }
+  | { type: "diff"; diff: RunDiff; review: ReviewSummary }
   | { type: "rulesChanged"; count: number }
   | { type: "executionDiff"; diff: ExecutionDiff; replay: MergedReplayStep[] }
   | { type: "functionExecutionDiff"; diff: FunctionExecutionDiff }

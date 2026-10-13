@@ -16,6 +16,8 @@ import {
   Grouping,
   Phase,
   ReplayStep,
+  ReviewCategory,
+  ReviewSummary,
   RunDiff,
   RunSummary,
   SystemGraph,
@@ -78,6 +80,7 @@ export function App({ host }: { host: Host }) {
   const [wiring, setWiring] = useState<ComponentWiring[]>([]);
   const [objectGraph, setObjectGraph] = useState<ObjectGraph | null>(null);
   const [diff, setDiff] = useState<RunDiff | null>(null);
+  const [review, setReview] = useState<ReviewSummary | null>(null);
   const [execution, setExecution] = useState<{ diff: ExecutionDiff; replay: MergedReplayStep[] } | null>(null);
   const [executionFn, setExecutionFn] = useState<FunctionExecutionDiff | null>(null);
   const [advice, setAdvice] = useState<{ componentId: string; state: AdviceState }>({ componentId: "", state: { kind: "idle" } });
@@ -157,6 +160,7 @@ export function App({ host }: { host: Host }) {
           break;
         case "diff":
           setDiff(response.diff);
+          setReview(response.review);
           break;
         case "rulesChanged": {
           setRuleCount(response.count);
@@ -299,7 +303,7 @@ export function App({ host }: { host: Host }) {
       index: 0,
       playing: execution.replay.length > 0,
     });
-  const scenarioChanges = compare && diff ? new Map(diff.scenarios.map((scenario) => [scenario.id, scenario.change])) : null;
+  const reviewCategories = compare && review ? new Map(review.items.map((item) => [item.scenarioId, item.category])) : null;
   const componentNode = detail.component ? (displayed?.nodes.find((node) => node.id === detail.component?.id) ?? null) : null;
   const selectedDiff = compare && diff ? (diff.scenarios.find((scenario) => scenario.id === selected) ?? null) : null;
   const openComponent = (node: GraphNode) => host.post({ type: "component", id: node.id, grouping });
@@ -330,7 +334,7 @@ export function App({ host }: { host: Host }) {
               <input type="checkbox" checked={compare} onChange={toggleCompare} /> Compare with previous recording
             </label>
           )}
-          {compare && diff && <DiffSummary diff={diff} />}
+          {compare && diff && review && <DiffSummary diff={diff} review={review} />}
         </header>
         {summary.problems.length > 0 && (
           <details className="problems">
@@ -347,7 +351,7 @@ export function App({ host }: { host: Host }) {
         <ScenarioList
           scenarios={summary.scenarios}
           selected={selected}
-          changes={scenarioChanges}
+          review={reviewCategories}
           onSelect={selectScenario}
           onReplay={startReplay}
         />
@@ -522,13 +526,20 @@ function Holdings({ componentId, wiring, graph }: { componentId: string; wiring:
   );
 }
 
-function DiffSummary({ diff }: { diff: RunDiff }) {
-  const changed = diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).length;
+function DiffSummary({ diff, review }: { diff: RunDiff; review: ReviewSummary }) {
   const added = diff.nodes.filter((node) => node.change === Change.Added).length;
   const removed = diff.nodes.filter((node) => node.change === Change.Removed).length;
+  const counts = review.counts;
+  const parts = [
+    counts[ReviewCategory.NowFailing] ? `${counts[ReviewCategory.NowFailing]} now failing` : "",
+    counts[ReviewCategory.SilentChange] ? `${counts[ReviewCategory.SilentChange]} still passing but run differently` : "",
+    counts[ReviewCategory.NowPassing] ? `${counts[ReviewCategory.NowPassing]} now passing` : "",
+    counts[ReviewCategory.Added] ? `${counts[ReviewCategory.Added]} new` : "",
+    counts[ReviewCategory.Removed] ? `${counts[ReviewCategory.Removed]} removed` : "",
+  ].filter(Boolean);
   return (
     <p className="diff-summary">
-      {changed === 0 ? "No journey behaves differently." : changed === 1 ? "1 journey behaves differently" : `${changed} journeys behave differently`}
+      {parts.length === 0 ? "No test behaves differently." : parts.join(" · ")}
       {added + removed > 0 && ` · components +${added} −${removed}`}
       {diff.caveats.map((caveat) => (
         <span key={caveat} className="caveat">

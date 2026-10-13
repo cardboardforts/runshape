@@ -5,10 +5,11 @@
   "workspaces": [
     "packages/core",
     "packages/webview",
-    "packages/extension"
+    "packages/extension",
+    "packages/cli"
   ],
   "scripts": {
-    "build": "npm run build -w packages/webview && npm run build -w packages/extension",
+    "build": "npm run build -w packages/webview && npm run build -w packages/extension && npm run build -w packages/cli",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces",
     "test:e2e": "npm run build && npm run test:e2e -w packages/extension"

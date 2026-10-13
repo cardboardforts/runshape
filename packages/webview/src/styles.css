@@ -817,3 +817,14 @@ button {
 .holdings p {
   margin: 4px 0;
 }
+
+.change-badge.review-now-failing { background: rgba(229, 83, 75, 0.45); }
+.change-badge.review-silent-change { background: rgba(245, 158, 11, 0.45); font-weight: 700; }
+.change-badge.review-now-passing { background: rgba(16, 185, 129, 0.3); }
+.change-badge.review-added { background: rgba(59, 130, 246, 0.3); }
+.change-badge.review-removed { background: rgba(138, 143, 152, 0.4); }
+
+.change-badge {
+  display: inline-block;
+  white-space: nowrap;
+}

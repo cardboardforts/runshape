@@ -8,6 +8,7 @@ import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
 import { buildReplay } from "./views/replay";
 import { diffExecution, diffFunctionExecution, mergeReplays } from "./views/execution-diff";
 import { aggregateWiring, buildObjectGraph } from "./views/object-graph";
+import { buildReview } from "./views/review";
 import { diffRuns } from "./views/run-diff";
 import { buildSystemGraph } from "./views/system-graph";
 
@@ -158,6 +159,7 @@ export class ViewerSession {
         return {
           type: "diff",
           diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
+          review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
         };
       case "setRing": {
         if (this.ruleStore === null) return { type: "error", message: "Rings can't be saved from here." };
