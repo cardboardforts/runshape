@@ -20,6 +20,8 @@ interface Props {
   step: ReplayStep | null;
   stepOp: Op | null;
   stepIndex: number;
+  /** How long this step plays; its pulse takes as long to cross the edge. */
+  stepMs: number;
   onOpenComponent: (node: GraphNode) => void;
 }
 
@@ -32,6 +34,7 @@ export function GraphCanvas({
   step,
   stepOp,
   stepIndex,
+  stepMs,
   onOpenComponent,
 }: Props) {
   const emphasisOf = (scenarioIds: string[]): Emphasis => {
@@ -65,7 +68,7 @@ export function GraphCanvas({
       emphasis: emphasisOf(edge.scenarioIds),
       change: edgeChanges?.get(edge.id) ?? null,
       violation: edge.violation,
-      pulse: step !== null && step.edgeId === edge.id ? { key: stepIndex, kind: step.kind, op: stepOp } : null,
+      pulse: step !== null && step.edgeId === edge.id ? { key: stepIndex, kind: step.kind, op: stepOp, durationMs: stepMs } : null,
     },
   }));
 

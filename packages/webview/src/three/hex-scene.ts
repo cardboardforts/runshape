@@ -23,7 +23,8 @@ const CHANGED_COLOR = 0xf59e0b;
 const CORE_FLOOR_COLOR = 0x10b981;
 // Above 1.0 so only the packets cross the bloom threshold and glow.
 const PULSE_BRIGHTNESS = 3;
-const PULSE_MS = 450;
+/** Even a pulse for an instant hop stays visible this long. */
+const MIN_PULSE_MS = 60;
 const TRAIL_POINTS = 14;
 const TRAIL_LENGTH = 0.12;
 const TILE_HEIGHT = 1.2;
@@ -62,6 +63,7 @@ interface Packet {
   curve: THREE.Curve<THREE.Vector3>;
   reverse: boolean;
   started: number;
+  durationMs: number;
   head: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   trail: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
 }
@@ -275,7 +277,7 @@ export class HexScene {
   }
 
   /** Send a packet of light along a call's arc (backwards for a return). */
-  pulse(edgeId: string, kind: StepKind, op: Op | null): void {
+  pulse(edgeId: string, kind: StepKind, op: Op | null, durationMs: number): void {
     const arc = this.arcs.get(edgeId);
     if (!arc) return;
     const color = new THREE.Color(op === Op.Added ? ADDED_COLOR : op === Op.Removed ? REMOVED_COLOR : kind === StepKind.External ? 0xc084fc : 0xfde047);
@@ -291,7 +293,7 @@ export class HexScene {
     trailGeometry.setAttribute("color", new THREE.Float32BufferAttribute(fade, 3));
     const trail = new THREE.Line(trailGeometry, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true }));
     this.world.add(head, trail);
-    this.packets.push({ curve: arc.curve, reverse: kind === StepKind.Return, started: performance.now(), head, trail });
+    this.packets.push({ curve: arc.curve, reverse: kind === StepKind.Return, started: performance.now(), durationMs: Math.max(durationMs, MIN_PULSE_MS), head, trail });
   }
 
   dispose(): void {
@@ -450,7 +452,7 @@ export class HexScene {
   private advancePackets(now: number): void {
     for (let i = this.packets.length - 1; i >= 0; i -= 1) {
       const packet = this.packets[i]!;
-      const progress = (now - packet.started) / PULSE_MS;
+      const progress = (now - packet.started) / packet.durationMs;
       if (progress >= 1) {
         this.disposeObject(packet.head, packet.trail);
         this.packets.splice(i, 1);

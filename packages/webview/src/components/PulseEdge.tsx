@@ -10,6 +10,7 @@ export type Pulse = {
   kind: StepKind;
   /** Replaying a change: a hop only the old code made, or only the new code makes. */
   op: Op | null;
+  durationMs: number;
 };
 
 export type PulseEdgeData = {
@@ -22,8 +23,6 @@ export type PulseEdgeData = {
 };
 
 export type PulseFlowEdge = Edge<PulseEdgeData, "pulse">;
-
-const PULSE_DURATION = "0.45s";
 
 /** An edge whose thickness grows with traffic, and that can carry a pulse of light. */
 export function PulseEdge(props: EdgeProps<PulseFlowEdge>) {
@@ -54,7 +53,7 @@ export function PulseEdge(props: EdgeProps<PulseFlowEdge>) {
       {pulse && (
         <circle key={pulse.key} r={5} className={`pulse pulse-${pulse.kind}${pulse.op && pulse.op !== Op.Same ? ` pulse-op-${pulse.op}` : ""}`}>
           <animateMotion
-            dur={PULSE_DURATION}
+            dur={`${pulse.durationMs}ms`}
             repeatCount="1"
             fill="freeze"
             path={path}

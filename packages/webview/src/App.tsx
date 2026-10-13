@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ArchitectureProfile,
+  describeGap,
+  ReplayPace,
+  stepDurationsMs,
   CallStep,
   Change,
   ExecutionDiff,
@@ -58,7 +61,6 @@ interface Detail {
   fn: FunctionView | null;
 }
 
-const STEP_INTERVAL_MS = 450;
 const TEST_BODY_ONLY = [Phase.Call];
 const WITH_SETUP = [Phase.Setup, Phase.Call];
 const INITIAL_GROUPING: Grouping = { collapseMiddleware: true };
@@ -77,6 +79,7 @@ export function App({ host }: { host: Host }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail>({ component: null, fn: null });
   const [replay, setReplay] = useState<Replay | null>(null);
+  const [pace, setPace] = useState(ReplayPace.Even);
   const [compare, setCompare] = useState(false);
   const [threeD, setThreeD] = useState(false);
   const [wiring, setWiring] = useState<ComponentWiring[]>([]);
@@ -214,20 +217,25 @@ export function App({ host }: { host: Host }) {
     };
   }, [displayed]);
 
-  // Replay clock.
+  // Replay clock: each step lasts its own duration. A change replay interleaves two
+  // recordings whose clocks don't compare, so it always plays evenly.
   const playing = replay?.playing ?? false;
+  const replaySteps = replay?.steps ?? null;
+  const effectivePace = replay?.ops ? ReplayPace.Even : pace;
+  const stepMs = useMemo(() => (replaySteps ? stepDurationsMs(replaySteps, effectivePace) : []), [replaySteps, effectivePace]);
+  const replayIndex = replay?.index ?? 0;
   useEffect(() => {
     if (!playing) return;
-    const timer = window.setInterval(() => {
+    const timer = window.setTimeout(() => {
       setReplay((current) => {
         if (current === null) return null;
         const next = current.index + 1;
         if (next >= current.steps.length) return { ...current, playing: false };
         return { ...current, index: next };
       });
-    }, STEP_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [playing]);
+    }, stepMs[replayIndex] ?? 0);
+    return () => window.clearTimeout(timer);
+  }, [playing, replayIndex, stepMs]);
 
   // Memoised so the 3D scene's emphasis effect, which depends on them, doesn't rerun on every
   // render (each replay tick). Hooks, so above the early return.
@@ -380,6 +388,7 @@ export function App({ host }: { host: Host }) {
             step={step}
             stepOp={replay?.ops?.[replay.index] ?? null}
             stepIndex={replay?.index ?? 0}
+            stepMs={stepMs[replayIndex] ?? 0}
             onOpenComponent={openComponent}
           />
         ) : displayed === null || positions === null ? (
@@ -397,6 +406,7 @@ export function App({ host }: { host: Host }) {
             step={step}
             stepOp={replay?.ops?.[replay.index] ?? null}
             stepIndex={replay?.index ?? 0}
+            stepMs={stepMs[replayIndex] ?? 0}
             onOpenComponent={openComponent}
           />
         )}
@@ -407,6 +417,10 @@ export function App({ host }: { host: Host }) {
             ops={replay.ops}
             index={replay.index}
             playing={replay.playing}
+            pace={effectivePace}
+            paceFixed={replay.ops !== null}
+            gap={describeGap(replay.steps, replay.index)}
+            onPace={setPace}
             onPlayPause={() =>
               setReplay((current) =>
                 current === null

@@ -16,11 +16,12 @@ interface Props {
   step: ReplayStep | null;
   stepOp: Op | null;
   stepIndex: number;
+  stepMs: number;
   onOpenComponent: (node: GraphNode) => void;
 }
 
 /** The 3D renderer: same inputs as the 2D graph canvas, drawn on a hexagon floor. */
-export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, onOpenComponent }: Props) {
+export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, onOpenComponent }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<HexScene | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -73,8 +74,9 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
   }, [graph, wiring, objects, selectedScenario, step, nodeChanges, edgeChanges]);
 
   useEffect(() => {
-    if (step) scene.current?.pulse(step.edgeId, step.kind, stepOp);
-    // stepIndex: the same edge twice in a row must still pulse twice.
+    if (step) scene.current?.pulse(step.edgeId, step.kind, stepOp, stepMs);
+    // stepIndex: the same edge twice in a row must still pulse twice. Not stepMs: switching
+    // the pace mid-step must not fire the same pulse again.
   }, [step, stepOp, stepIndex]);
 
   return (
