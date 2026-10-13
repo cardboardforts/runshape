@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ArchitectureProfile,
+  PROFILES,
   describeGap,
   ReplayPace,
   stepDurationsMs,
@@ -95,8 +96,15 @@ export function App({ host }: { host: Host }) {
   // Read inside the host listener, which is subscribed once and would see stale state.
   const runLoaded = useRef(false);
   const loadFailed = useRef(false);
-  const viewOptions = useRef({ phases: TEST_BODY_ONLY, grouping: INITIAL_GROUPING, compare: false });
-  viewOptions.current = { phases: includeSetup ? WITH_SETUP : TEST_BODY_ONLY, grouping, compare };
+  // The style to draw in when it isn't runshape.json's own; never saved.
+  const [drawStyle, setDrawStyle] = useState<string | undefined>(undefined);
+  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined }>({
+    phases: TEST_BODY_ONLY,
+    grouping: INITIAL_GROUPING,
+    compare: false,
+    style: undefined,
+  });
+  viewOptions.current = { phases: includeSetup ? WITH_SETUP : TEST_BODY_ONLY, grouping, compare, style: drawStyle };
 
   // In compare mode the canvas shows the union of both recordings. Memoised only so the
   // layout effect below sees a stable object, not a new one every render.
@@ -136,17 +144,17 @@ export function App({ host }: { host: Host }) {
             setExecution(null);
             setExecutionFn(null);
             setObjectGraph(null);
-            const { phases, grouping: currentGrouping, compare: comparing } = viewOptions.current;
-            host.post({ type: "graph", phases, grouping: currentGrouping });
+            const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
+            host.post({ type: "graph", phases, grouping: currentGrouping, style });
             if (comparing && response.summary.baselineCreatedAt !== null) {
-              host.post({ type: "diff", phases, grouping: currentGrouping });
+              host.post({ type: "diff", phases, grouping: currentGrouping, style });
             }
             if (response.summary.baselineCreatedAt === null) setCompare(false);
           }
           runLoaded.current = true;
           loadFailed.current = false;
           setSummary(response.summary);
-          setRuleCount(response.summary.ringRules);
+          setRuleCount(response.summary.zoneRules);
           setStatus(response.summary.scenarios.length === 0 ? { kind: "empty", message: "This recording has no scenarios." } : { kind: "ready" });
           break;
         case "graph":
@@ -170,10 +178,10 @@ export function App({ host }: { host: Host }) {
         case "rulesChanged": {
           setRuleCount(response.count);
           // Zones changed: everything coloured by zone is stale.
-          const { phases, grouping: currentGrouping, compare: comparing } = viewOptions.current;
+          const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
           setAdvice({ componentId: "", state: { kind: "idle" } });
-          host.post({ type: "graph", phases, grouping: currentGrouping });
-          if (comparing) host.post({ type: "diff", phases, grouping: currentGrouping });
+          host.post({ type: "graph", phases, grouping: currentGrouping, style });
+          if (comparing) host.post({ type: "diff", phases, grouping: currentGrouping, style });
           if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
           break;
         }
@@ -252,15 +260,15 @@ export function App({ host }: { host: Host }) {
   const phases = includeSetup ? WITH_SETUP : TEST_BODY_ONLY;
   // The graph and the replay must be cut into the same boxes, so changing either view
   // option drops a running replay rather than letting it pulse along edges that are gone.
-  const requestViews = (nextPhases: Phase[], nextGrouping: Grouping, comparing: boolean) => {
+  const requestViews = (nextPhases: Phase[], nextGrouping: Grouping, comparing: boolean, style = drawStyle) => {
     setReplay(null);
-    host.post({ type: "graph", phases: nextPhases, grouping: nextGrouping });
+    host.post({ type: "graph", phases: nextPhases, grouping: nextGrouping, style });
     if (comparing) {
       // Every compare view depends on the options; none may outlive them.
       setDiff(null);
       setExecution(null);
       setExecutionFn(null);
-      host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping });
+      host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping, style });
       if (selected !== null) host.post({ type: "executionDiff", scenarioId: selected, phases: nextPhases, grouping: nextGrouping });
     }
   };
@@ -274,13 +282,18 @@ export function App({ host }: { host: Host }) {
     setGrouping(next);
     requestViews(phases, next, compare);
   };
+  const changeStyle = (style: string) => {
+    const next = style === summary.style ? undefined : style;
+    setDrawStyle(next);
+    requestViews(phases, grouping, compare, next);
+  };
   const toggleCompare = () => {
     const next = !compare;
     setCompare(next);
     setReplay(null);
     if (next) {
       setDiff(null); // never show a diff computed for other view options
-      host.post({ type: "diff", phases, grouping });
+      host.post({ type: "diff", phases, grouping, style: drawStyle });
       if (selected !== null) requestExecution(selected);
     }
   };
@@ -337,7 +350,18 @@ export function App({ host }: { host: Host }) {
             <input type="checkbox" checked={!grouping.collapseMiddleware} onChange={toggleMiddleware} /> Show each middleware
           </label>
           <label className="toggle">
-            <input type="checkbox" checked={threeD} onChange={toggleThreeD} /> 3D (hexagon floor)
+            <input type="checkbox" checked={threeD} onChange={toggleThreeD} /> 3D
+          </label>
+          <label className="style-picker">
+            Draw as
+            <select value={drawStyle ?? summary.style} onChange={(event) => changeStyle(event.target.value)}>
+              {PROFILES.map((profile) => (
+                <option key={profile.style} value={profile.style}>
+                  {profile.name}
+                  {profile.style === summary.style ? " — runshape.json" : ""}
+                </option>
+              ))}
+            </select>
           </label>
           {summary.baselineCreatedAt !== null && (
             <label className="toggle">
@@ -468,7 +492,8 @@ export function App({ host }: { host: Host }) {
                     key={`${componentNode.id}|${componentNode.zone}|${componentNode.zoneReason}`}
                     node={componentNode}
                     profile={displayed.profile}
-                    canEdit={summary.canEditRules}
+                    // Rules are saved in runshape.json's style; drawn in another, the zones on offer aren't its.
+                    canEdit={summary.canEditRules && displayed.profile.style === summary.style}
                     canAdvise={summary.canAdviseZones}
                     advice={advice.componentId === componentNode.id ? advice.state : { kind: "idle" }}
                     onSetZone={(zone, reason, by) =>

@@ -830,3 +830,14 @@ button {
   display: inline-block;
   white-space: nowrap;
 }
+
+.style-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.style-picker select {
+  max-width: 100%;
+}

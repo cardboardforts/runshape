@@ -17,11 +17,12 @@ import type { SystemGraph } from "./views/system-graph";
 export type UiRequest =
   | { type: "ready" }
   | { type: "reload" }
-  | { type: "graph"; phases: Phase[]; grouping: Grouping }
+  /** `style` draws the graph in another style than runshape.json declares, without saving it. */
+  | { type: "graph"; phases: Phase[]; grouping: Grouping; style?: string }
   | { type: "component"; id: string; grouping: Grouping }
   | { type: "function"; module: string; qualname: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
-  | { type: "diff"; phases: Phase[]; grouping: Grouping }
+  | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
   | { type: "setZone"; qualifiedName: string; zone: string; reason: string; by: ZoneRule["by"] }
   | { type: "adviseZone"; componentId: string; grouping: Grouping }
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }

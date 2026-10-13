@@ -2,7 +2,7 @@ import { Background, Controls, ReactFlow } from "@xyflow/react";
 
 import { Change, GraphNode, Op, ReplayStep, SystemGraph } from "@runshape/core";
 
-import type { Positioned } from "../layout";
+import { flowsDown, Positioned } from "../layout";
 import { ComponentFlowNode, ComponentNode, Emphasis } from "./ComponentNode";
 import { PulseEdge, PulseFlowEdge } from "./PulseEdge";
 
@@ -49,6 +49,7 @@ export function GraphCanvas({
     data: {
       node,
       profile: graph.profile,
+      vertical: flowsDown(graph),
       emphasis: emphasisOf(node.scenarioIds),
       active: step !== null && (step.from === node.id || step.to === node.id),
       change: nodeChanges?.get(node.id) ?? null,

@@ -11,6 +11,8 @@ export type Emphasis = "normal" | "highlighted" | "dimmed";
 export type ComponentNodeData = {
   node: GraphNode;
   profile: ArchitectureProfile;
+  /** Edges enter at the top and leave at the bottom, for styles drawn top to bottom. */
+  vertical: boolean;
   emphasis: Emphasis;
   active: boolean;
   change: Change | null;
@@ -20,11 +22,11 @@ export type ComponentNodeData = {
 export type ComponentFlowNode = Node<ComponentNodeData, "component">;
 
 export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
-  const { node, profile, emphasis, active, change, onOpen } = data;
+  const { node, profile, vertical, emphasis, active, change, onOpen } = data;
   const smells = node.smells.map((smell) => smellText(profile, node, smell));
   return (
     <>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <Handle type="target" position={vertical ? Position.Top : Position.Left} isConnectable={false} />
       <button
         type="button"
         className={`component ${zoneClass(profile, node.zone)} emphasis-${emphasis}${active ? " active" : ""}${change ? ` change-${change}` : ""}`}
@@ -44,7 +46,7 @@ export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
           {node.instances > 0 ? ` · ${node.instances} obj` : ""}
         </span>
       </button>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
+      <Handle type="source" position={vertical ? Position.Bottom : Position.Right} isConnectable={false} />
     </>
   );
 }

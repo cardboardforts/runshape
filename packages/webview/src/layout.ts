@@ -1,7 +1,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import { ComponentKind, FixedZone, GraphNode, SystemGraph, zonePosition } from "@runshape/core";
+import { ComponentKind, FixedZone, GraphNode, LayoutShape, SystemGraph, zonePosition } from "@runshape/core";
 
 export const NODE_WIDTH = 188;
 export const NODE_HEIGHT = 46;
@@ -46,20 +46,26 @@ function partitionOf(node: GraphNode, graph: SystemGraph): number {
 
 const elk = new ELK();
 
+/** Layers are drawn as bands, top to bottom; every other style flows left to right. */
+export function flowsDown(graph: SystemGraph): boolean {
+  return graph.profile.layout === LayoutShape.Bands;
+}
+
 export async function layoutGraph(graph: SystemGraph): Promise<Map<string, Positioned>> {
   const root: ElkNode = {
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
-      "elk.direction": "RIGHT",
+      "elk.direction": flowsDown(graph) ? "DOWN" : "RIGHT",
       "elk.partitioning.activate": "true",
       "elk.layered.spacing.nodeNodeBetweenLayers": "70",
       "elk.spacing.nodeNode": "18",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.crossingMinimization.semiInteractive": "false",
       // Long request chains make a very wide, short graph; wrap it into rows nearer the
-      // canvas's shape so it stays legible when fitted.
-      "elk.layered.wrapping.strategy": "MULTI_EDGE",
+      // canvas's shape so it stays legible when fitted. Not MULTI_EDGE: it crashes inside ELK
+      // on some graphs (test/layout.test.ts).
+      "elk.layered.wrapping.strategy": "SINGLE_EDGE",
       "elk.aspectRatio": "1.6",
     },
     children: graph.nodes.map((node) => ({

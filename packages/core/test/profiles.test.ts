@@ -5,8 +5,11 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { ArchitectureStyle, profileFor } from "../src/profiles";
+import { ArchitectureStyle, HexagonalZone, profileFor } from "../src/profiles";
+import { ViewerSession } from "../src/session";
+import { ZoneRules } from "../src/zones";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
+import { Phase } from "../src/model";
 import { loadFixtureRun } from "./fixtures";
 
 const GROUPING = { collapseMiddleware: true };
@@ -102,5 +105,24 @@ describe("mvc", () => {
       ]
     `);
     expect(violations(graph)).toMatchInlineSnapshot(`[]`);
+  });
+});
+
+describe("drawing in another style", () => {
+  test("the viewer can draw a run in any style without saving it; the file's own rules apply only to its own style", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const rules = new ZoneRules([{ match: "app.db.repositories.users.UsersRepository", zone: HexagonalZone.Core, reason: "a test rule", by: "user" }]);
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, rules });
+    const usersRepository = async (style?: string) => {
+      const response = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING, style });
+      if (response?.type !== "graph") return response;
+      const node = response.graph.nodes.find((n) => n.label === "UsersRepository")!;
+      return `${response.graph.profile.style}: ${node.zone} (${node.zoneSource})`;
+    };
+
+    expect(session.summary().style).toBe("hexagonal");
+    expect(await usersRepository()).toBe("hexagonal: core (rule)");
+    expect(await usersRepository("layered")).toBe("layered: data (inferred)");
+    expect(await usersRepository("microservices")).toEqual({ type: "error", message: 'unknown style "microservices"; one of hexagonal, layered, mvc, mvvm, mvp' });
   });
 });

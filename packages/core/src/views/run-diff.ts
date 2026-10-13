@@ -63,14 +63,16 @@ export interface DiffOptions {
   phases?: Phase[];
   grouping?: Grouping;
   rules?: ZoneRules;
+  /** The style to draw both sides in; defaults to the rules' style. */
+  profile?: ArchitectureProfile;
 }
 
 export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): RunDiff {
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
   const rules = options.rules ?? ZoneRules.none();
-  const graphBefore = buildSystemGraph(before, { phases, grouping, rules });
-  const graphAfter = buildSystemGraph(after, { phases, grouping, rules });
+  const graphBefore = buildSystemGraph(before, { phases, grouping, rules, profile: options.profile });
+  const graphAfter = buildSystemGraph(after, { phases, grouping, rules, profile: options.profile });
 
   const nodes = mergeById(graphBefore.nodes, graphAfter.nodes, (node, change) => ({ ...node, change }));
   const edges = mergeById(graphBefore.edges, graphAfter.edges, (edge, change, previous) => ({

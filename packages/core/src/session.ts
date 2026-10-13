@@ -1,4 +1,5 @@
 import { Outcome, Run } from "./model";
+import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
 import { ZoneRules } from "./zones";
 import { UiRequest, UiResponse } from "./ui-protocol";
@@ -53,7 +54,9 @@ export interface RunSummary {
   scenarios: ScenarioSummary[];
   /** When the previous recording was made, if there is one to compare against. */
   baselineCreatedAt: string | null;
-  ringRules: number;
+  /** How many rules runshape.json has, and the style it declares (hexagonal without a file). */
+  zoneRules: number;
+  style: ArchitectureStyle;
   canEditRules: boolean;
   canAdviseZones: boolean;
 }
@@ -111,7 +114,8 @@ export class ViewerSession {
         requests: scenario.requests().map((span) => `${span.request?.method} ${span.request?.path}`),
       })),
       baselineCreatedAt: this.baseline?.createdAt ?? null,
-      ringRules: this.rules.rules.length,
+      zoneRules: this.rules.rules.length,
+      style: this.rules.profile.style,
       canEditRules: this.ruleStore !== null,
       canAdviseZones: this.advisor?.available ?? false,
     };
@@ -121,13 +125,16 @@ export class ViewerSession {
     switch (request.type) {
       case "ready":
         return { type: "run", summary: this.summary() };
-      case "graph":
+      case "graph": {
+        const profile = this.drawingStyle(request.style);
+        if (profile === null) return { type: "error", message: unknownStyle(request.style) };
         return {
           type: "graph",
           phases: request.phases,
-          graph: buildSystemGraph(this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
+          graph: buildSystemGraph(this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile }),
           wiring: aggregateWiring(this.run),
         };
+      }
       case "objects": {
         const scenario = this.run.scenario(request.scenarioId);
         if (scenario === undefined) return { type: "error", message: `no scenario ${request.scenarioId} in this run` };
@@ -154,13 +161,16 @@ export class ViewerSession {
           steps: buildReplay(scenario, request.phases, request.grouping),
         };
       }
-      case "diff":
+      case "diff": {
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
+        const profile = this.drawingStyle(request.style);
+        if (profile === null) return { type: "error", message: unknownStyle(request.style) };
         return {
           type: "diff",
-          diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
+          diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile }),
           review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
         };
+      }
       case "setZone": {
         if (this.ruleStore === null) return { type: "error", message: "Zones can't be saved from here." };
         if (this.rulesProblem !== null) {
@@ -204,6 +214,12 @@ export class ViewerSession {
       case "reload":
         return null; // host concerns: the extension handles these itself
     }
+  }
+
+  /** The style asked for, or the rules' own; null when asked for one that doesn't exist. */
+  private drawingStyle(style: string | undefined): ArchitectureProfile | null {
+    if (style === undefined) return this.rules.profile;
+    return profileFor(style) ?? null;
   }
 
   private async adviseZone(componentId: string, grouping: Grouping): Promise<UiResponse> {
@@ -269,4 +285,8 @@ function classStatementLine(lines: string[], firstMethodLine: number, className:
     if (header.test(lines[line - 1] ?? "")) return line;
   }
   return Math.max(firstMethodLine - 1, 1);
+}
+
+function unknownStyle(style: string | undefined): string {
+  return `unknown style ${JSON.stringify(style)}; one of ${PROFILES.map((profile) => profile.style).join(", ")}`;
 }
