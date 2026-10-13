@@ -7,7 +7,7 @@ import { Run } from "../src/model";
 const FIXTURES = join(import.meta.dirname, "fixtures");
 
 /** Real traces recorded from the example apps (see examples/record.sh), not hand-written. */
-export type FixtureApp = "django" | "fastapi" | "django-feed-fix";
+export type FixtureApp = "django" | "fastapi" | "django-feed-fix" | "fastapi-slug-refactor";
 
 export function fixtureFiles(app: FixtureApp): TraceFiles {
   return { readText: (relativePath) => readFile(join(FIXTURES, app, relativePath), "utf8") };

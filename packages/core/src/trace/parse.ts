@@ -61,6 +61,7 @@ export function parseRun(manifest: ManifestDto, loaded: LoadedScenario[]): Run {
     scenarios,
     problems,
     manifest.recorder ?? null,
+    manifest.sources ? new Map(Object.entries(manifest.sources)) : null,
   );
 }
 

@@ -10,5 +10,12 @@ Real recordings of the two example apps, used by the core tests and the webview 
   being set up. There is deliberately no `django/source/`: that upstream repo has no license,
   so its source is not redistributed here; the demo reads it from `examples/` if present.
 
+- `django-feed-fix/` — before and after fixing the Django feed routing bug (compare mode).
+- `fastapi-slug-refactor/` — before and after a refactor of the FastAPI example's slug check
+  (execution diff). The change itself is described in `test/execution-diff.test.ts`.
+
+Recordings now include the source they ran (`sources` in the manifest). Never commit a new
+Django recording as a fixture without stripping `sources`: that upstream has no license.
+
 Regenerate after changing the recorder: run the example, then copy `.hexvis/traces/<run>/`
 over `<app>/run/`. The inline snapshots in `test/*.test.ts` will show what changed.

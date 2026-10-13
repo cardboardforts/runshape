@@ -174,7 +174,14 @@ export class Run {
     readonly scenarios: Scenario[],
     readonly problems: string[],
     readonly recorderVersion: string | null = null,
+    /** Project source as it was when recorded, by file; null for older recordings. */
+    readonly sources: ReadonlyMap<string, string[]> | null = null,
   ) {}
+
+  /** The text of a line as it was when this run was recorded. */
+  sourceLine(file: string, line: number): string | null {
+    return this.sources?.get(file)?.[line - 1] ?? null;
+  }
 
   scenario(nodeid: string): Scenario | undefined {
     return this.scenarios.find((s) => s.nodeid === nodeid);

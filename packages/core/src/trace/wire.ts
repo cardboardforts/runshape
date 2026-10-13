@@ -15,6 +15,8 @@ export interface ManifestDto {
   root: string;
   framework: FrameworkDto | null;
   catalog: CatalogFunctionDto[];
+  /** Project source at record time, by file; absent in recordings made before the field existed. */
+  sources?: Record<string, string[]>;
   catalogProblems: { file: string; reason: string }[];
   sessionProblems: string[];
   scenarios: ScenarioIndexDto[];
