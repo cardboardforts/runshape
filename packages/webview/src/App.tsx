@@ -86,6 +86,7 @@ export function App({ host }: { host: Host }) {
   const [detail, setDetail] = useState<Detail>({ component: null, fn: null });
   const [replay, setReplay] = useState<Replay | null>(null);
   const [pace, setPace] = useState(ReplayPace.Even);
+  const [layoutFailure, setLayoutFailure] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
   const [threeD, setThreeD] = useState(false);
   const [wiring, setWiring] = useState<ComponentWiring[]>([]);
@@ -240,13 +241,17 @@ export function App({ host }: { host: Host }) {
     if (displayed === null) return;
     let cancelled = false;
     setPositions(null);
+    setLayoutFailure(null);
     layoutGraph(displayed)
       .then((laidOut) => {
         if (cancelled) return;
         setPositions(laidOut);
         setLayoutVersion((version) => version + 1);
       })
-      .catch((error: unknown) => setNotice(`Layout failed: ${error instanceof Error ? error.message : String(error)}`));
+      .catch((error: unknown) => {
+        // Otherwise the canvas would say "Laying out…" for ever.
+        if (!cancelled) setLayoutFailure(error instanceof Error ? error.message : String(error));
+      });
     return () => {
       cancelled = true;
     };
@@ -484,7 +489,9 @@ export function App({ host }: { host: Host }) {
             onOpenComponent={openComponent}
           />
         ) : displayed === null || positions === null ? (
-          <p className="muted centered">Laying out the system…</p>
+          <p className={layoutFailure ? "centered" : "muted centered"} role={layoutFailure ? "alert" : "status"}>
+            {layoutFailure ? `Couldn't lay this graph out in 2D (${layoutFailure}). The 3D view doesn't need this layout.` : "Laying out the system…"}
+          </p>
         ) : displayed.nodes.length === 0 ? (
           <p className="muted centered">Nothing ran in the selected phases.</p>
         ) : (

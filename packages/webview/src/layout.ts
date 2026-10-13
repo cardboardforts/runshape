@@ -51,35 +51,63 @@ export function flowsDown(graph: SystemGraph): boolean {
   return graph.profile.layout === LayoutShape.Bands;
 }
 
+interface ElkSettings {
+  /** Folds a long, flat graph into rows nearer the canvas's shape. */
+  wrapping: "SINGLE_EDGE" | "OFF";
+  /** Keeps zones in column order (partitionOf). */
+  partitioned: boolean;
+}
+
+/**
+ * Best first. ELK crashes inside itself on some graph shapes: with wrapping on about 6% of
+ * random graphs, with partitioning on rarer ones (test/layout.test.ts). Each fallback gives
+ * up one nicety; the last places every node, just not in zone columns.
+ */
+const ATTEMPTS: ElkSettings[] = [
+  { wrapping: "SINGLE_EDGE", partitioned: true },
+  { wrapping: "OFF", partitioned: true },
+  { wrapping: "OFF", partitioned: false },
+];
+
 export async function layoutGraph(graph: SystemGraph): Promise<Map<string, Positioned>> {
-  const root: ElkNode = {
+  let laidOut: ElkNode | null = null;
+  let lastError: unknown = null;
+  for (const settings of ATTEMPTS) {
+    try {
+      laidOut = await elk.layout(elkGraph(graph, settings));
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (laidOut === null) throw lastError;
+  const positions = new Map<string, Positioned>();
+  for (const child of laidOut.children ?? []) {
+    positions.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
+  }
+  return positions;
+}
+
+function elkGraph(graph: SystemGraph, { wrapping, partitioned }: ElkSettings): ElkNode {
+  return {
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
       "elk.direction": flowsDown(graph) ? "DOWN" : "RIGHT",
-      "elk.partitioning.activate": "true",
+      "elk.partitioning.activate": String(partitioned),
       "elk.layered.spacing.nodeNodeBetweenLayers": "70",
       "elk.spacing.nodeNode": "18",
       "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
       "elk.layered.crossingMinimization.semiInteractive": "false",
-      // Long request chains make a very wide, short graph; wrap it into rows nearer the
-      // canvas's shape so it stays legible when fitted. Not MULTI_EDGE: it crashes inside ELK
-      // on some graphs (test/layout.test.ts).
-      "elk.layered.wrapping.strategy": "SINGLE_EDGE",
+      "elk.layered.wrapping.strategy": wrapping,
       "elk.aspectRatio": "1.6",
     },
     children: graph.nodes.map((node) => ({
       id: node.id,
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
-      layoutOptions: { "elk.partitioning.partition": String(partitionOf(node, graph)) },
+      layoutOptions: partitioned ? { "elk.partitioning.partition": String(partitionOf(node, graph)) } : ({} as Record<string, string>),
     })),
     edges: graph.edges.map((edge) => ({ id: edge.id, sources: [edge.from], targets: [edge.to] })),
   };
-  const laidOut = await elk.layout(root);
-  const positions = new Map<string, Positioned>();
-  for (const child of laidOut.children ?? []) {
-    positions.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
-  }
-  return positions;
 }
