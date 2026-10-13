@@ -151,6 +151,13 @@ def test_manifest_catalogs_every_project_function_including_uncalled_ones(shop):
         "lines": [11, 12, 13, 14],
     }
     assert manifest["framework"] is None
+    # The source as it was when recorded, for comparing runs by code rather than line numbers.
+    assert manifest["sources"]["shop/domain.py"][9:13] == [
+        "    def total(self):",
+        "        subtotal = sum(self.items)",
+        "        if subtotal >= BULK_DISCOUNT_THRESHOLD:",
+        "            return subtotal - 1",
+    ]
 
 
 def test_each_run_remembers_the_one_before_it_as_the_baseline_for_comparison(shop):

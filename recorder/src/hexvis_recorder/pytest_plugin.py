@@ -161,6 +161,7 @@ class RecordingSession:
             backend=self._backend.name,
             topology=self._topology,
             catalog=self._catalog.functions_under(directories),
+            sources=self._catalog.sources,
             catalog_problems=self._catalog.problems,
             session_problems=self._problems,
         )

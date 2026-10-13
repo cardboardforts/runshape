@@ -90,6 +90,7 @@ class JsonTraceStore:
         backend: str,
         topology: Optional[FrameworkTopology],
         catalog: List[CatalogFunction],
+        sources: Dict[str, List[str]],
         catalog_problems: List[CatalogProblem],
         session_problems: List[str],
     ) -> str:
@@ -106,6 +107,7 @@ class JsonTraceStore:
                 "root": root,
                 "framework": _topology(topology),
                 "catalog": [_catalog_function(f) for f in catalog],
+                "sources": sources,
                 "catalogProblems": [{"file": p.file, "reason": p.reason} for p in catalog_problems],
                 "sessionProblems": session_problems,
                 "scenarios": [

@@ -27,6 +27,7 @@ half-written run.
 | `root` | absolute path the recording was made in (informational; file paths below are relative to it) |
 | `framework` | `null`, or `{framework, entry, middleware[], router, routes[{methods, path, handler}], externals[{name, kind}]}` read from the app at startup |
 | `catalog[]` | every function in the source and test directories: `{file, module, qualname, firstLine, lastLine, lines[]}`; `lines` are the executable lines. Built by compiling, never importing, the source. |
+| `sources` | optional `{file: [line, ...]}`: the text of every catalogued file when recorded, so runs can be compared by what the code said rather than by line numbers. Present from recorder 0.1.0 on; treat a trace like the source it contains |
 | `catalogProblems[]`, `sessionProblems[]` | what the recorder couldn't do, in words |
 | `scenarios[]` | `{nodeid, file, outcome, durationUs, eventCount, recorderErrors}` |
 

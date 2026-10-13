@@ -39,6 +39,9 @@ class SourceCatalog:
         self._root = os.path.realpath(root)
         self._by_location: Dict[Tuple[str, int, str], str] = {}
         self._compiled_files: Dict[str, List[CatalogFunction]] = {}
+        # Source text as recorded, so a later run can be compared by what the code said,
+        # not by line numbers that move whenever anything above them changes.
+        self.sources: Dict[str, List[str]] = {}
         self.problems: List[CatalogProblem] = []
 
     def qualname(self, code: CodeType) -> str:
@@ -65,11 +68,13 @@ class SourceCatalog:
             with open(filename, "rb") as source, warnings.catch_warnings():
                 # Compiling surfaces the project's own SyntaxWarnings; they aren't ours to report.
                 warnings.simplefilter("ignore")
-                module_code = compile(source.read(), filename, "exec", dont_inherit=True)
+                raw = source.read()
+                module_code = compile(raw, filename, "exec", dont_inherit=True)
         except (OSError, SyntaxError, ValueError) as error:
             self.problems.append(CatalogProblem(self._relative(filename), f"{type(error).__name__}: {error}"))
             return
         relative = self._relative(filename)
+        self.sources[relative] = raw.decode("utf-8", errors="replace").splitlines()
         module = _module_name(filename, self._root)
         for code, qualname in _walk(module_code, ""):
             self._by_location[(filename, code.co_firstlineno, code.co_name)] = qualname
