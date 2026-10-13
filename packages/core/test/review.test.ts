@@ -5,7 +5,9 @@
 import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
-import { buildReview, ReviewCategory, reviewMarkdown } from "../src/views/review";
+import { Outcome } from "../src/model";
+import { Change } from "../src/views/run-diff";
+import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src/views/review";
 import { FixtureApp, fixtureFiles } from "./fixtures";
 
 async function review(app: FixtureApp) {
@@ -53,6 +55,48 @@ describe("buildReview", () => {
 
       7 tests behave exactly as before.
       "
+    `);
+  });
+});
+
+describe("reviewCategoryOf", () => {
+  // Each heading makes a claim ("still passing", "now passing"); a test lands under one only
+  // when that claim is true of it. Read as: execution change, outcome before → after.
+  test("every outcome transition lands under a heading that is true of it", () => {
+    const P = Outcome.Passed, F = Outcome.Failed, S = Outcome.Skipped, X = Outcome.ExpectedFailure;
+    const cases: [Change, Outcome | null, Outcome | null][] = [
+      [Change.Changed, P, P],
+      [Change.Unchanged, P, P],
+      [Change.Changed, P, F],
+      [Change.Changed, P, X],
+      [Change.Changed, F, P],
+      [Change.Changed, X, P],
+      [Change.Changed, P, S],
+      [Change.Changed, F, S],
+      [Change.Changed, S, P],
+      [Change.Changed, F, F],
+      [Change.Changed, F, X],
+      [Change.Added, null, P],
+      [Change.Added, null, F],
+      [Change.Removed, P, null],
+    ];
+    expect(cases.map(([change, before, after]) => `${change.padEnd(9)} ${before ?? "—"} → ${after ?? "—"}: ${reviewCategoryOf(change, before, after)}`)).toMatchInlineSnapshot(`
+      [
+        "changed   passed → passed: silent-change",
+        "unchanged passed → passed: unchanged",
+        "changed   passed → failed: now-failing",
+        "changed   passed → xfailed: now-failing",
+        "changed   failed → passed: now-passing",
+        "changed   xfailed → passed: now-passing",
+        "changed   passed → skipped: now-skipped",
+        "changed   failed → skipped: now-skipped",
+        "changed   skipped → passed: now-passing",
+        "changed   failed → failed: still-failing",
+        "changed   failed → xfailed: still-failing",
+        "added     — → passed: added",
+        "added     — → failed: now-failing",
+        "removed   passed → —: removed",
+      ]
     `);
   });
 });

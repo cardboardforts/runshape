@@ -538,6 +538,8 @@ function DiffSummary({ diff, review }: { diff: RunDiff; review: ReviewSummary })
     counts[ReviewCategory.NowFailing] ? `${counts[ReviewCategory.NowFailing]} now failing` : "",
     counts[ReviewCategory.SilentChange] ? `${counts[ReviewCategory.SilentChange]} still passing but run differently` : "",
     counts[ReviewCategory.NowPassing] ? `${counts[ReviewCategory.NowPassing]} now passing` : "",
+    counts[ReviewCategory.NowSkipped] ? `${counts[ReviewCategory.NowSkipped]} no longer run` : "",
+    counts[ReviewCategory.StillFailing] ? `${counts[ReviewCategory.StillFailing]} still failing` : "",
     counts[ReviewCategory.Added] ? `${counts[ReviewCategory.Added]} new` : "",
     counts[ReviewCategory.Removed] ? `${counts[ReviewCategory.Removed]} removed` : "",
   ].filter(Boolean);

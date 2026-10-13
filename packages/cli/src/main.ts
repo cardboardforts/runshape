@@ -17,7 +17,7 @@ export async function reviewFromDirectory(tracesDirectory: string): Promise<stri
   return reviewMarkdown(buildReview(base, head));
 }
 
-async function main(argv: string[]): Promise<number> {
+export async function main(argv: string[]): Promise<number> {
   const directory = resolve(argv[0] ?? DEFAULT_TRACES);
   try {
     process.stdout.write(await reviewFromDirectory(directory));
@@ -26,8 +26,4 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(`runshape-review-md: ${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
-}
-
-if (process.argv[1]?.endsWith("runshape-review-md.mjs")) {
-  process.exitCode = await main(process.argv.slice(2));
 }

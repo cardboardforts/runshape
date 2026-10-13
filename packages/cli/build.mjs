@@ -2,7 +2,7 @@
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/main.ts"],
+  entryPoints: ["src/bin.ts"],
   outfile: "dist/runshape-review-md.mjs",
   bundle: true,
   platform: "node",

@@ -121,8 +121,11 @@ function globToRegExp(glob: string): RegExp {
   let source = "";
   for (let i = 0; i < glob.length; i += 1) {
     const char = glob[i]!;
-    // ".**" and "**." may stand for no segments at all, taking their dot with them.
-    if (glob.startsWith(".**", i) && (i + 3 === glob.length || glob[i + 3] === ".")) {
+    // A leading "**." and any ".**" may stand for no segments at all, taking their dot with them.
+    if (i === 0 && glob.startsWith("**.")) {
+      source += "(?:.*\\.)?";
+      i += 2;
+    } else if (glob.startsWith(".**", i) && (i + 3 === glob.length || glob[i + 3] === ".")) {
       source += "(?:\\..*)?";
       i += 2;
     } else if (char === "*" && glob[i + 1] === "*") {
@@ -140,7 +143,12 @@ function globToRegExp(glob: string): RegExp {
 /** Reads a version 1 file ("rings", "ring") as version 2; the next save writes version 2. */
 function upgrade(file: Partial<ZoneRulesFile> | RingRulesFileV1): Partial<ZoneRulesFile> {
   if (file.version !== 1 || !Array.isArray((file as RingRulesFileV1).rings)) return file as Partial<ZoneRulesFile>;
-  const zones = (file as RingRulesFileV1).rings.map(({ ring, ...rest }) => ({ ...rest, zone: ring }));
+  // Anything not an object is passed through for parse() to report with the rest.
+  const zones = (file as RingRulesFileV1).rings.map((entry) => {
+    if (typeof entry !== "object" || entry === null) return entry;
+    const { ring, ...rest } = entry;
+    return { ...rest, zone: ring };
+  });
   // Version 1 predates styles: its rings were the hexagon's zones.
   return { version: RULES_VERSION, style: HEXAGONAL.style, zones: zones as unknown as ZoneRule[] };
 }

@@ -24,6 +24,8 @@ const REVIEW_BADGE: Record<ReviewCategory, string | null> = {
   [ReviewCategory.NowFailing]: "now failing",
   [ReviewCategory.SilentChange]: "green, runs differently",
   [ReviewCategory.NowPassing]: "now passing",
+  [ReviewCategory.NowSkipped]: "no longer runs",
+  [ReviewCategory.StillFailing]: "still failing",
   [ReviewCategory.Added]: "new test",
   [ReviewCategory.Removed]: "removed",
   [ReviewCategory.Unchanged]: null,

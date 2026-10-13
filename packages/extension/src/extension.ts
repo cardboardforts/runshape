@@ -81,9 +81,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("runshape.open", open),
     vscode.commands.registerCommand("runshape.reload", () => reloadAll("command")),
     vscode.commands.registerCommand("runshape.suggestZone", async (componentId?: string) => {
-      const panel = [...panels.values()][0];
+      // With one panel per project, the one in front is the one being asked about.
+      const open = [...panels.values()];
+      const panel = open.find((candidate) => candidate.isActive) ?? (open.length === 1 ? open[0] : undefined);
       if (panel === undefined) {
-        void vscode.window.showInformationMessage("Open the Runshape view first (Runshape: Open Runtime View).");
+        const message = open.length === 0 ? "Open the Runshape view first (Runshape: Open Runtime View)." : "Bring the Runshape view for the project you mean to the front first.";
+        void vscode.window.showInformationMessage(message);
         return null;
       }
       try {

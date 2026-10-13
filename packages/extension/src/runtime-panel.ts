@@ -31,6 +31,10 @@ export class RuntimePanel {
     panel.webview.onDidReceiveMessage((message: UiRequest) => this.receive(message));
   }
 
+  get isActive(): boolean {
+    return this.panel.active;
+  }
+
   static open(extensionUri: vscode.Uri, projectRoot: vscode.Uri, logger: Logger, onDisposed: () => void): RuntimePanel {
     const webviewRoot = vscode.Uri.joinPath(extensionUri, "dist", "webview");
     const panel = vscode.window.createWebviewPanel(

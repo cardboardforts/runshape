@@ -48,6 +48,8 @@ describe("ZoneRules", () => {
 
     expect(rules.rules).toEqual([{ match: "app.db.**", zone: "outbound-adapter", reason: "persistence", by: "user" }]);
     expect(JSON.parse(rules.serialize())).toEqual({ version: 2, style: "hexagonal", zones: rules.rules });
+    // A broken version 1 file is reported like a broken version 2 one: every problem, no crash.
+    expect(() => ZoneRules.parse(JSON.stringify({ version: 1, rings: [null] }))).toThrowError(ZoneRulesError);
   });
 
   test("the file's style picks the zones its rules may use; an unknown style is reported", () => {
@@ -83,6 +85,8 @@ describe("ZoneRules", () => {
     expect(["app.db", "app.db.users", "app.dbx"].map((name) => subtree.matchFor(name) !== null)).toEqual([true, true, false]);
     const middle = new ZoneRules([{ match: "a.**.b", zone: HexagonalZone.Core, reason: "r", by: "user" }]);
     expect(["a.b", "a.x.b", "a.x.y.b", "ab"].map((name) => middle.matchFor(name) !== null)).toEqual([true, true, true, false]);
+    const leading = new ZoneRules([{ match: "**.models", zone: HexagonalZone.Core, reason: "r", by: "user" }]);
+    expect(["models", "app.models", "app.x.models", "app.modelsx"].map((name) => leading.matchFor(name) !== null)).toEqual([true, true, true, false]);
   });
 
   test("setting the zone of one component adds the most specific rule first and round-trips", () => {

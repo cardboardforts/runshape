@@ -13,8 +13,12 @@ import { Change, diffRuns } from "./run-diff";
  */
 export enum ReviewCategory {
   NowFailing = "now-failing",
+  /** Green on both sides, yet executed differently: what CI can't show. */
   SilentChange = "silent-change",
   NowPassing = "now-passing",
+  NowSkipped = "now-skipped",
+  /** Broken on both sides; it may fail differently now. */
+  StillFailing = "still-failing",
   Added = "added",
   Removed = "removed",
   Unchanged = "unchanged",
@@ -24,6 +28,8 @@ export const REVIEW_ORDER = [
   ReviewCategory.NowFailing,
   ReviewCategory.SilentChange,
   ReviewCategory.NowPassing,
+  ReviewCategory.NowSkipped,
+  ReviewCategory.StillFailing,
   ReviewCategory.Added,
   ReviewCategory.Removed,
   ReviewCategory.Unchanged,
@@ -89,7 +95,7 @@ export function buildReview(
       goneCalls = unique(meaningful.filter((c) => c.op === Op.Removed && !c.reparented).map((c) => c.qualname));
       movedCalls = execution.calls.filter((c) => c.op === Op.Added && c.reparented).length;
     }
-    const category = categorize(scenario.change, scenario.outcomeBefore, scenario.outcomeAfter);
+    const category = reviewCategoryOf(scenario.change, scenario.outcomeBefore, scenario.outcomeAfter);
     items.push({
       scenarioId: scenario.id,
       name: scenario.name,
@@ -122,16 +128,16 @@ export function buildReview(
   };
 }
 
-function categorize(change: Change, before: Outcome | null, after: Outcome | null): ReviewCategory {
-  if (change === Change.Added) return ReviewCategory.Added;
+export function reviewCategoryOf(change: Change, before: Outcome | null, after: Outcome | null): ReviewCategory {
   if (change === Change.Removed) return ReviewCategory.Removed;
-  const failedBefore = before !== null && FAILING.has(before);
-  const failsNow = after !== null && FAILING.has(after);
-  if (failsNow && !failedBefore) return ReviewCategory.NowFailing;
-  if (failedBefore && !failsNow) return ReviewCategory.NowPassing;
-  if (before !== after && after === Outcome.Passed) return ReviewCategory.NowPassing; // e.g. xfail fixed
-  if (change === Change.Changed) return ReviewCategory.SilentChange;
-  return ReviewCategory.Unchanged;
+  // An expected failure is still broken code; marking it xfail on this branch hides a break.
+  const broken = (outcome: Outcome | null) => outcome !== null && (FAILING.has(outcome) || outcome === Outcome.ExpectedFailure);
+  if (broken(after) && !broken(before)) return ReviewCategory.NowFailing;
+  if (change === Change.Added) return ReviewCategory.Added;
+  if (after === Outcome.Skipped) return before === Outcome.Skipped ? ReviewCategory.Unchanged : ReviewCategory.NowSkipped;
+  if (after === Outcome.Passed && before !== Outcome.Passed) return ReviewCategory.NowPassing;
+  if (broken(before) && broken(after)) return change === Change.Unchanged && before === after ? ReviewCategory.Unchanged : ReviewCategory.StillFailing;
+  return change === Change.Changed ? ReviewCategory.SilentChange : ReviewCategory.Unchanged;
 }
 
 /** One line a reviewer can scan: what this test does differently now. */
@@ -152,6 +158,8 @@ const HEADINGS: Record<ReviewCategory, string> = {
   [ReviewCategory.NowFailing]: "Now failing",
   [ReviewCategory.SilentChange]: "Still passing, but now run differently",
   [ReviewCategory.NowPassing]: "Now passing",
+  [ReviewCategory.NowSkipped]: "No longer run (skipped)",
+  [ReviewCategory.StillFailing]: "Still failing",
   [ReviewCategory.Added]: "New tests",
   [ReviewCategory.Removed]: "Removed tests",
   [ReviewCategory.Unchanged]: "Unchanged",
@@ -162,8 +170,8 @@ const MAX_LISTED = 5;
 /** Markdown for a PR comment. Test names and function names only; no SQL text or source. */
 export function reviewMarkdown(summary: ReviewSummary): string {
   const out: string[] = ["## Behaviour changes (Runshape)", ""];
-  const total = summary.items.length;
-  out.push(`${total} tests recorded on the base and on this branch.`, "");
+  const onBothSides = summary.items.filter((item) => item.category !== ReviewCategory.Removed && item.outcomeBefore !== null).length;
+  out.push(`${onBothSides} tests recorded on the base and on this branch.`, "");
   const silent = summary.counts[ReviewCategory.SilentChange];
   if (silent > 0) {
     out.push(`**${silent} test${silent === 1 ? " still passes" : "s still pass"} but now ${silent === 1 ? "runs" : "run"} differently** — the changes a green CI won't show you.`, "");
@@ -173,7 +181,7 @@ export function reviewMarkdown(summary: ReviewSummary): string {
     const items = summary.items.filter((item) => item.category === category);
     if (items.length === 0) continue;
     out.push(`### ${HEADINGS[category]} (${items.length})`, "", "| Test | What changed |", "|---|---|");
-    for (const item of items) out.push(`| \`${escapeCell(item.name)}\` | ${escapeCell(describeChange(item))} |`);
+    for (const item of items) out.push(`| ${codeSpan(escapeCell(item.name))} | ${escapeCell(describeChange(item))} |`);
     out.push("");
   }
   out.push(`${summary.counts[ReviewCategory.Unchanged]} tests behave exactly as before.`);
@@ -182,12 +190,17 @@ export function reviewMarkdown(summary: ReviewSummary): string {
 }
 
 function list(names: string[]): string {
-  const shown = names.slice(0, MAX_LISTED).map((name) => `\`${name}\``).join(", ");
+  const shown = names.slice(0, MAX_LISTED).map(codeSpan).join(", ");
   return names.length > MAX_LISTED ? `${shown} and ${names.length - MAX_LISTED} more` : shown;
 }
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+/** A name containing a backtick needs a longer fence, or it ends the span early. */
+function codeSpan(text: string): string {
+  return text.includes("`") ? `\`\` ${text} \`\`` : `\`${text}\``;
 }
 
 function escapeCell(text: string): string {
