@@ -287,6 +287,7 @@ export function App({ host }: { host: Host }) {
   }
 
   const step = replay ? (replay.steps[replay.index] ?? null) : null;
+  const replayClock = replay !== null && replay.ops === null && replay.scenarioId === selected && step !== null;
   const replayName = replay ? (summary.scenarios.find((s) => s.id === replay.scenarioId)?.name ?? replay.scenarioId) : "";
 
   const phases = includeSetup ? WITH_SETUP : TEST_BODY_ONLY;
@@ -483,9 +484,10 @@ export function App({ host }: { host: Host }) {
             stepOp={replay?.ops?.[replay.index] ?? null}
             stepIndex={replay?.index ?? 0}
             stepMs={stepMs[replayIndex] ?? 0}
-            // A change replay interleaves two recordings; their objects and clocks don't mix.
-            clockUs={replay && !replay.ops && step ? step.tUs : null}
-            focusObject={replay && !replay.ops ? (step?.objectId ?? null) : null}
+            // Only the replayed scenario's own objects run on its clock (each test's times start
+            // at zero); a change replay interleaves two recordings whose clocks don't mix.
+            clockUs={replayClock ? step!.tUs : null}
+            focusObject={replayClock ? (step!.objectId ?? null) : null}
             onOpenComponent={openComponent}
           />
         ) : displayed === null || positions === null ? (

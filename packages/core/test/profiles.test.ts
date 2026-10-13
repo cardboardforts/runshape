@@ -167,12 +167,29 @@ describe("detect and adopt", () => {
         app.models.** → data
         app.services.** → business
 
-      It replaces runshape.json's 0 rule(s) (hexagonal style)."
+      runshape.json has no rules now (hexagonal style)."
     `);
     expect(adopted).toEqual({ type: "rulesChanged", count: 5, style: "layered" });
     expect(JSON.parse(saved!).style).toBe("layered");
     expect(session.summary().style).toBe("layered");
     const userInDb = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.label === "UserInDB") : undefined;
     expect(`${userInDb?.zone} (${userInDb?.zoneSource}: ${userInDb?.zoneReason})`).toMatchInlineSnapshot(`"business (rule: declared in runshape.json (app.models.domain.**): business: the package is named "domain")"`);
+  });
+});
+
+describe("adopting over hand-written rules", () => {
+  test("the confirmation names every rule that would be discarded, and why it was there", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const rules = new ZoneRules([{ match: "app.services.jwt", zone: HexagonalZone.Core, reason: "pure token logic", by: "user" }]);
+    const asked: string[] = [];
+    const store: ZoneRuleStore = { save: async (_rules, change) => (asked.push(change.detail), false) };
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rules });
+
+    await session.handle({ type: "adoptArchitecture", style: "mvc", from: "detected" });
+
+    expect(asked[0]!.split("\n").slice(-2)).toEqual([
+      "It replaces runshape.json's 1 rule(s) (hexagonal style), which are discarded:",
+      "  app.services.jwt → core (user: pure token logic)",
+    ]);
   });
 });

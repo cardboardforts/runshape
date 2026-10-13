@@ -262,8 +262,14 @@ export class ViewerSession {
     const current =
       this.rulesProblem !== null
         ? `runshape.json can't be read now (${this.rulesProblem}); it is replaced.`
-        : `It replaces runshape.json's ${this.rules.rules.length} rule(s) (${this.rules.profile.style} style).`;
-    const lines = next.rules.map((rule) => `  ${rule.match} → ${rule.zone}`);
+        : this.rules.rules.length === 0
+          ? `runshape.json has no rules now (${this.rules.profile.style} style).`
+          : `It replaces runshape.json's ${this.rules.rules.length} rule(s) (${this.rules.profile.style} style), which are discarded:\n${this.rules.rules
+              .slice(0, MAX_LISTED_RULES)
+              .map((rule) => `  ${rule.match} → ${rule.zone} (${rule.by}: ${rule.reason})`)
+              .join("\n")}${this.rules.rules.length > MAX_LISTED_RULES ? `\n  …and ${this.rules.rules.length - MAX_LISTED_RULES} more` : ""}`;
+    const lines = next.rules.slice(0, MAX_LISTED_RULES).map((rule) => `  ${rule.match} → ${rule.zone}`);
+    if (next.rules.length > MAX_LISTED_RULES) lines.push(`  …and ${next.rules.length - MAX_LISTED_RULES} more`);
     const change = `Style: ${next.profile.name}\n${lines.length ? lines.join("\n") : "  (no rules: every zone inferred)"}\n\n${current}`;
     const saved = await this.ruleStore.save(next, { question: `Rewrite ${RULES_FILE} as ${next.profile.name}?`, detail: change, confirm: `Rewrite ${RULES_FILE}` });
     if (!saved) return null;
@@ -363,6 +369,9 @@ function classStatementLine(lines: string[], firstMethodLine: number, className:
   }
   return Math.max(firstMethodLine - 1, 1);
 }
+
+/** A confirmation dialog lists at most this many rules (names come from the recording). */
+const MAX_LISTED_RULES = 25;
 
 function unknownStyle(style: string | undefined): string {
   return `unknown style ${JSON.stringify(style)}; one of ${PROFILES.map((profile) => profile.style).join(", ")}`;

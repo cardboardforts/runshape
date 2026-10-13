@@ -132,8 +132,11 @@ export function reviewCategoryOf(change: Change, before: Outcome | null, after: 
   if (change === Change.Removed) return ReviewCategory.Removed;
   // An expected failure is still broken code; marking it xfail on this branch hides a break.
   const broken = (outcome: Outcome | null) => outcome !== null && (FAILING.has(outcome) || outcome === Outcome.ExpectedFailure);
+  // A new test that fails turns the branch's CI red: that's a failure to look at first. A new
+  // test marked xfail is a known bug written down on purpose: just a new test.
+  const failsNow = after !== null && FAILING.has(after);
+  if (change === Change.Added) return failsNow ? ReviewCategory.NowFailing : ReviewCategory.Added;
   if (broken(after) && !broken(before)) return ReviewCategory.NowFailing;
-  if (change === Change.Added) return ReviewCategory.Added;
   if (after === Outcome.Skipped) return before === Outcome.Skipped ? ReviewCategory.Unchanged : ReviewCategory.NowSkipped;
   if (after === Outcome.Passed && before !== Outcome.Passed) return ReviewCategory.NowPassing;
   if (broken(before) && broken(after)) return change === Change.Unchanged && before === after ? ReviewCategory.Unchanged : ReviewCategory.StillFailing;

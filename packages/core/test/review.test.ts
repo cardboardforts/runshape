@@ -78,6 +78,7 @@ describe("reviewCategoryOf", () => {
       [Change.Changed, F, X],
       [Change.Added, null, P],
       [Change.Added, null, F],
+      [Change.Added, null, X],
       [Change.Removed, P, null],
     ];
     expect(cases.map(([change, before, after]) => `${change.padEnd(9)} ${before ?? "—"} → ${after ?? "—"}: ${reviewCategoryOf(change, before, after)}`)).toMatchInlineSnapshot(`
@@ -95,6 +96,7 @@ describe("reviewCategoryOf", () => {
         "changed   failed → xfailed: still-failing",
         "added     — → passed: added",
         "added     — → failed: now-failing",
+        "added     — → xfailed: added",
         "removed   passed → —: removed",
       ]
     `);

@@ -8,7 +8,8 @@ import { buildSystemGraph, FixedZone, HEXAGONAL, HexagonalZone, loadLatestRun } 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { layoutHexagon, MAX_OBJECTS_SHOWN, objectSlots } from "../src/three/hexagon-layout";
+import { MAX_OBJECTS_SHOWN, objectSlots } from "../src/three/floor";
+import { layoutHexagon } from "../src/three/hexagon-layout";
 import { overlappingTiles } from "./tiles";
 
 async function fastapiGraph() {

@@ -90,15 +90,30 @@ def _environment(repository: str, checkout: str, directory: str) -> Dict[str, st
     environment = dict(os.environ)
     entries = []
     src = os.path.join(directory, SRC_LAYOUT_DIRECTORY)
-    if os.path.isdir(src):
+    if _holds_packages(src):
         entries.append(src)
     for entry in environment.get("PYTHONPATH", "").split(os.pathsep):
         if entry == "":
             continue
         inside = os.path.relpath(os.path.realpath(entry), os.path.realpath(repository))
-        entries.append(entry if inside.startswith(os.pardir) else os.path.join(checkout, inside))
+        outside = inside == os.pardir or inside.startswith(os.pardir + os.sep)
+        entries.append(entry if outside else os.path.join(checkout, inside))
     environment["PYTHONPATH"] = os.pathsep.join(entries)
     return environment
+
+
+def _holds_packages(directory: str) -> bool:
+    """A src layout's src/ holds importable packages; some projects' src/ holds other things."""
+    if not os.path.isdir(directory):
+        return False
+    for name in os.listdir(directory):
+        path = os.path.join(directory, name)
+        if name.endswith(".py"):
+            return True
+        # A package, or a namespace package (PEP 420: modules, no __init__.py).
+        if os.path.isdir(path) and any(child.endswith(".py") for child in os.listdir(path)):
+            return True
+    return False
 
 
 def _record(directory: str, out_directory: str, revision: Revision, pytest_args: List[str], environment: Dict[str, str]) -> None:

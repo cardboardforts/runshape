@@ -1,5 +1,6 @@
 """runshape-review end to end: a git repo with a committed base and an uncommitted change."""
 import json
+import os
 import shutil
 import subprocess
 
@@ -122,3 +123,22 @@ def test_failing_tests_and_a_project_missing_from_the_base_are_reported(tmp_path
 
     assert review.main(["--base", "HEAD"]) == 2
     assert "packages/new does not exist at base" in capsys.readouterr().err
+
+
+def test_each_side_imports_its_own_checkout(tmp_path, monkeypatch):
+    # PYTHONPATH entries inside the repository point into the checkout being recorded; the
+    # project's src/ goes first only when it holds packages (a flat project's src/ of assets
+    # doesn't); a directory merely named "..something" is still inside the repository.
+    repo, base = tmp_path / "repo", tmp_path / "base"
+    for checkout in (repo, base):
+        (checkout / "app" / "src" / "shop").mkdir(parents=True)
+        (checkout / "app" / "src" / "shop" / "__init__.py").write_text("")
+        (checkout / "web" / "src").mkdir(parents=True)
+    outside = tmp_path / "elsewhere"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(repo / "app" / "src"), str(repo / "..vendored"), str(outside)]))
+
+    packages = review._environment(str(repo), str(base), str(base / "app"))["PYTHONPATH"].split(os.pathsep)
+    assets_only = review._environment(str(repo), str(base), str(base / "web"))["PYTHONPATH"].split(os.pathsep)
+
+    assert packages == [str(base / "app" / "src"), str(base / "app" / "src"), str(base / "..vendored"), str(outside)]
+    assert assets_only == [str(base / "app" / "src"), str(base / "..vendored"), str(outside)]

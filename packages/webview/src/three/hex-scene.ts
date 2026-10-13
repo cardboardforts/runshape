@@ -10,8 +10,7 @@ import { ArchitectureProfile, Change, ComponentWiring, GraphNode, HEXAGONAL, Obj
 
 import { zoneColor } from "../zone-style";
 
-import type { FloorLayout, FloorPiece, Tile } from "./floor";
-import { OBJECT_SIDE, objectSlots } from "./hexagon-layout";
+import { FloorLayout, FloorPiece, OBJECT_SIDE, objectSlots, Tile } from "./floor";
 import { advanceClock, ClockedObject, popPose } from "./object-clock";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";

@@ -7,7 +7,7 @@
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "../src/model";
-import { buildReplay, describeGap, ReplayPace, stepDurationsMs } from "../src/views/replay";
+import { buildReplay, describeGap, formatMicros, ReplayPace, stepDurationsMs } from "../src/views/replay";
 import { loadFixtureRun } from "./fixtures";
 
 describe("replay pace", () => {
@@ -51,5 +51,11 @@ describe("replay pace", () => {
       ]
     `);
     expect(new Set(even)).toEqual(new Set([450]));
+  });
+
+  test("durations read naturally at every unit boundary", () => {
+    expect([0, 999, 999.6, 9_949, 9_960, 999_499, 999_700, 1_234_567].map(formatMicros)).toEqual([
+      "0 µs", "999 µs", "1.0 ms", "9.9 ms", "10 ms", "999 ms", "1.00 s", "1.23 s",
+    ]);
   });
 });
