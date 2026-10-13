@@ -1,0 +1,356 @@
+diff --git a/conduit/apps/articles/serializers.py b/conduit/apps/articles/serializers.py
+index 167909b..a61ed67 100644
+--- a/conduit/apps/articles/serializers.py
++++ b/conduit/apps/articles/serializers.py
+@@ -62,7 +62,7 @@ class ArticleSerializer(serializers.ModelSerializer):
+         if request is None:
+             return False
+ 
+-        if not request.user.is_authenticated():
++        if not request.user.is_authenticated:
+             return False
+ 
+         return request.user.profile.has_favorited(instance)
+diff --git a/conduit/apps/articles/urls.py b/conduit/apps/articles/urls.py
+index ed3e46e..0883e83 100644
+--- a/conduit/apps/articles/urls.py
++++ b/conduit/apps/articles/urls.py
+@@ -1,4 +1,4 @@
+-from django.conf.urls import include, url
++from django.urls import include, re_path
+ 
+ from rest_framework.routers import DefaultRouter
+ 
+@@ -11,18 +11,18 @@ router = DefaultRouter(trailing_slash=False)
+ router.register(r'articles', ArticleViewSet)
+ 
+ urlpatterns = [
+-    url(r'^', include(router.urls)),
++    re_path(r'^', include(router.urls)),
+ 
+-    url(r'^articles/feed/?$', ArticlesFeedAPIView.as_view()),
++    re_path(r'^articles/feed/?$', ArticlesFeedAPIView.as_view()),
+ 
+-    url(r'^articles/(?P<article_slug>[-\w]+)/favorite/?$',
++    re_path(r'^articles/(?P<article_slug>[-\w]+)/favorite/?$',
+         ArticlesFavoriteAPIView.as_view()),
+ 
+-    url(r'^articles/(?P<article_slug>[-\w]+)/comments/?$', 
++    re_path(r'^articles/(?P<article_slug>[-\w]+)/comments/?$', 
+         CommentsListCreateAPIView.as_view()),
+ 
+-    url(r'^articles/(?P<article_slug>[-\w]+)/comments/(?P<comment_pk>[\d]+)/?$',
++    re_path(r'^articles/(?P<article_slug>[-\w]+)/comments/(?P<comment_pk>[\d]+)/?$',
+         CommentsDestroyAPIView.as_view()),
+ 
+-    url(r'^tags/?$', TagListAPIView.as_view()),
++    re_path(r'^tags/?$', TagListAPIView.as_view()),
+ ]
+diff --git a/conduit/apps/authentication/backends.py b/conduit/apps/authentication/backends.py
+index 3d9d7fc..319db0e 100644
+--- a/conduit/apps/authentication/backends.py
++++ b/conduit/apps/authentication/backends.py
+@@ -75,7 +75,7 @@ class JWTAuthentication(authentication.BaseAuthentication):
+         successful, return the user and token. If not, throw an error.
+         """
+         try:
+-            payload = jwt.decode(token, settings.SECRET_KEY)
++            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+         except:
+             msg = 'Invalid authentication. Could not decode token.'
+             raise exceptions.AuthenticationFailed(msg)
+diff --git a/conduit/apps/authentication/models.py b/conduit/apps/authentication/models.py
+index 2129957..a4b33ae 100644
+--- a/conduit/apps/authentication/models.py
++++ b/conduit/apps/authentication/models.py
+@@ -136,4 +136,4 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampedModel):
+             'exp': int(dt.strftime('%s'))
+         }, settings.SECRET_KEY, algorithm='HS256')
+ 
+-        return token.decode('utf-8')
++        return token
+diff --git a/conduit/apps/authentication/urls.py b/conduit/apps/authentication/urls.py
+index 2a594ca..8f9eff7 100644
+--- a/conduit/apps/authentication/urls.py
++++ b/conduit/apps/authentication/urls.py
+@@ -1,11 +1,11 @@
+-from django.conf.urls import url
++from django.urls import re_path
+ 
+ from .views import (
+     LoginAPIView, RegistrationAPIView, UserRetrieveUpdateAPIView
+ )
+ 
+ urlpatterns = [
+-    url(r'^user/?$', UserRetrieveUpdateAPIView.as_view()),
+-    url(r'^users/?$', RegistrationAPIView.as_view()),
+-    url(r'^users/login/?$', LoginAPIView.as_view()),
++    re_path(r'^user/?$', UserRetrieveUpdateAPIView.as_view()),
++    re_path(r'^users/?$', RegistrationAPIView.as_view()),
++    re_path(r'^users/login/?$', LoginAPIView.as_view()),
+ ]
+diff --git a/conduit/apps/profiles/serializers.py b/conduit/apps/profiles/serializers.py
+index b799082..4d2ee8c 100644
+--- a/conduit/apps/profiles/serializers.py
++++ b/conduit/apps/profiles/serializers.py
+@@ -26,7 +26,7 @@ class ProfileSerializer(serializers.ModelSerializer):
+         if request is None:
+             return False
+ 
+-        if not request.user.is_authenticated():
++        if not request.user.is_authenticated:
+             return False
+ 
+         follower = request.user.profile
+diff --git a/conduit/apps/profiles/urls.py b/conduit/apps/profiles/urls.py
+index 7ca5610..fbde42d 100644
+--- a/conduit/apps/profiles/urls.py
++++ b/conduit/apps/profiles/urls.py
+@@ -1,9 +1,9 @@
+-from django.conf.urls import url
++from django.urls import re_path
+ 
+ from .views import ProfileRetrieveAPIView, ProfileFollowAPIView
+ 
+ urlpatterns = [
+-    url(r'^profiles/(?P<username>\w+)/?$', ProfileRetrieveAPIView.as_view()),
+-    url(r'^profiles/(?P<username>\w+)/follow/?$', 
++    re_path(r'^profiles/(?P<username>\w+)/?$', ProfileRetrieveAPIView.as_view()),
++    re_path(r'^profiles/(?P<username>\w+)/follow/?$', 
+         ProfileFollowAPIView.as_view()),
+ ]
+diff --git a/conduit/settings.py b/conduit/settings.py
+index 17b2df7..c2a0fd8 100644
+--- a/conduit/settings.py
++++ b/conduit/settings.py
+@@ -39,11 +39,11 @@ INSTALLED_APPS = [
+     'django.contrib.staticfiles',
+ 
+     'corsheaders',
+-    'django_extensions',
+     'rest_framework',
+ 
+-    'conduit.apps.articles',
+-    'conduit.apps.authentication',
++    # Named explicitly: Django 4.1 dropped `default_app_config`, which wired the signals.
++    'conduit.apps.articles.ArticlesAppConfig',
++    'conduit.apps.authentication.AuthenticationAppConfig',
+     'conduit.apps.core',
+     'conduit.apps.profiles',
+ ]
+@@ -119,7 +119,6 @@ TIME_ZONE = 'UTC'
+ 
+ USE_I18N = True
+ 
+-USE_L10N = True
+ 
+ USE_TZ = True
+ 
+@@ -129,9 +128,9 @@ USE_TZ = True
+ 
+ STATIC_URL = '/static/'
+ 
+-CORS_ORIGIN_WHITELIST = (
+-    '0.0.0.0:4000',
+-    'localhost:4000',
++CORS_ALLOWED_ORIGINS = (
++    'http://0.0.0.0:4000',
++    'http://localhost:4000',
+ )
+ 
+ # Tell Django about the custom `User` model we created. The string
+@@ -140,6 +139,9 @@ CORS_ORIGIN_WHITELIST = (
+ # called `INSTALLED_APPS`.
+ AUTH_USER_MODEL = 'authentication.User'
+ 
++# Matches the integer primary keys in the original 2016 migrations.
++DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
++
+ REST_FRAMEWORK = {
+     'EXCEPTION_HANDLER': 'conduit.apps.core.exceptions.core_exception_handler',
+     'NON_FIELD_ERRORS_KEY': 'error',
+diff --git a/conduit/urls.py b/conduit/urls.py
+index 54612f9..07779b1 100644
+--- a/conduit/urls.py
++++ b/conduit/urls.py
+@@ -13,13 +13,13 @@ Including another URLconf
+     1. Import the include() function: from django.conf.urls import url, include
+     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
+ """
+-from django.conf.urls import include, url
++from django.urls import include, re_path
+ from django.contrib import admin
+ 
+ urlpatterns = [
+-    url(r'^admin/', admin.site.urls),
++    re_path(r'^admin/', admin.site.urls),
+ 
+-    url(r'^api/', include('conduit.apps.articles.urls', namespace='articles')),
+-    url(r'^api/', include('conduit.apps.authentication.urls', namespace='authentication')),
+-    url(r'^api/', include('conduit.apps.profiles.urls', namespace='profiles')),
++    re_path(r'^api/', include(('conduit.apps.articles.urls', 'articles'), namespace='articles')),
++    re_path(r'^api/', include(('conduit.apps.authentication.urls', 'authentication'), namespace='authentication')),
++    re_path(r'^api/', include(('conduit.apps.profiles.urls', 'profiles'), namespace='profiles')),
+ ]
+diff --git a/pytest.ini b/pytest.ini
+new file mode 100644
+index 0000000..2b4eacd
+--- /dev/null
++++ b/pytest.ini
+@@ -0,0 +1,5 @@
++[pytest]
++DJANGO_SETTINGS_MODULE = conduit.settings
++testpaths = tests
++hexvis_source = conduit
++hexvis_tests = tests
+diff --git a/requirements.txt b/requirements.txt
+index 6eb9d54..425c617 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,6 +1,7 @@
+-Django==1.10.5
+-django-cors-middleware==1.3.1
+-django-extensions==1.7.1
+-djangorestframework==3.4.4
+-PyJWT==1.4.2
+-six==1.10.0
++# Ported from Django 1.10 / Python 3.5 to run on a current Python (see hexvis examples/README.md).
++Django==5.2.7
++djangorestframework==3.16.1
++django-cors-headers==4.9.0
++PyJWT==2.10.1
++pytest==8.4.2
++pytest-django==4.11.1
+diff --git a/tests/__init__.py b/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/tests/test_user_journeys.py b/tests/test_user_journeys.py
+new file mode 100644
+index 0000000..fc640f0
+--- /dev/null
++++ b/tests/test_user_journeys.py
+@@ -0,0 +1,124 @@
++"""RealWorld ("Conduit") user journeys, end to end through Django's test client.
++
++Added by hexvis: the upstream project ships without tests. Each test is one named user
++behaviour, so each becomes one scenario in the HexVis viewer.
++"""
++import json
++
++import pytest
++
++pytestmark = pytest.mark.django_db
++
++JSON = "application/json"
++
++
++def post(client, path, payload, token=None):
++    headers = {"HTTP_AUTHORIZATION": f"Token {token}"} if token else {}
++    return client.post(path, data=json.dumps(payload), content_type=JSON, **headers)
++
++
++def get(client, path, token=None):
++    headers = {"HTTP_AUTHORIZATION": f"Token {token}"} if token else {}
++    return client.get(path, **headers)
++
++
++def register(client, username):
++    response = post(client, "/api/users", {"user": {"username": username, "email": f"{username}@example.com", "password": "correct-horse-battery"}})
++    assert response.status_code == 201, response.content
++    return response.json()["user"]["token"]
++
++
++def publish(client, token, title, tags):
++    response = post(client, "/api/articles", {"article": {"title": title, "description": "desc", "body": "body", "tagList": tags}}, token)
++    assert response.status_code == 201, response.content
++    return response.json()["article"]
++
++
++def test_visitor_registers_an_account(client):
++    response = post(client, "/api/users", {"user": {"username": "ada", "email": "ada@example.com", "password": "correct-horse-battery"}})
++
++    assert response.status_code == 201
++    user = response.json()["user"]
++    assert {k: user[k] for k in ("username", "email")} == {"username": "ada", "email": "ada@example.com"}
++    assert user["token"]
++
++
++def test_member_logs_in_and_reads_their_profile(client):
++    register(client, "grace")
++
++    login = post(client, "/api/users/login", {"user": {"email": "grace@example.com", "password": "correct-horse-battery"}})
++    token = login.json()["user"]["token"]
++    me = get(client, "/api/user", token)
++
++    assert login.status_code == 200
++    assert me.status_code == 200
++    assert me.json()["user"]["username"] == "grace"
++
++
++def test_author_publishes_a_tagged_article(client):
++    token = register(client, "linus")
++
++    article = publish(client, token, "Hello Hexagons", ["architecture", "python"])
++
++    assert article["slug"].startswith("hello-hexagons")
++    assert sorted(article["tagList"]) == ["architecture", "python"]
++    assert article["author"]["username"] == "linus"
++
++
++def test_reader_browses_articles_by_tag(client):
++    token = register(client, "barbara")
++    publish(client, token, "About Onions", ["architecture"])
++    publish(client, token, "About Cats", ["pets"])
++
++    response = get(client, "/api/articles?tag=architecture")
++
++    assert response.status_code == 200
++    assert [a["title"] for a in response.json()["articles"]] == ["About Onions"]
++
++
++def test_reader_favorites_and_comments_on_an_article(client):
++    author = register(client, "edsger")
++    reader = register(client, "donald")
++    slug = publish(client, author, "Goto Considered", ["history"])["slug"]
++
++    favorite = post(client, f"/api/articles/{slug}/favorite", {}, reader)
++    comment = post(client, f"/api/articles/{slug}/comments", {"comment": {"body": "Indeed."}}, reader)
++
++    assert favorite.status_code == 201
++    assert favorite.json()["article"]["favorited"] is True
++    assert favorite.json()["article"]["favoritesCount"] == 1
++    assert comment.status_code == 201
++    assert comment.json()["comment"]["body"] == "Indeed."
++
++
++def test_reader_follows_an_author(client):
++    register(client, "alan")
++    follower = register(client, "joan")
++
++    follow = post(client, "/api/profiles/alan/follow", {}, follower)
++
++    assert follow.status_code == 201
++    assert follow.json()["profile"]["following"] is True
++
++
++@pytest.mark.xfail(
++    strict=True,
++    reason="Upstream bug: the router's articles/<slug> route is registered before "
++    "articles/feed, so 'feed' is looked up as an article slug and 404s.",
++)
++def test_follower_sees_followed_authors_in_their_feed(client):
++    author = register(client, "alan")
++    follower = register(client, "joan")
++    publish(client, author, "Computable Numbers", ["math"])
++    post(client, "/api/profiles/alan/follow", {}, follower)
++
++    feed = get(client, "/api/articles/feed", follower)
++
++    assert feed.status_code == 200
++    assert [a["title"] for a in feed.json()["articles"]] == ["Computable Numbers"]
++
++
++def test_anonymous_visitor_cannot_publish(client):
++    response = post(client, "/api/articles", {"article": {"title": "Spam", "description": "d", "body": "b", "tagList": []}})
++
++    assert response.status_code == 403

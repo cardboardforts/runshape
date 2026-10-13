@@ -1,0 +1,650 @@
+/* Inside VS Code the --vscode-* variables follow the editor theme; the fallbacks are for the
+   standalone demo, light or dark by system preference. */
+:root {
+  --bg: var(--vscode-editor-background, #1e1e1e);
+  --fg: var(--vscode-editor-foreground, #d4d4d4);
+  --muted: var(--vscode-descriptionForeground, #9a9a9a);
+  --panel: var(--vscode-sideBar-background, #252526);
+  --border: var(--vscode-panel-border, #3c3c3c);
+  --link: var(--vscode-textLink-foreground, #4daafc);
+  --focus: var(--vscode-focusBorder, #007fd4);
+  --button-bg: var(--vscode-button-background, #0e639c);
+  --button-fg: var(--vscode-button-foreground, #ffffff);
+  --untested: rgba(229, 83, 75, 0.16);
+  --font: var(--vscode-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  --mono: var(--vscode-editor-font-family, ui-monospace, "SF Mono", Menlo, monospace);
+
+  --ring-edge: #8a8f98;
+  --ring-inbound: #3b82f6;
+  --ring-core: #10b981;
+  --ring-outbound: #f59e0b;
+  --ring-double: #a1a1aa;
+  --ring-external: #a855f7;
+  --pulse: #fde047;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.vscode-dark):not(.vscode-high-contrast) {
+    --bg: var(--vscode-editor-background, #ffffff);
+    --fg: var(--vscode-editor-foreground, #1f2328);
+    --muted: var(--vscode-descriptionForeground, #636c76);
+    --panel: var(--vscode-sideBar-background, #f6f8fa);
+    --border: var(--vscode-panel-border, #d0d7de);
+    --link: var(--vscode-textLink-foreground, #0969da);
+    --pulse: #ca8a04;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.number {
+  font-variant-numeric: tabular-nums;
+}
+
+.centered {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  height: 100%;
+  gap: 8px;
+  text-align: center;
+  padding: 16px;
+}
+
+.status button,
+.replay-button {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border: none;
+  border-radius: 3px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--link);
+  cursor: pointer;
+  text-align: left;
+}
+
+/* ---- layout ---- */
+
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr auto;
+  height: 100%;
+}
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar h1 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.sidebar h2,
+.panel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 12px 0 6px;
+}
+
+.sidebar header p {
+  margin: 0 0 8px;
+}
+
+.toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.problems summary {
+  cursor: pointer;
+  color: #e5534b;
+}
+
+.canvas {
+  position: relative;
+  min-width: 0;
+}
+
+.notice {
+  position: absolute;
+  z-index: 10;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid #e5534b;
+  border-radius: 4px;
+  padding: 6px 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.notice button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.detail {
+  width: min(640px, 48vw);
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.breadcrumbs {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.breadcrumbs .close {
+  margin-left: auto;
+}
+
+/* ---- scenarios ---- */
+
+.scenarios {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scenarios li {
+  border-radius: 4px;
+}
+
+.scenarios li.selected {
+  background: color-mix(in srgb, var(--focus) 18%, transparent);
+}
+
+.scenario {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.scenario:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.scenario-name {
+  overflow-wrap: anywhere;
+}
+
+.scenario-requests {
+  grid-column: 2;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.replay-button {
+  margin: 0 0 6px 6px;
+}
+
+.outcome {
+  font-size: 10px;
+  text-transform: uppercase;
+  border-radius: 3px;
+  padding: 1px 4px;
+  align-self: start;
+  white-space: nowrap;
+}
+
+.outcome-passed {
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.outcome-failed,
+.outcome-error,
+.outcome-xpassed {
+  background: rgba(229, 83, 75, 0.3);
+}
+
+.outcome-xfailed {
+  background: rgba(245, 158, 11, 0.3);
+}
+
+.outcome-skipped,
+.outcome-unknown {
+  background: rgba(138, 143, 152, 0.3);
+}
+
+/* ---- legend ---- */
+
+.legend-rings ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+/* ---- graph ---- */
+
+.component {
+  width: 188px;
+  height: 46px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--ring-color, var(--border));
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 120ms, box-shadow 120ms;
+}
+
+.component-label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.component-meta {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smell {
+  color: var(--ring-outbound);
+}
+
+.ring-edge { --ring-color: var(--ring-edge); }
+.ring-inbound-adapter { --ring-color: var(--ring-inbound); }
+.ring-core { --ring-color: var(--ring-core); }
+.ring-outbound-adapter { --ring-color: var(--ring-outbound); }
+.ring-test-double { --ring-color: var(--ring-double); border-style: dashed; }
+.ring-external { --ring-color: var(--ring-external); border-radius: 23px; }
+
+.dot.ring-edge,
+.dot.ring-inbound-adapter,
+.dot.ring-core,
+.dot.ring-outbound-adapter,
+.dot.ring-test-double,
+.dot.ring-external {
+  background: var(--ring-color);
+}
+
+.component.emphasis-dimmed,
+.flow-edge.emphasis-dimmed {
+  opacity: 0.18;
+}
+
+.component.emphasis-highlighted {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring-color) 60%, transparent);
+}
+
+.component.active {
+  box-shadow: 0 0 0 3px var(--pulse), 0 0 18px var(--pulse);
+}
+
+.react-flow__edge-path.flow-edge {
+  stroke: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.react-flow__edge-path.flow-edge.emphasis-highlighted {
+  stroke: var(--link);
+}
+
+.pulse {
+  fill: var(--pulse);
+  filter: drop-shadow(0 0 6px var(--pulse));
+}
+
+.pulse-external {
+  fill: var(--ring-external);
+  filter: drop-shadow(0 0 6px var(--ring-external));
+}
+
+.react-flow__handle {
+  opacity: 0;
+}
+
+.react-flow {
+  --xy-background-color: var(--bg);
+  --xy-minimap-background-color: var(--panel);
+  --xy-controls-button-background-color: var(--panel);
+  --xy-controls-button-color: var(--fg);
+}
+
+/* ---- replay ---- */
+
+.replay-bar {
+  position: absolute;
+  z-index: 5;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.replay-bar button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  min-width: 28px;
+}
+
+.replay-bar input[type="range"] {
+  flex: 0 1 260px;
+}
+
+.replay-label {
+  flex: 1;
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-external {
+  color: var(--ring-external);
+}
+
+/* ---- detail panels ---- */
+
+.panel h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.functions {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.functions th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 4px;
+}
+
+.functions td {
+  padding: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.functions tr.untested td:first-child .link {
+  color: #e5534b;
+}
+
+.coverage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coverage-track {
+  width: 90px;
+  height: 6px;
+  background: var(--untested);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.coverage-fill {
+  display: block;
+  height: 100%;
+  background: var(--ring-core);
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow-x: auto;
+  background: var(--bg);
+}
+
+.code-line {
+  display: grid;
+  grid-template-columns: auto 40px 24px 1fr;
+  align-items: stretch;
+  min-height: 18px;
+}
+
+.code-line.untested {
+  background: var(--untested);
+}
+
+.wires {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px;
+  border-right: 1px solid var(--border);
+}
+
+.wire {
+  width: 3px;
+  min-height: 100%;
+}
+
+.wire.selected {
+  width: 6px;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.line-number {
+  background: none;
+  border: none;
+  color: var(--muted);
+  text-align: right;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.hits {
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+  align-self: center;
+}
+
+.code-line.untested .hits {
+  color: #e5534b;
+}
+
+.source {
+  white-space: pre;
+  padding-right: 8px;
+}
+
+.legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+/* ---- compare mode ---- */
+
+.diff-summary {
+  margin: 6px 0 0;
+  color: var(--ring-outbound);
+}
+
+.scenarios li.unchanged {
+  opacity: 0.55;
+}
+
+.change-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 6px;
+}
+
+.change-badge.change-changed { background: rgba(245, 158, 11, 0.3); }
+.change-badge.change-added { background: rgba(16, 185, 129, 0.3); }
+.change-badge.change-removed { background: rgba(229, 83, 75, 0.3); }
+
+.component.change-added {
+  box-shadow: 0 0 0 2px #10b981, 0 0 12px rgba(16, 185, 129, 0.6);
+}
+
+.component.change-removed {
+  opacity: 0.6;
+  border-style: dashed;
+  box-shadow: 0 0 0 2px #e5534b;
+}
+
+.component.change-removed .component-label {
+  text-decoration: line-through;
+}
+
+.component.change-changed::after {
+  content: "Δ";
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  color: var(--ring-outbound);
+  font-weight: 700;
+}
+
+.component {
+  position: relative;
+}
+
+.react-flow__edge-path.flow-edge.change-added {
+  stroke: #10b981;
+}
+
+.react-flow__edge-path.flow-edge.change-removed {
+  stroke: #e5534b;
+  stroke-dasharray: 6 4;
+}
+
+.diff-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.diff-list.mono li {
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.added { color: #10b981; }
+.removed { color: #e5534b; }
+
+.caveat {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}

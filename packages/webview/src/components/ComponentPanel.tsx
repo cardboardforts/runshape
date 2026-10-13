@@ -1,0 +1,63 @@
+import { ComponentView, FunctionSummary } from "@hexvis/core";
+
+interface Props {
+  view: ComponentView;
+  onOpenFunction: (fn: FunctionSummary) => void;
+}
+
+/** A component opened up: every function it has, and how much of each the tests reach. */
+export function ComponentPanel({ view, onOpenFunction }: Props) {
+  if (view.functions.length === 0) {
+    return (
+      <section className="panel">
+        <h2>{view.label}</h2>
+        <p className="muted">Framework code: recorded as a step in the request, not line by line.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="panel">
+      <h2>{view.label}</h2>
+      {view.qualifiedName && <p className="muted mono">{view.qualifiedName}</p>}
+      <table className="functions">
+        <thead>
+          <tr>
+            <th scope="col">Function</th>
+            <th scope="col">Lines reached</th>
+            <th scope="col">Tests</th>
+          </tr>
+        </thead>
+        <tbody>
+          {view.functions.map((fn) => (
+            <tr key={`${fn.module}:${fn.qualname}`} className={fn.calls === 0 ? "untested" : undefined}>
+              <td>
+                <button type="button" className="link" onClick={() => onOpenFunction(fn)}>
+                  {fn.name}
+                </button>
+                {fn.inheritedFrom && <span className="muted"> from {fn.inheritedFrom}</span>}
+              </td>
+              <td>
+                <CoverageBar covered={fn.coveredLines} total={fn.executableLines} />
+              </td>
+              <td className="number">{fn.scenarioIds.length}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function CoverageBar({ covered, total }: { covered: number; total: number }) {
+  const percent = total === 0 ? 100 : Math.round((covered / total) * 100);
+  return (
+    <span className="coverage" title={`${covered} of ${total} executable lines`}>
+      <span className="coverage-track">
+        <span className="coverage-fill" style={{ width: `${percent}%` }} />
+      </span>
+      <span className="number">
+        {covered}/{total}
+      </span>
+    </span>
+  );
+}

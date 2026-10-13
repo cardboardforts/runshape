@@ -1,0 +1,41 @@
+{
+  "name": "hexvis",
+  "displayName": "HexVis",
+  "description": "See how requests flow through your app, recorded from its tests.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "hexvis",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/.hexvis/traces/latest.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "hexvis.open",
+        "title": "HexVis: Open Runtime View"
+      },
+      {
+        "command": "hexvis.reload",
+        "title": "HexVis: Reload Traces"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p .",
+    "test:e2e": "node build.mjs && node test/e2e/run.mjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.90.0",
+    "esbuild": "0.28.2",
+    "@vscode/test-electron": "3.1.0"
+  },
+  "dependencies": {
+    "@hexvis/core": "0.1.0"
+  }
+}
