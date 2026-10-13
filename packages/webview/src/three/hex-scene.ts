@@ -9,6 +9,7 @@ import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRe
 import { Change, GraphNode, Op, Ring, StepKind, SystemGraph } from "@hexvis/core";
 
 import { HexagonLayout, hexagonCorners } from "./hexagon-layout";
+import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
 
 const RING_COLOR: Record<Ring, number> = {
@@ -34,6 +35,8 @@ const OBJECT_SIDE = 1.6;
 const MAX_OBJECTS_SHOWN = 16;
 const DIMMED_OPACITY = 0.08;
 const CLICK_TOLERANCE_PX = 4;
+/** Re-decide which labels fit every few frames: often enough to follow the camera, cheaply. */
+const LABEL_CULL_EVERY_FRAMES = 6;
 
 export type Emphasis = "normal" | "highlighted" | "dimmed";
 
@@ -43,6 +46,9 @@ interface TileParts {
   outline: THREE.LineSegments<THREE.EdgesGeometry, THREE.LineBasicMaterial>;
   objects: THREE.InstancedMesh | null;
   label: CSS2DObject;
+  tier: LabelTier;
+  /** Measured once the label has been laid out; until then it is always shown. */
+  labelSize: { width: number; height: number } | null;
 }
 
 interface ArcParts {
@@ -83,6 +89,7 @@ export class HexScene {
   private readonly packets: Packet[] = [];
   private readonly resize: ResizeObserver;
   private frame = 0;
+  private framesDrawn = 0;
   private pointerDown: { x: number; y: number } | null = null;
 
   constructor(
@@ -175,6 +182,7 @@ export class HexScene {
       tile.outline.material.opacity = emphasis === "dimmed" ? 0.2 : 1;
       if (tile.objects) (tile.objects.material as THREE.MeshStandardMaterial).opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.9;
       tile.label.element.style.opacity = emphasis === "dimmed" ? "0.3" : "1";
+      tile.tier = active ? LabelTier.Active : emphasis === "highlighted" ? LabelTier.Highlighted : emphasis === "dimmed" ? LabelTier.Dimmed : LabelTier.Normal;
       tile.label.element.classList.toggle("active", active);
     }
     for (const [id, arc] of this.arcs) {
@@ -279,7 +287,7 @@ export class HexScene {
     const label = new CSS2DObject(element);
     label.position.set(x, count > 0 ? 9 : 3.2, z);
     this.world.add(body, outline, label);
-    this.tiles.set(node.id, { node, body, outline, objects, label });
+    this.tiles.set(node.id, { node, body, outline, objects, label, tier: LabelTier.Normal, labelSize: null });
   }
 
   /** Fit everything, from the client on the far left to the external systems on the right. */
@@ -335,7 +343,38 @@ export class HexScene {
     this.advancePackets(now);
     this.composer.render();
     this.labels.render(this.scene, this.camera);
+    this.framesDrawn += 1;
+    if (this.framesDrawn % LABEL_CULL_EVERY_FRAMES === 0) this.cullLabels();
   };
+
+  /** Hide labels that would overlap, keeping the most important (see labels.ts). */
+  private cullLabels(): void {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const position = new THREE.Vector3();
+    const boxes: LabelBox[] = [];
+    for (const [id, tile] of this.tiles) {
+      const element = tile.label.element;
+      if (tile.labelSize === null && element.offsetWidth > 0) {
+        tile.labelSize = { width: element.offsetWidth, height: element.offsetHeight };
+      }
+      if (tile.labelSize === null) continue;
+      tile.label.getWorldPosition(position).project(this.camera);
+      if (position.z < -1 || position.z > 1) continue; // behind the camera
+      boxes.push({
+        id,
+        x: ((position.x + 1) / 2) * width,
+        y: ((1 - position.y) / 2) * height,
+        width: tile.labelSize.width,
+        height: tile.labelSize.height,
+        priority: labelPriority(tile.tier, tile.node.calls),
+      });
+    }
+    const visible = chooseVisibleLabels(boxes, { width, height });
+    for (const [id, tile] of this.tiles) {
+      if (tile.labelSize !== null) tile.label.element.style.visibility = visible.has(id) ? "" : "hidden";
+    }
+  }
 
   private advancePackets(now: number): void {
     for (let i = this.packets.length - 1; i >= 0; i -= 1) {
