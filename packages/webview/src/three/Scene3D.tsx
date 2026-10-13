@@ -1,0 +1,65 @@
+import { useEffect, useRef } from "react";
+
+import { Change, GraphNode, Op, ReplayStep, SystemGraph } from "@hexvis/core";
+
+import { Emphasis, HexScene } from "./hex-scene";
+import { layoutHexagon } from "./hexagon-layout";
+
+interface Props {
+  graph: SystemGraph;
+  nodeChanges: Map<string, Change> | null;
+  edgeChanges: Map<string, Change> | null;
+  selectedScenario: string | null;
+  step: ReplayStep | null;
+  stepOp: Op | null;
+  stepIndex: number;
+  onOpenComponent: (node: GraphNode) => void;
+}
+
+/** The 3D renderer: same inputs as the 2D graph canvas, drawn on a hexagon floor. */
+export function Scene3D({ graph, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, onOpenComponent }: Props) {
+  const container = useRef<HTMLDivElement>(null);
+  const scene = useRef<HexScene | null>(null);
+  // The scene is created once; clicks must reach the latest callback, not the first one.
+  const onOpen = useRef(onOpenComponent);
+  onOpen.current = onOpenComponent;
+
+  // WebGL is an external system: create it once, dispose it on unmount.
+  useEffect(() => {
+    if (container.current === null) return;
+    const background = getComputedStyle(container.current).getPropertyValue("--bg").trim() || "#1e1e1e";
+    const created = new HexScene(container.current, (node) => onOpen.current(node), background);
+    scene.current = created;
+    return () => {
+      created.dispose();
+      scene.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    scene.current?.setGraph(graph, layoutHexagon(graph));
+  }, [graph]);
+
+  useEffect(() => {
+    const emphasisOf = (scenarioIds: string[]): Emphasis => {
+      if (selectedScenario === null) return "normal";
+      return scenarioIds.includes(selectedScenario) ? "highlighted" : "dimmed";
+    };
+    const edgeScenarios = new Map(graph.edges.map((edge) => [edge.id, edge.scenarioIds]));
+    const active = new Set(step ? [step.from, step.to] : []);
+    scene.current?.setEmphasis(
+      (node) => emphasisOf(node.scenarioIds),
+      (edgeId) => emphasisOf(edgeScenarios.get(edgeId) ?? []),
+      active,
+      nodeChanges,
+      edgeChanges,
+    );
+  }, [graph, selectedScenario, step, nodeChanges, edgeChanges]);
+
+  useEffect(() => {
+    if (step) scene.current?.pulse(step.edgeId, step.kind, stepOp);
+    // stepIndex: the same edge twice in a row must still pulse twice.
+  }, [step, stepOp, stepIndex]);
+
+  return <div ref={container} className="scene3d" aria-label="3D view of the system: drag to orbit, scroll to zoom" />;
+}

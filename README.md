@@ -15,6 +15,10 @@ the onion it is (or isn't).
   language model's proposal — and it's saved as a rule with its reason in a checked-in
   `hexvis.json`. Where behaviour contradicts a declaration (core code querying the database,
   a request handler calling a repository directly), the graph flags it.
+- **3D.** The same views on a literal hexagon floor: core in the middle, inbound adapters on
+  the three sides facing the incoming traffic, outbound adapters on the three facing the
+  outside world, external systems beyond. Components are tiles with their live objects as
+  cubes above them; replay steps are packets of light travelling the call arcs.
 - **Compare.** Re-record after a change (yours or an AI agent's) and see which journeys now
   behave differently: new and lost hops, SQL that appeared or vanished, lines that started or
   stopped running, outcomes that flipped.

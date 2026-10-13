@@ -30,6 +30,7 @@ import { FunctionExecutionPanel } from "./components/ExecutionDiffView";
 import { ScenarioList } from "./components/ScenarioList";
 import type { Host } from "./host";
 import { layoutGraph, Positioned } from "./layout";
+import { Scene3D } from "./three/Scene3D";
 
 type Status =
   | { kind: "loading"; message: string }
@@ -71,6 +72,7 @@ export function App({ host }: { host: Host }) {
   const [detail, setDetail] = useState<Detail>({ component: null, fn: null });
   const [replay, setReplay] = useState<Replay | null>(null);
   const [compare, setCompare] = useState(false);
+  const [threeD, setThreeD] = useState(false);
   const [diff, setDiff] = useState<RunDiff | null>(null);
   const [execution, setExecution] = useState<{ diff: ExecutionDiff; replay: MergedReplayStep[] } | null>(null);
   const [executionFn, setExecutionFn] = useState<FunctionExecutionDiff | null>(null);
@@ -297,6 +299,9 @@ export function App({ host }: { host: Host }) {
           <label className="toggle">
             <input type="checkbox" checked={!grouping.collapseMiddleware} onChange={toggleMiddleware} /> Show each middleware
           </label>
+          <label className="toggle">
+            <input type="checkbox" checked={threeD} onChange={() => setThreeD(!threeD)} /> 3D (hexagon floor)
+          </label>
           {summary.baselineCreatedAt !== null && (
             <label className="toggle">
               <input type="checkbox" checked={compare} onChange={toggleCompare} /> Compare with previous recording
@@ -335,7 +340,18 @@ export function App({ host }: { host: Host }) {
             </button>
           </div>
         )}
-        {displayed === null || positions === null ? (
+        {displayed !== null && displayed.nodes.length > 0 && threeD ? (
+          <Scene3D
+            graph={displayed}
+            nodeChanges={nodeChanges}
+            edgeChanges={edgeChanges}
+            selectedScenario={selected}
+            step={step}
+            stepOp={replay?.ops?.[replay.index] ?? null}
+            stepIndex={replay?.index ?? 0}
+            onOpenComponent={openComponent}
+          />
+        ) : displayed === null || positions === null ? (
           <p className="muted centered">Laying out the system…</p>
         ) : displayed.nodes.length === 0 ? (
           <p className="muted centered">Nothing ran in the selected phases.</p>

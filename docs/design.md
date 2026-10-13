@@ -30,7 +30,7 @@ recorded **scenario**. Three views come out of the same recordings:
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
 | behavioural diff (compare with previous recording) | `packages/core/src/views/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
 | declared rings (`hexvis.json`), provenance, onion violations, LLM ring proposals | `packages/core/src/rings.ts`, `ring-advice.ts` | done |
-| 3D renderer | — | not started |
+| 3D renderer (three.js): hexagon floor, tiles and objects, call arcs, replay packets | `packages/webview/src/three` | first version; layout tested, scene checked in a browser |
 
 ## Architecture
 
@@ -97,10 +97,11 @@ An earlier "most recently active span on another thread" heuristic raced and was
 **Test doubles are their own ring.** Test code called *by* the app (FastAPI's
 `FakeAsyncPGPool`) is a stand-in for an adapter, not the client.
 
-**2D first.** The hard problem is aggregation, not rendering. The graph, function and replay
-views are view models in core; a 3D renderer is another adapter over the same models. The
-"classes on the floor, instances above them" idea needs the object/wiring data the recorder
-already captures (`O` and `W` events).
+**2D first, 3D as a second renderer.** The hard problem is aggregation, not rendering, so
+every view is a view model in core and both renderers draw the same ones. The 3D scene
+borrows its visual language from Heapscape (wireframe containers, glowing arcs, packets with
+fading tails, bloom on the packets only) and gives it HexVis's meaning: the floor is the
+hexagon, with each ring on its own side.
 
 **Known bugs are scenarios too.** pytest `xfail` is recorded as `xfailed`, never as a skip
 or a pass, so a known-broken flow can be replayed.
@@ -170,6 +171,7 @@ Accepted risks:
 
 ## Next
 
-1. **3D renderer** over the same view models: classes on the floor, instances above, wires
-   between them from the `W` events.
+1. **3D, next steps**: bundle arcs between the same pair of rings (as Heapscape bundles
+   references between regions), cull overlapping labels, draw wiring (`W` events) between
+   instance cubes, flight controls.
 2. Recording across xdist workers; Celery tasks as their own entry landmark.

@@ -780,3 +780,36 @@ button {
 
 .replay-label.op-added { color: #10b981; }
 .replay-label.op-removed { color: #e5534b; }
+
+/* ---- 3D ---- */
+
+.scene3d {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.scene-labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.label3d {
+  pointer-events: auto;
+  font: 600 11px var(--font);
+  color: var(--fg);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ring-color, var(--border));
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 150ms;
+}
+
+.label3d.active {
+  border-color: var(--pulse);
+  box-shadow: 0 0 10px var(--pulse);
+}
