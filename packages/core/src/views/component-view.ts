@@ -61,6 +61,9 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
   // Methods that ran on these objects but are defined elsewhere (a base class).
   for (const [key, tally] of tallies) {
     if (listed.has(key)) continue;
+    // Comprehensions, lambdas and nested defs belong to the function that contains them
+    // (its function view shows their lines); they aren't methods of their own.
+    if (key.includes("<locals>")) continue;
     const [module = "", qualname = ""] = key.split(":");
     const fn = run.catalogFunction(module, qualname);
     if (fn === undefined) continue;

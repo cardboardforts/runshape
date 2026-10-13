@@ -232,6 +232,17 @@ describe("component view", () => {
   });
 });
 
+describe("component view: nested code", () => {
+  test("comprehensions inside a method are part of that method, not listed as methods of their own", async () => {
+    const run = await loadFixtureRun("fastapi");
+
+    const view = buildComponentView(run, "class:app.db.repositories.articles.ArticlesRepository");
+
+    expect(view.functions.filter((fn) => fn.qualname.includes("<locals>"))).toEqual([]);
+    expect(view.functions.map((fn) => fn.name)).toContain("get_tags_for_article_by_slug");
+  });
+});
+
 describe("function view", () => {
   test("shows which tests reach each line, and which lines no test reaches", async () => {
     const run = await loadFixtureRun("fastapi");
