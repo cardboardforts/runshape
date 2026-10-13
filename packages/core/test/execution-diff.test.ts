@@ -11,6 +11,7 @@ import { Op } from "../src/align";
 import { Run } from "../src/model";
 import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
 import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src/views/execution-diff";
+import { diffRuns } from "../src/views/run-diff";
 import { fixtureFiles } from "./fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
@@ -120,5 +121,24 @@ describe("mergeReplays", () => {
           "- call articles_resource -> articles",
         ]
       `);
+  });
+});
+
+describe("diffRuns on the same refactor", () => {
+  test("lines-reached compares statements by text too, so the moved function isn't listed", async () => {
+    const { before, after } = await loadRefactor();
+
+    const changed = diffRuns(before, after).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
+
+    // check_article_exists moved down four lines and is absent; get_slug_for_article's one
+    // statement really did change (it now normalises the title first).
+    expect(changed.map((fn) => `${fn.qualname}: +${fn.linesNowReached.length} −${fn.linesNoLongerReached.length}`)).toMatchInlineSnapshot(`
+      [
+        "create_new_article: +2 −2",
+        "_normalize_title: +1 −0",
+        "ensure_slug_available: +3 −0",
+        "get_slug_for_article: +1 −1",
+      ]
+    `);
   });
 });

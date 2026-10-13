@@ -1,6 +1,6 @@
 import { BaseEdge, Edge, EdgeProps, getBezierPath } from "@xyflow/react";
 
-import { Change, EdgeViolation, StepKind } from "@hexvis/core";
+import { Change, EdgeViolation, Op, StepKind } from "@hexvis/core";
 
 import type { Emphasis } from "./ComponentNode";
 
@@ -8,6 +8,8 @@ export type Pulse = {
   /** Changes on every replay step so the animation restarts even on the same edge. */
   key: number;
   kind: StepKind;
+  /** Replaying a change: a hop only the old code made, or only the new code makes. */
+  op: Op | null;
 };
 
 export type PulseEdgeData = {
@@ -54,7 +56,7 @@ export function PulseEdge(props: EdgeProps<PulseFlowEdge>) {
         </path>
       )}
       {pulse && (
-        <circle key={pulse.key} r={5} className={`pulse pulse-${pulse.kind}`}>
+        <circle key={pulse.key} r={5} className={`pulse pulse-${pulse.kind}${pulse.op && pulse.op !== Op.Same ? ` pulse-op-${pulse.op}` : ""}`}>
           <animateMotion
             dur={PULSE_DURATION}
             repeatCount="1"

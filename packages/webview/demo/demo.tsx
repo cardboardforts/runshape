@@ -1,6 +1,7 @@
 // Runs the webview in a plain browser against the recorded example traces, with no VS Code:
 // `npm run dev -w packages/webview` then open /demo/index.html?app=django (or fastapi, or
-// django-feed-fix: two recordings, before and after a routing fix, for compare mode).
+// django-feed-fix / fastapi-slug-refactor: two recordings, before and after a change, for
+// compare mode).
 // Never part of the extension bundle.
 import { createRoot } from "react-dom/client";
 
@@ -32,10 +33,11 @@ function demoHost(app: string): Host {
   const listeners = new Set<(response: UiResponse) => void>();
   const emit = (response: UiResponse) => listeners.forEach((listener) => listener(response));
   const traces: TraceFiles = { readText: fixtureReader(app, traceFiles, "") };
-  const readFixtureSource = fixtureReader(app, sourceFiles, "source/");
+  // Fixtures named "<app>-<change>" (django-feed-fix, fastapi-slug-refactor) share the app's source.
+  const baseApp = app.split("-")[0] ?? app;
+  const readFixtureSource = fixtureReader(baseApp, sourceFiles, "source/");
   const readSource = async (file: string): Promise<string> => {
-    const exampleApp = app.startsWith("django") ? "django" : app;
-    const local = exampleSources[`../../../examples/${exampleApp}-realworld/${file}`];
+    const local = exampleSources[`../../../examples/${baseApp}-realworld/${file}`];
     return local ? ((await local()) as string) : readFixtureSource(file);
   };
   const sources = { readLines: (file: string) => readSource(file).then((text) => text.split("\n"), () => null) };

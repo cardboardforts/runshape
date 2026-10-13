@@ -1,12 +1,18 @@
-import { Change, FunctionChange, ScenarioDiff } from "@hexvis/core";
+import { CallStep, Change, ExecutionDiff, FunctionChange, ScenarioDiff } from "@hexvis/core";
+
+import { ExecutionCalls } from "./ExecutionDiffView";
 
 interface Props {
   diff: ScenarioDiff;
+  /** The call-by-call comparison, once it has arrived. */
+  execution: ExecutionDiff | null;
   onOpenFunction: (fn: FunctionChange) => void;
+  onOpenCall: (call: CallStep) => void;
+  onReplayChange: () => void;
 }
 
 /** One journey, before and after the change: what it now does differently. */
-export function ScenarioDiffPanel({ diff, onOpenFunction }: Props) {
+export function ScenarioDiffPanel({ diff, execution, onOpenFunction, onOpenCall, onReplayChange }: Props) {
   return (
     <section className="panel">
       <h2>{diff.name}</h2>
@@ -21,6 +27,21 @@ export function ScenarioDiffPanel({ diff, onOpenFunction }: Props) {
           Outcome: <span className={`outcome outcome-${diff.outcomeBefore}`}>{diff.outcomeBefore ?? "—"}</span> →{" "}
           <span className={`outcome outcome-${diff.outcomeAfter}`}>{diff.outcomeAfter ?? "—"}</span>
         </p>
+      )}
+      {diff.change !== Change.Added && diff.change !== Change.Removed && (
+        <>
+          <h3>Execution</h3>
+          {execution === null ? (
+            <p className="muted" role="status">Comparing the two executions…</p>
+          ) : (
+            <>
+              <button type="button" className="replay-change" onClick={onReplayChange}>
+                ▶ Replay the change
+              </button>
+              <ExecutionCalls diff={execution} onOpenFunction={onOpenCall} />
+            </>
+          )}
+        </>
       )}
       <ChangeList title="Hops" added={diff.hopsAdded} removed={diff.hopsRemoved} />
       <ChangeList title="External calls" added={diff.statementsAdded} removed={diff.statementsRemoved} mono />

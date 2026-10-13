@@ -1,8 +1,10 @@
-import { ReplayStep, StepKind } from "@hexvis/core";
+import { Op, ReplayStep, StepKind } from "@hexvis/core";
 
 interface Props {
   scenarioName: string;
   steps: ReplayStep[];
+  /** Replaying a change: whether each step is shared, old-only or new-only. */
+  ops: Op[] | null;
   index: number;
   playing: boolean;
   onPlayPause: () => void;
@@ -16,7 +18,7 @@ const KIND_ARROW: Record<StepKind, string> = {
   [StepKind.External]: "⇢",
 };
 
-export function ReplayBar({ scenarioName, steps, index, playing, onPlayPause, onSeek, onClose }: Props) {
+export function ReplayBar({ scenarioName, steps, ops, index, playing, onPlayPause, onSeek, onClose }: Props) {
   if (steps.length === 0) {
     return (
       <div className="replay-bar" role="region" aria-label="Replay">
@@ -45,7 +47,8 @@ export function ReplayBar({ scenarioName, steps, index, playing, onPlayPause, on
         {index + 1}/{steps.length}
       </span>
       {step && (
-        <span className={`replay-label step-${step.kind}`} title={step.label}>
+        <span className={`replay-label step-${step.kind}${ops?.[index] ? ` op-${ops[index]}` : ""}`} title={step.label}>
+          {ops?.[index] === Op.Removed ? "before only: " : ops?.[index] === Op.Added ? "after only: " : ""}
           {KIND_ARROW[step.kind]} {step.label}
         </span>
       )}

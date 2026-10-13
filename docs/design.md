@@ -13,7 +13,10 @@ recorded **scenario**. Three views come out of the same recordings:
    take different branches, and lines no wire reaches are untested.
 3. **Behavioural diff** — the recorder keeps the previous run; compare mode shows which
    journeys now behave differently: hops gained and lost, SQL that appeared or vanished,
-   functions whose reached lines changed, outcome changes.
+   outcome changes, and an **execution diff** per test — calls aligned by their path of
+   qualified names (re-parented calls marked), statements aligned by their recorded text —
+   so moving a function or editing code above it isn't mistaken for a behaviour change.
+   "Replay the change" plays both executions as one timeline.
 
 ## What exists (first vertical slice)
 
@@ -156,8 +159,8 @@ Accepted risks:
 - Celery, background tasks and multiple event loops are not followed.
 - A function's view ends at its last executable line, so a closing bracket after it is cut.
 - Rings are heuristics (see above); there is no way to correct them yet.
-- The diff compares reached lines by number (see Next), and only against the immediately
-  previous recording.
+- The diff compares only against the immediately previous recording. Recordings made before
+  source snapshots existed fall back to line numbers, and say so.
 - From the second-model review, not yet fixed: webview responses carry no request id, so a
   slow response for old view options can still land after newer ones; asyncio tasks are
   parented to the frame that ran the event loop, not the code that created the task; a run
@@ -167,9 +170,6 @@ Accepted risks:
 
 ## Next
 
-1. **Diff inside the function view**: before/after wires side by side. Today the diff lists
-   lines by number, which is only meaningful when the function's own lines didn't move;
-   matching lines by content (via the two source versions) fixes that.
-2. **3D renderer** over the same view models: classes on the floor, instances above, wires
+1. **3D renderer** over the same view models: classes on the floor, instances above, wires
    between them from the `W` events.
-3. Recording across xdist workers; Celery tasks as their own entry landmark.
+2. Recording across xdist workers; Celery tasks as their own entry landmark.

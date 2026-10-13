@@ -1,6 +1,6 @@
 import { Background, Controls, ReactFlow } from "@xyflow/react";
 
-import { Change, GraphNode, ReplayStep, SystemGraph } from "@hexvis/core";
+import { Change, GraphNode, Op, ReplayStep, SystemGraph } from "@hexvis/core";
 
 import type { Positioned } from "../layout";
 import { ComponentFlowNode, ComponentNode, Emphasis } from "./ComponentNode";
@@ -18,6 +18,7 @@ interface Props {
   edgeChanges: Map<string, Change> | null;
   selectedScenario: string | null;
   step: ReplayStep | null;
+  stepOp: Op | null;
   stepIndex: number;
   onOpenComponent: (node: GraphNode) => void;
 }
@@ -29,6 +30,7 @@ export function GraphCanvas({
   edgeChanges,
   selectedScenario,
   step,
+  stepOp,
   stepIndex,
   onOpenComponent,
 }: Props) {
@@ -62,7 +64,7 @@ export function GraphCanvas({
       emphasis: emphasisOf(edge.scenarioIds),
       change: edgeChanges?.get(edge.id) ?? null,
       violation: edge.violation,
-      pulse: step !== null && step.edgeId === edge.id ? { key: stepIndex, kind: step.kind } : null,
+      pulse: step !== null && step.edgeId === edge.id ? { key: stepIndex, kind: step.kind, op: stepOp } : null,
     },
   }));
 

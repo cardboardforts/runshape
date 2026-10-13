@@ -9,6 +9,7 @@ import type { ComponentView } from "./views/component-view";
 import type { FunctionView } from "./views/function-view";
 import type { ReplayStep } from "./views/replay";
 import type { RunDiff } from "./views/run-diff";
+import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "./views/execution-diff";
 import type { SystemGraph } from "./views/system-graph";
 
 export type UiRequest =
@@ -21,6 +22,8 @@ export type UiRequest =
   | { type: "diff"; phases: Phase[]; grouping: Grouping }
   | { type: "setRing"; qualifiedName: string; ring: DeclaredRing; reason: string; by: RingRule["by"] }
   | { type: "adviseRing"; componentId: string; grouping: Grouping }
+  | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
+  | { type: "functionExecutionDiff"; scenarioId: string; module: string; qualname: string; phases: Phase[] }
   | { type: "openSource"; file: string; line: number };
 
 export type UiResponse =
@@ -34,5 +37,7 @@ export type UiResponse =
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
   | { type: "diff"; diff: RunDiff }
   | { type: "rulesChanged"; count: number }
+  | { type: "executionDiff"; diff: ExecutionDiff; replay: MergedReplayStep[] }
+  | { type: "functionExecutionDiff"; diff: FunctionExecutionDiff }
   | { type: "ringAdvice"; componentId: string; advice: RingAdvice }
   | { type: "ringAdviceFailed"; componentId: string; message: string };

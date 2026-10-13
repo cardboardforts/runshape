@@ -6,6 +6,7 @@ import { buildComponentView } from "./views/component-view";
 import { Grouping } from "./views/components";
 import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
 import { buildReplay } from "./views/replay";
+import { diffExecution, diffFunctionExecution, mergeReplays } from "./views/execution-diff";
 import { diffRuns } from "./views/run-diff";
 import { buildSystemGraph } from "./views/system-graph";
 
@@ -152,6 +153,24 @@ export class ViewerSession {
       }
       case "adviseRing":
         return this.adviseRing(request.componentId, request.grouping);
+      case "executionDiff": {
+        const before = this.baseline?.scenario(request.scenarioId);
+        const after = this.run.scenario(request.scenarioId);
+        if (before === undefined || after === undefined) {
+          return { type: "error", message: "This test exists in only one of the two recordings; there is no execution to compare." };
+        }
+        return {
+          type: "executionDiff",
+          diff: diffExecution(before, after, request.phases),
+          replay: mergeReplays(before, after, request.phases, request.grouping),
+        };
+      }
+      case "functionExecutionDiff":
+        if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
+        return {
+          type: "functionExecutionDiff",
+          diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, request.module, request.qualname, request.phases),
+        };
       case "openSource":
       case "reload":
         return null; // host concerns: the extension handles these itself

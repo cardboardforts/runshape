@@ -29,7 +29,9 @@ export interface DiffEdge extends GraphEdge {
 export interface FunctionChange {
   module: string;
   qualname: string;
+  /** Lines (in the new code) whose statement didn't run before. */
   linesNowReached: number[];
+  /** Lines (in the old code) whose statement no longer runs. */
   linesNoLongerReached: number[];
 }
 
@@ -80,7 +82,8 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   // isn't something a reviewer can act on.
   const catalogued = new Set([...before.catalog, ...after.catalog].map((fn) => `${fn.module}:${fn.qualname}`));
   for (const id of scenarioIds) {
-    scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued));
+    const [textBefore, textAfter] = lineTexts(before, after);
+    scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter));
   }
   return { caveats: caveatsFor(before, after), nodes, edges, scenarios };
 }
@@ -105,13 +108,16 @@ function diffScenario(
   phases: Phase[],
   grouping: Grouping,
   catalogued: Set<string>,
+  sourcesBefore: LineText,
+  sourcesAfter: LineText,
 ): ScenarioDiff {
   const either = (after ?? before) as Scenario;
   const hops = differenceOfSets(hopsOf(before, phases, grouping), hopsOf(after, phases, grouping));
   const statements = differenceOfCounts(statementsOf(before, phases), statementsOf(after, phases));
-  const functionsChanged = diffReachedLines(reachedLines(before, phases), reachedLines(after, phases)).filter((fn) =>
-    catalogued.has(`${fn.module}:${fn.qualname}`),
-  );
+  const functionsChanged = diffReachedLines(
+    reachedLines(before, phases, sourcesBefore),
+    reachedLines(after, phases, sourcesAfter),
+  ).filter((fn) => catalogued.has(`${fn.module}:${fn.qualname}`));
   const outcomeBefore = before?.outcome ?? null;
   const outcomeAfter = after?.outcome ?? null;
 
@@ -169,12 +175,24 @@ function statementsOf(scenario: Scenario | null, phases: Phase[]): Map<string, n
   return counts;
 }
 
+/** How a reached line is identified: its recorded text when both runs have source, else its number. */
+type LineText = (file: string | null, line: number) => string;
+
+function lineTexts(before: Run, after: Run): [LineText, LineText] {
+  if (before.sources === null || after.sources === null) {
+    const byNumber: LineText = (_file, line) => `line ${line}`;
+    return [byNumber, byNumber];
+  }
+  const byText = (run: Run): LineText => (file, line) => (file ? run.sourceLine(file, line)?.trim() : null) ?? `line ${line}`;
+  return [byText(before), byText(after)];
+}
+
 /**
- * Lines reached per project function. Compared by line number, so it is only meaningful for
- * functions whose own source didn't move; edits above a function shift its numbers.
+ * Lines reached per project function, keyed by what the line says (see lineTexts), so a
+ * function that moved, or had code inserted above it, isn't reported as changed.
  */
-function reachedLines(scenario: Scenario | null, phases: Phase[]): Map<string, Set<number>> {
-  const reached = new Map<string, Set<number>>();
+function reachedLines(scenario: Scenario | null, phases: Phase[], identify: LineText): Map<string, Map<string, number>> {
+  const reached = new Map<string, Map<string, number>>();
   if (scenario === null) return reached;
   const included = new Set(phases);
   for (const span of scenario.spans) {
@@ -182,21 +200,21 @@ function reachedLines(scenario: Scenario | null, phases: Phase[]): Map<string, S
     const key = `${span.fn.module}:${span.fn.qualname}`;
     let lines = reached.get(key);
     if (lines === undefined) {
-      lines = new Set();
+      lines = new Map();
       reached.set(key, lines);
     }
-    for (const line of span.lines) lines.add(line);
+    for (const line of span.lines) lines.set(identify(span.fn.file, line), line);
   }
   return reached;
 }
 
-function diffReachedLines(before: Map<string, Set<number>>, after: Map<string, Set<number>>): FunctionChange[] {
+function diffReachedLines(before: Map<string, Map<string, number>>, after: Map<string, Map<string, number>>): FunctionChange[] {
   const changes: FunctionChange[] = [];
   for (const key of new Set([...before.keys(), ...after.keys()])) {
-    const was = before.get(key) ?? new Set<number>();
-    const now = after.get(key) ?? new Set<number>();
-    const linesNowReached = [...now].filter((line) => !was.has(line)).sort((a, b) => a - b);
-    const linesNoLongerReached = [...was].filter((line) => !now.has(line)).sort((a, b) => a - b);
+    const was = before.get(key) ?? new Map<string, number>();
+    const now = after.get(key) ?? new Map<string, number>();
+    const linesNowReached = [...now].filter(([text]) => !was.has(text)).map(([, line]) => line).sort((a, b) => a - b);
+    const linesNoLongerReached = [...was].filter(([text]) => !now.has(text)).map(([, line]) => line).sort((a, b) => a - b);
     if (linesNowReached.length + linesNoLongerReached.length === 0) continue;
     const [module = "", qualname = ""] = key.split(":");
     changes.push({ module, qualname, linesNowReached, linesNoLongerReached });

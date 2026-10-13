@@ -716,3 +716,67 @@ button {
   margin-right: 6px;
   vertical-align: 3px;
 }
+
+/* ---- execution diff ---- */
+
+.exec-calls {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.exec-calls li {
+  display: flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.exec-calls .gap {
+  padding-left: 18px;
+}
+
+.mark {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+}
+
+.indent {
+  display: inline-block;
+  flex: none;
+}
+
+.op-added { background: rgba(16, 185, 129, 0.12); }
+.op-removed { background: rgba(229, 83, 75, 0.12); }
+.op-added .mark { color: #10b981; }
+.op-removed .mark { color: #e5534b; }
+
+.exec-statements .exec-row,
+.exec-statements .exec-head {
+  display: grid;
+  grid-template-columns: 18px 52px 52px 1fr;
+}
+
+.replay-change {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border: none;
+  border-radius: 3px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.pulse-op-added {
+  fill: #10b981;
+  filter: drop-shadow(0 0 6px #10b981);
+}
+
+.pulse-op-removed {
+  fill: #e5534b;
+  filter: drop-shadow(0 0 6px #e5534b);
+}
+
+.replay-label.op-added { color: #10b981; }
+.replay-label.op-removed { color: #e5534b; }

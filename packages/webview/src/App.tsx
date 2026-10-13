@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  CallStep,
   Change,
+  ExecutionDiff,
+  FunctionExecutionDiff,
+  MergedReplayStep,
+  Op,
   ComponentView,
   FunctionSummary,
   FunctionView,
@@ -21,6 +26,7 @@ import { FunctionPanel } from "./components/FunctionPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { ReplayBar } from "./components/ReplayBar";
 import { ScenarioDiffPanel } from "./components/ScenarioDiffPanel";
+import { FunctionExecutionPanel } from "./components/ExecutionDiffView";
 import { ScenarioList } from "./components/ScenarioList";
 import type { Host } from "./host";
 import { layoutGraph, Positioned } from "./layout";
@@ -34,6 +40,8 @@ type Status =
 interface Replay {
   scenarioId: string;
   steps: ReplayStep[];
+  /** Set when replaying a change (before and after merged). */
+  ops: Op[] | null;
   index: number;
   playing: boolean;
 }
@@ -64,6 +72,8 @@ export function App({ host }: { host: Host }) {
   const [replay, setReplay] = useState<Replay | null>(null);
   const [compare, setCompare] = useState(false);
   const [diff, setDiff] = useState<RunDiff | null>(null);
+  const [execution, setExecution] = useState<{ diff: ExecutionDiff; replay: MergedReplayStep[] } | null>(null);
+  const [executionFn, setExecutionFn] = useState<FunctionExecutionDiff | null>(null);
   const [advice, setAdvice] = useState<{ componentId: string; state: AdviceState }>({ componentId: "", state: { kind: "idle" } });
   const openComponentId = useRef<string | null>(null);
   // Kept apart from the summary, which only arrives when a recording loads.
@@ -109,6 +119,8 @@ export function App({ host }: { host: Host }) {
             setDetail({ component: null, fn: null });
             setReplay(null);
             setDiff(null);
+            setExecution(null);
+            setExecutionFn(null);
             const { phases, grouping: currentGrouping, compare: comparing } = viewOptions.current;
             host.post({ type: "graph", phases, grouping: currentGrouping });
             if (comparing && response.summary.baselineCreatedAt !== null) {
@@ -153,7 +165,13 @@ export function App({ host }: { host: Host }) {
           break;
         case "replay":
           setSelected(response.scenarioId);
-          setReplay({ scenarioId: response.scenarioId, steps: response.steps, index: 0, playing: response.steps.length > 0 });
+          setReplay({ scenarioId: response.scenarioId, steps: response.steps, ops: null, index: 0, playing: response.steps.length > 0 });
+          break;
+        case "executionDiff":
+          setExecution({ diff: response.diff, replay: response.replay });
+          break;
+        case "functionExecutionDiff":
+          setExecutionFn(response.diff);
           break;
       }
     });
@@ -229,8 +247,31 @@ export function App({ host }: { host: Host }) {
     if (next) {
       setDiff(null); // never show a diff computed for other view options
       host.post({ type: "diff", phases, grouping });
+      if (selected !== null) requestExecution(selected);
     }
   };
+  const requestExecution = (scenarioId: string) => {
+    setExecution(null);
+    setExecutionFn(null);
+    host.post({ type: "executionDiff", scenarioId, phases, grouping });
+  };
+  const selectScenario = (scenarioId: string | null) => {
+    setSelected(scenarioId);
+    if (compare && scenarioId !== null) requestExecution(scenarioId);
+  };
+  const openCall = (call: CallStep) =>
+    selected !== null &&
+    host.post({ type: "functionExecutionDiff", scenarioId: selected, module: call.module, qualname: call.qualname, phases });
+  const replayChange = () =>
+    execution &&
+    selected !== null &&
+    setReplay({
+      scenarioId: selected,
+      steps: execution.replay.map((merged) => merged.step),
+      ops: execution.replay.map((merged) => merged.op),
+      index: 0,
+      playing: execution.replay.length > 0,
+    });
   const nodeChanges = compare && diff ? new Map(diff.nodes.map((node) => [node.id, node.change])) : null;
   const edgeChanges = compare && diff ? new Map(diff.edges.map((edge) => [edge.id, edge.change])) : null;
   const scenarioChanges = compare && diff ? new Map(diff.scenarios.map((scenario) => [scenario.id, scenario.change])) : null;
@@ -279,7 +320,7 @@ export function App({ host }: { host: Host }) {
           scenarios={summary.scenarios}
           selected={selected}
           changes={scenarioChanges}
-          onSelect={setSelected}
+          onSelect={selectScenario}
           onReplay={startReplay}
         />
         <Legend ruleCount={ruleCount} />
@@ -307,6 +348,7 @@ export function App({ host }: { host: Host }) {
             edgeChanges={edgeChanges}
             selectedScenario={selected}
             step={step}
+            stepOp={replay?.ops?.[replay.index] ?? null}
             stepIndex={replay?.index ?? 0}
             onOpenComponent={openComponent}
           />
@@ -315,6 +357,7 @@ export function App({ host }: { host: Host }) {
           <ReplayBar
             scenarioName={replayName}
             steps={replay.steps}
+            ops={replay.ops}
             index={replay.index}
             playing={replay.playing}
             onPlayPause={() =>
@@ -377,8 +420,21 @@ export function App({ host }: { host: Host }) {
                 )
               }
             />
+          ) : executionFn && selectedDiff ? (
+            <>
+              <button type="button" className="link" onClick={() => setExecutionFn(null)}>
+                ← {selectedDiff.name}
+              </button>
+              <FunctionExecutionPanel diff={executionFn} />
+            </>
           ) : selectedDiff ? (
-            <ScenarioDiffPanel diff={selectedDiff} onOpenFunction={openFunction} />
+            <ScenarioDiffPanel
+              diff={selectedDiff}
+              execution={execution?.diff.scenarioId === selectedDiff.id ? execution.diff : null}
+              onOpenFunction={openFunction}
+              onOpenCall={openCall}
+              onReplayChange={replayChange}
+            />
           ) : null}
         </aside>
       )}
