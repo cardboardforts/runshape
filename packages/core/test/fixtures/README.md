@@ -3,8 +3,9 @@
 Real recordings of the two example apps, used by the core tests and the webview demo.
 
 - `<app>/run/` — a trace run exactly as `examples/record.sh <app>` wrote it (the FastAPI one
-  is trimmed to five of its ninety scenarios to keep the repo small). Traces hold function
-  names, line numbers and SQL text, not source code.
+  is trimmed to five of its ninety scenarios to keep the repo small). Older
+  recordings (django, fastapi, django-feed-fix) hold names, line numbers and SQL text only;
+  newer ones (fastapi-slug-refactor) also carry the source they ran (see below).
 - `fastapi/source/` — a copy of fastapi-realworld-example-app's Python source at the recorded
   commit (MIT, see `fastapi/source/LICENSE`), so tests can show code without the examples
   being set up. There is deliberately no `django/source/`: that upstream repo has no license,

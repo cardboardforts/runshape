@@ -140,7 +140,7 @@ in a webview.
 | trace file → log | **T/R**: a value with a newline forges a log line | logger escapes newlines and quotes (unit-tested) | misleading audit trail |
 | recorder → disk | **I**: traces capture data from the test run | SQL text but never parameters; URLs without query strings (API keys); request method and path only, no headers or bodies; traces live under `.hexvis/`, which projects should git-ignore | credentials and personal data from test fixtures land in files people commit or share |
 | extension → language model | **I**: "Suggest a ring" sends the component's name, functions, recorded neighbours and its own source to whichever model VS Code provides (e.g. Copilot's) | only on an explicit click per component; VS Code asks the person to allow model access the first time; the log records prompt size, never content | code leaves the machine without the person deciding it should |
-| model answer → hexvis.json | **T**: a model's (or prompt-injected) answer rewrites the architecture rules | the answer is validated (known ring, non-empty reason) and shown as a proposal; writing requires a modal confirmation showing the exact rule | the rules file changes silently |
+| model answer → hexvis.json | **T**: a model's (or prompt-injected) answer rewrites the architecture rules | the answer is validated (known ring, non-empty reason) and shown as a proposal; writing requires a modal confirmation showing the exact rule as JSON and whether it replaces one; saving is refused while hexvis.json is unreadable, so a broken file is never overwritten; the request itself is validated | the rules file changes silently |
 | recorder → test process | **D**: tracing slows or breaks the suite | opt-in (`--hexvis`); callbacks never raise; `sys.monitoring` disables uninteresting code after first sight | a broken or unusably slow test run |
 
 Accepted risks:
@@ -159,7 +159,11 @@ Accepted risks:
 - Threads that existed before recording started aren't traced on the settrace backend.
 - Celery, background tasks and multiple event loops are not followed.
 - A function's view ends at its last executable line, so a closing bracket after it is cut.
-- Rings are heuristics (see above); there is no way to correct them yet.
+- Inferred rings are heuristics; declare the ones that matter in `hexvis.json`. A leading
+  `**.` in a rule needs at least one segment (`**.models` doesn't match `models`); a
+  trailing or inner `.**` may match none.
+- 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
+  component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before
   source snapshots existed fall back to line numbers, and say so.
 - From the second-model review, not yet fixed: webview responses carry no request id, so a
