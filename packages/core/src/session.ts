@@ -1,6 +1,6 @@
 import { Outcome, Run } from "./model";
-import { parseRingAdvice, RingAdviceError, RingAdvisor, ringAdvicePrompt, ringFacts } from "./ring-advice";
-import { DeclaredRing, RingRules } from "./rings";
+import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
+import { DeclaredZone, ZoneRules } from "./zones";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
 import { Grouping } from "./views/components";
@@ -18,19 +18,19 @@ export interface SourceReader {
 }
 
 /** Port: persist hexvis.json. Resolves false when the person declined the change. */
-export interface RingRuleStore {
-  save(rules: RingRules, change: string): Promise<boolean>;
+export interface ZoneRuleStore {
+  save(rules: ZoneRules, change: string): Promise<boolean>;
 }
 
 export interface SessionDependencies {
   sources: SourceReader;
   /** The previous recording, to compare against. */
   baseline?: Run | null;
-  rules?: RingRules;
+  rules?: ZoneRules;
   /** Set when hexvis.json exists but couldn't be read: saving would overwrite what's there. */
   rulesProblem?: string | null;
-  ruleStore?: RingRuleStore | null;
-  advisor?: RingAdvisor | null;
+  ruleStore?: ZoneRuleStore | null;
+  advisor?: ZoneAdvisor | null;
 }
 
 export interface ScenarioSummary {
@@ -55,7 +55,7 @@ export interface RunSummary {
   baselineCreatedAt: string | null;
   ringRules: number;
   canEditRules: boolean;
-  canAdviseRings: boolean;
+  canAdviseZones: boolean;
 }
 
 /**
@@ -65,9 +65,9 @@ export interface RunSummary {
 export class ViewerSession {
   private readonly sources: SourceReader;
   private readonly baseline: Run | null;
-  private readonly ruleStore: RingRuleStore | null;
-  private readonly advisor: RingAdvisor | null;
-  private rules: RingRules;
+  private readonly ruleStore: ZoneRuleStore | null;
+  private readonly advisor: ZoneAdvisor | null;
+  private rules: ZoneRules;
   private rulesProblem: string | null;
 
   constructor(
@@ -76,19 +76,19 @@ export class ViewerSession {
   ) {
     this.sources = dependencies.sources;
     this.baseline = dependencies.baseline ?? null;
-    this.rules = dependencies.rules ?? RingRules.none();
+    this.rules = dependencies.rules ?? ZoneRules.none();
     this.rulesProblem = dependencies.rulesProblem ?? null;
     this.ruleStore = dependencies.ruleStore ?? null;
     this.advisor = dependencies.advisor ?? null;
   }
 
   /** hexvis.json changed on disk (edited by hand, or by another window). */
-  replaceRules(rules: RingRules, problem: string | null): void {
+  replaceRules(rules: ZoneRules, problem: string | null): void {
     this.rules = rules;
     this.rulesProblem = problem;
   }
 
-  currentRules(): RingRules {
+  currentRules(): ZoneRules {
     return this.rules;
   }
 
@@ -113,7 +113,7 @@ export class ViewerSession {
       baselineCreatedAt: this.baseline?.createdAt ?? null,
       ringRules: this.rules.rules.length,
       canEditRules: this.ruleStore !== null,
-      canAdviseRings: this.advisor?.available ?? false,
+      canAdviseZones: this.advisor?.available ?? false,
     };
   }
 
@@ -161,16 +161,16 @@ export class ViewerSession {
           diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
           review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
         };
-      case "setRing": {
-        if (this.ruleStore === null) return { type: "error", message: "Rings can't be saved from here." };
+      case "setZone": {
+        if (this.ruleStore === null) return { type: "error", message: "Zones can't be saved from here." };
         if (this.rulesProblem !== null) {
-          // The session is showing inferred rings because the file couldn't be read; saving
+          // The session is showing inferred zones because the file couldn't be read; saving
           // now would replace every rule in it with this one.
           return { type: "error", message: `Fix hexvis.json before adding rules: ${this.rulesProblem}` };
         }
-        const invalid = invalidRingRequest(request);
+        const invalid = invalidZoneRequest(request);
         if (invalid !== null) return { type: "error", message: invalid };
-        const next = this.rules.withRuleFor(request.qualifiedName, request.ring, request.reason, request.by);
+        const next = this.rules.withRuleFor(request.qualifiedName, request.zone, request.reason, request.by);
         const replaces = this.rules.rules.some((rule) => rule.match === request.qualifiedName);
         const change =
           `${JSON.stringify(next.rules[0], null, 2)}\n\n` +
@@ -180,8 +180,8 @@ export class ViewerSession {
         this.rules = next;
         return { type: "rulesChanged", count: next.rules.length };
       }
-      case "adviseRing":
-        return this.adviseRing(request.componentId, request.grouping);
+      case "adviseZone":
+        return this.adviseZone(request.componentId, request.grouping);
       case "executionDiff": {
         const before = this.baseline?.scenario(request.scenarioId);
         const after = this.run.scenario(request.scenarioId);
@@ -206,28 +206,28 @@ export class ViewerSession {
     }
   }
 
-  private async adviseRing(componentId: string, grouping: Grouping): Promise<UiResponse> {
+  private async adviseZone(componentId: string, grouping: Grouping): Promise<UiResponse> {
     if (this.advisor === null || !this.advisor.available) {
-      return { type: "ringAdviceFailed", componentId, message: "No language model is available (in VS Code, one comes with e.g. GitHub Copilot)." };
+      return { type: "zoneAdviceFailed", componentId, message: "No language model is available (in VS Code, one comes with e.g. GitHub Copilot)." };
     }
     const graph = buildSystemGraph(this.run, { grouping, rules: this.rules });
     const node = graph.nodes.find((candidate) => candidate.id === componentId);
     if (node === undefined || node.qualifiedName === null) {
-      return { type: "ringAdviceFailed", componentId, message: "Only project classes and modules can be placed in a ring." };
+      return { type: "zoneAdviceFailed", componentId, message: "Only project classes and modules can be placed in a zone." };
     }
     const view = buildComponentView(this.run, componentId, grouping);
-    const prompt = ringAdvicePrompt(ringFacts(graph, node, view), await this.componentSource(view));
+    const prompt = zoneAdvicePrompt(zoneFacts(graph, node, view), await this.componentSource(view));
     let answer: string;
     try {
       answer = await this.advisor.complete(prompt);
     } catch (error) {
       // Access denied, quota, network: the view must leave its "asking" state either way.
-      return { type: "ringAdviceFailed", componentId, message: `The model request failed: ${error instanceof Error ? error.message : String(error)}` };
+      return { type: "zoneAdviceFailed", componentId, message: `The model request failed: ${error instanceof Error ? error.message : String(error)}` };
     }
     try {
-      return { type: "ringAdvice", componentId, advice: parseRingAdvice(answer) };
+      return { type: "zoneAdvice", componentId, advice: parseZoneAdvice(answer) };
     } catch (error) {
-      if (error instanceof RingAdviceError) return { type: "ringAdviceFailed", componentId, message: error.message };
+      if (error instanceof ZoneAdviceError) return { type: "zoneAdviceFailed", componentId, message: error.message };
       throw error;
     }
   }
@@ -249,11 +249,11 @@ export class ViewerSession {
   }
 }
 
-/** setRing arrives from the webview: check it like any input crossing into the session. */
-function invalidRingRequest(request: Extract<UiRequest, { type: "setRing" }>): string | null {
+/** setZone arrives from the webview: check it like any input crossing into the session. */
+function invalidZoneRequest(request: Extract<UiRequest, { type: "setZone" }>): string | null {
   const problems: string[] = [];
   if (typeof request.qualifiedName !== "string" || request.qualifiedName.trim() === "") problems.push("no component name");
-  if (!(Object.values(DeclaredRing) as string[]).includes(request.ring)) problems.push(`unknown ring ${JSON.stringify(request.ring)}`);
+  if (!(Object.values(DeclaredZone) as string[]).includes(request.zone)) problems.push(`unknown zone ${JSON.stringify(request.zone)}`);
   if (typeof request.reason !== "string" || request.reason.trim() === "") problems.push("no reason");
   if (request.by !== "user" && request.by !== "llm") problems.push(`unknown decider ${JSON.stringify(request.by)}`);
   return problems.length > 0 ? `Can't save that rule: ${problems.join("; ")}` : null;

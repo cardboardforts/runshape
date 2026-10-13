@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, loadLatestRun, Ring } from "@hexvis/core";
+import { buildSystemGraph, loadLatestRun, Zone } from "@hexvis/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -30,39 +30,39 @@ describe("layoutHexagon", () => {
       const tile = tiles.get(node.id)!;
       const distance = Math.hypot(tile.x, tile.z);
       const angle = angleOf(tile.x, tile.z);
-      if (node.ring === Ring.InboundAdapter) {
+      if (node.zone === Zone.InboundAdapter) {
         expect(angle, node.label).toBeGreaterThanOrEqual(120);
         expect(angle, node.label).toBeLessThanOrEqual(240);
       }
-      if (node.ring === Ring.OutboundAdapter) expect(Math.abs(angle), node.label).toBeLessThanOrEqual(60);
-      if (node.ring === Ring.Core) expect(distance, node.label).toBeLessThan(radius * 0.7);
-      if (node.ring === Ring.External) expect(tile.x, node.label).toBeGreaterThan(radius);
-      if (node.ring === Ring.Edge) expect(tile.x, node.label).toBeLessThan(-radius);
+      if (node.zone === Zone.OutboundAdapter) expect(Math.abs(angle), node.label).toBeLessThanOrEqual(60);
+      if (node.zone === Zone.Core) expect(distance, node.label).toBeLessThan(radius * 0.7);
+      if (node.zone === Zone.External) expect(tile.x, node.label).toBeGreaterThan(radius);
+      if (node.zone === Zone.Edge) expect(tile.x, node.label).toBeLessThan(-radius);
     }
     expect(tiles.size).toBe(graph.nodes.length);
   });
 
   test("no two tiles overlap, on the real graph or on a big synthetic one", async () => {
     const real = await fastapiGraph();
-    const node = (id: string, ring: Ring, calls: number) =>
-      ({ id, kind: "class", label: id, qualifiedName: id, ring, ringSource: "inferred", ringReason: "", smells: [], calls, instances: 0, scenarioIds: [] }) as never;
+    const node = (id: string, zone: Zone, calls: number) =>
+      ({ id, kind: "class", label: id, qualifiedName: id, zone, zoneSource: "inferred", zoneReason: "", smells: [], calls, instances: 0, scenarioIds: [] }) as never;
     const big = {
       nodes: [
-        ...Array.from({ length: 120 }, (_, i) => node(`core${i}`, Ring.Core, 1 + (i % 500))),
-        ...Array.from({ length: 4 }, (_, i) => node(`in${i}`, Ring.InboundAdapter, 400)),
-        ...Array.from({ length: 4 }, (_, i) => node(`out${i}`, Ring.OutboundAdapter, 400)),
+        ...Array.from({ length: 120 }, (_, i) => node(`core${i}`, Zone.Core, 1 + (i % 500))),
+        ...Array.from({ length: 4 }, (_, i) => node(`in${i}`, Zone.InboundAdapter, 400)),
+        ...Array.from({ length: 4 }, (_, i) => node(`out${i}`, Zone.OutboundAdapter, 400)),
       ],
       edges: [],
     };
     for (const graph of [real, big]) {
       const { tiles } = layoutHexagon(graph);
       expect(overlappingTiles(tiles)).toEqual([]);
-      // Stronger than "nothing happens to overlap": the adapters' ring clears the whole
+      // Stronger than "nothing happens to overlap": the adapters' zone clears the whole
       // core region, whichever angle the core's outermost tiles end up at.
       const reach = (ids: string[], outward: 1 | -1) =>
         ids.map((id) => tiles.get(id)!).map((t) => Math.hypot(t.x, t.z) + (outward * t.size * Math.SQRT2) / 2);
-      const coreIds = graph.nodes.filter((n) => n.ring === Ring.Core).map((n) => n.id);
-      const adapterIds = graph.nodes.filter((n) => n.ring === Ring.InboundAdapter || n.ring === Ring.OutboundAdapter).map((n) => n.id);
+      const coreIds = graph.nodes.filter((n) => n.zone === Zone.Core).map((n) => n.id);
+      const adapterIds = graph.nodes.filter((n) => n.zone === Zone.InboundAdapter || n.zone === Zone.OutboundAdapter).map((n) => n.id);
       expect(Math.min(...reach(adapterIds, -1))).toBeGreaterThan(Math.max(...reach(coreIds, 1)));
     }
   });

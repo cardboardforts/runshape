@@ -25,7 +25,7 @@ import {
 } from "@hexvis/core";
 
 import { ComponentPanel } from "./components/ComponentPanel";
-import { AdviceState, RingControls } from "./components/RingControls";
+import { AdviceState, ZoneControls } from "./components/ZoneControls";
 import { FunctionPanel } from "./components/FunctionPanel";
 import { GraphCanvas } from "./components/GraphCanvas";
 import { ReplayBar } from "./components/ReplayBar";
@@ -164,7 +164,7 @@ export function App({ host }: { host: Host }) {
           break;
         case "rulesChanged": {
           setRuleCount(response.count);
-          // Rings changed: everything coloured by ring is stale.
+          // Zones changed: everything coloured by zone is stale.
           const { phases, grouping: currentGrouping, compare: comparing } = viewOptions.current;
           setAdvice({ componentId: "", state: { kind: "idle" } });
           host.post({ type: "graph", phases, grouping: currentGrouping });
@@ -172,10 +172,10 @@ export function App({ host }: { host: Host }) {
           if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
           break;
         }
-        case "ringAdvice":
+        case "zoneAdvice":
           setAdvice({ componentId: response.componentId, state: { kind: "proposed", advice: response.advice } });
           break;
-        case "ringAdviceFailed":
+        case "zoneAdviceFailed":
           setAdvice({ componentId: response.componentId, state: { kind: "failed", message: response.message } });
           break;
         case "replay":
@@ -444,22 +444,22 @@ export function App({ host }: { host: Host }) {
               view={detail.component}
               onOpenFunction={openFunction}
               relations={<Holdings componentId={detail.component.id} wiring={wiring} graph={displayed} />}
-              ring={
+              zone={
                 componentNode && (
-                  <RingControls
-                    // A new ring (after saving a rule) starts the form afresh.
-                    key={`${componentNode.id}|${componentNode.ring}|${componentNode.ringReason}`}
+                  <ZoneControls
+                    // A new zone (after saving a rule) starts the form afresh.
+                    key={`${componentNode.id}|${componentNode.zone}|${componentNode.zoneReason}`}
                     node={componentNode}
                     canEdit={summary.canEditRules}
-                    canAdvise={summary.canAdviseRings}
+                    canAdvise={summary.canAdviseZones}
                     advice={advice.componentId === componentNode.id ? advice.state : { kind: "idle" }}
-                    onSetRing={(ring, reason, by) =>
+                    onSetZone={(zone, reason, by) =>
                       componentNode.qualifiedName !== null &&
-                      host.post({ type: "setRing", qualifiedName: componentNode.qualifiedName, ring, reason, by })
+                      host.post({ type: "setZone", qualifiedName: componentNode.qualifiedName, zone, reason, by })
                     }
                     onAskAdvice={() => {
                       setAdvice({ componentId: componentNode.id, state: { kind: "asking" } });
-                      host.post({ type: "adviseRing", componentId: componentNode.id, grouping });
+                      host.post({ type: "adviseZone", componentId: componentNode.id, grouping });
                     }}
                     onDismissAdvice={() => setAdvice({ componentId: "", state: { kind: "idle" } })}
                   />
@@ -552,20 +552,20 @@ function DiffSummary({ diff, review }: { diff: RunDiff; review: ReviewSummary })
 
 function Legend({ ruleCount }: { ruleCount: number }) {
   return (
-    <section className="legend-rings" aria-label="Legend">
+    <section className="legend-zones" aria-label="Legend">
       <h2>
-        Rings{" "}
+        Zones{" "}
         {ruleCount > 0
           ? `(${ruleCount} rule${ruleCount === 1 ? "" : "s"} in hexvis.json, the rest inferred)`
           : "(inferred from runtime behaviour)"}
       </h2>
       <ul>
-        <li><span className="dot ring-edge" /> framework: entry, middleware, router</li>
-        <li><span className="dot ring-inbound-adapter" /> inbound adapter: the framework hands it requests</li>
-        <li><span className="dot ring-core" /> core: neither receives requests nor leaves the process</li>
-        <li><span className="dot ring-outbound-adapter" /> outbound adapter: calls an external system</li>
-        <li><span className="dot ring-test-double" /> test double: test code the app calls</li>
-        <li><span className="dot ring-external" /> external system</li>
+        <li><span className="dot zone-edge" /> framework: entry, middleware, router</li>
+        <li><span className="dot zone-inbound-adapter" /> inbound adapter: the framework hands it requests</li>
+        <li><span className="dot zone-core" /> core: neither receives requests nor leaves the process</li>
+        <li><span className="dot zone-outbound-adapter" /> outbound adapter: calls an external system</li>
+        <li><span className="dot zone-test-double" /> test double: test code the app calls</li>
+        <li><span className="dot zone-external" /> external system</li>
         <li><span className="line-violation" /> call against the onion (hover it)</li>
       </ul>
     </section>

@@ -14,12 +14,12 @@ exports.run = async function run() {
     .filter((tab) => tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes("hexvis.runtime"));
   assert.strictEqual(panels.length, 1, `expected one HexVis panel, found ${panels.length}`);
 
-  // "Suggest a ring" through VS Code's language model API, answered by the fake model
+  // "Suggest a zone" through VS Code's language model API, answered by the fake model
   // extension loaded beside HexVis. With an id the command returns the proposal, no UI.
-  const response = await vscode.commands.executeCommand("hexvis.suggestRing", COMPONENT);
+  const response = await vscode.commands.executeCommand("hexvis.suggestZone", COMPONENT);
   assert.deepStrictEqual(response, {
-    type: "ringAdvice",
+    type: "zoneAdvice",
     componentId: COMPONENT,
-    advice: { ring: "core", reason: "Fake model: domain logic with no I/O of its own.", confidence: "medium" },
+    advice: { zone: "core", reason: "Fake model: domain logic with no I/O of its own.", confidence: "medium" },
   });
 };

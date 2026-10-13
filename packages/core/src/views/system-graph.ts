@@ -1,5 +1,5 @@
 import { Phase, Run, Scenario, Span } from "../model";
-import { DeclaredRing, RingRules } from "../rings";
+import { DeclaredZone, ZoneRules } from "../zones";
 import {
   CLIENT_ID,
   ComponentKind,
@@ -19,7 +19,7 @@ import {
  * - outbound adapter: it calls an external system itself
  * - core: neither — everything else the request passes through
  */
-export enum Ring {
+export enum Zone {
   Edge = "edge",
   InboundAdapter = "inbound-adapter",
   OutboundAdapter = "outbound-adapter",
@@ -43,7 +43,7 @@ export enum EdgeViolation {
   SkipsCore = "skips-core",
 }
 
-export enum RingSource {
+export enum ZoneSource {
   /** Framework, external system, test double: what the component is, not a judgement. */
   Fixed = "fixed",
   Rule = "rule",
@@ -55,10 +55,10 @@ export interface GraphNode {
   kind: ComponentKind;
   label: string;
   qualifiedName: string | null;
-  ring: Ring;
-  ringSource: RingSource;
-  /** Why it has this ring: the rule (pattern and reason) or the observed behaviour. */
-  ringReason: string;
+  zone: Zone;
+  zoneSource: ZoneSource;
+  /** Why it has this zone: the rule (pattern and reason) or the observed behaviour. */
+  zoneReason: string;
   smells: Smell[];
   calls: number;
   instances: number;
@@ -85,21 +85,21 @@ export interface GraphOptions {
   /** Restrict to these scenarios (by nodeid); defaults to all. */
   scenarioIds?: string[];
   grouping?: Grouping;
-  rules?: RingRules;
+  rules?: ZoneRules;
 }
 
 const DEFAULT_PHASES = [Phase.Call];
-const DECLARED_RING: Record<DeclaredRing, Ring> = {
-  [DeclaredRing.InboundAdapter]: Ring.InboundAdapter,
-  [DeclaredRing.Core]: Ring.Core,
-  [DeclaredRing.OutboundAdapter]: Ring.OutboundAdapter,
+const DECLARED_ZONE: Record<DeclaredZone, Zone> = {
+  [DeclaredZone.InboundAdapter]: Zone.InboundAdapter,
+  [DeclaredZone.Core]: Zone.Core,
+  [DeclaredZone.OutboundAdapter]: Zone.OutboundAdapter,
 };
 const EDGE_KINDS = new Set([ComponentKind.Client, ComponentKind.Entry, ComponentKind.Middleware, ComponentKind.Router]);
 
 export function buildSystemGraph(run: Run, options: GraphOptions = {}): SystemGraph {
   const phases = new Set(options.phases ?? DEFAULT_PHASES);
   const wanted = options.scenarioIds ? new Set(options.scenarioIds) : null;
-  const builder = new GraphBuilder(run, options.grouping ?? FINE_GROUPING, options.rules ?? RingRules.none());
+  const builder = new GraphBuilder(run, options.grouping ?? FINE_GROUPING, options.rules ?? ZoneRules.none());
 
   for (const scenario of run.scenarios) {
     if (wanted !== null && !wanted.has(scenario.nodeid)) continue;
@@ -141,7 +141,7 @@ class GraphBuilder {
   constructor(
     run: Run,
     private readonly grouping: Grouping,
-    private readonly rules: RingRules,
+    private readonly rules: ZoneRules,
   ) {
     this.middlewareCount = run.topology?.middleware.length ?? 0;
     this.routeHandlers = new Set((run.topology?.routes ?? []).map((route) => route.handler));
@@ -182,22 +182,22 @@ class GraphBuilder {
 
   build(): SystemGraph {
     const nodes: GraphNode[] = [];
-    const rings = new Map<string, Ring>();
+    const zones = new Map<string, Zone>();
     for (const tally of this.nodes.values()) {
       const placement = this.place(tally);
-      rings.set(tally.ref.id, placement.ring);
+      zones.set(tally.ref.id, placement.zone);
       const callsExternal = tally.externalSystems.size > 0;
       const smells: Smell[] = [];
-      if (placement.ring === Ring.InboundAdapter && callsExternal) smells.push(Smell.HandlerTouchesExternal);
-      if (placement.ring === Ring.Core && callsExternal) smells.push(Smell.CoreTouchesExternal);
+      if (placement.zone === Zone.InboundAdapter && callsExternal) smells.push(Smell.HandlerTouchesExternal);
+      if (placement.zone === Zone.Core && callsExternal) smells.push(Smell.CoreTouchesExternal);
       nodes.push({
         id: tally.ref.id,
         kind: tally.ref.kind,
         label: tally.ref.id === MIDDLEWARE_CHAIN_ID ? `Middleware ×${this.middlewareCount}` : tally.ref.label,
         qualifiedName: tally.ref.qualifiedName,
-        ring: placement.ring,
-        ringSource: placement.source,
-        ringReason: placement.reason,
+        zone: placement.zone,
+        zoneSource: placement.source,
+        zoneReason: placement.reason,
         smells,
         calls: tally.calls,
         instances: tally.objectIds.size,
@@ -213,7 +213,7 @@ class GraphBuilder {
         calls: tally.calls,
         scenarioIds: [...tally.scenarioIds].sort(),
         // Constructing an adapter (dependency injection) isn't using it.
-        violation: tally.uses > 0 ? violationOf(rings.get(tally.from), rings.get(tally.to)) : null,
+        violation: tally.uses > 0 ? violationOf(zones.get(tally.from), zones.get(tally.to)) : null,
       });
     }
     nodes.sort((a, b) => a.id.localeCompare(b.id));
@@ -221,21 +221,21 @@ class GraphBuilder {
     return { nodes, edges };
   }
 
-  private place(tally: NodeTally): { ring: Ring; source: RingSource; reason: string } {
-    const fixed = fixedRingOf(tally.ref);
-    if (fixed !== null) return { ring: fixed, source: RingSource.Fixed, reason: "framework, test or external code" };
+  private place(tally: NodeTally): { zone: Zone; source: ZoneSource; reason: string } {
+    const fixed = fixedZoneOf(tally.ref);
+    if (fixed !== null) return { zone: fixed, source: ZoneSource.Fixed, reason: "framework, test or external code" };
     if (tally.ref.qualifiedName !== null) {
       const match = this.rules.matchFor(tally.ref.qualifiedName);
       if (match !== null) {
         const decidedBy = match.rule.by === "llm" ? "proposed by a model, accepted" : "declared";
         return {
-          ring: DECLARED_RING[match.rule.ring],
-          source: RingSource.Rule,
+          zone: DECLARED_ZONE[match.rule.zone],
+          source: ZoneSource.Rule,
           reason: `${decidedBy} in hexvis.json (${match.rule.match}): ${match.rule.reason}`,
         };
       }
     }
-    return { ...inferRing(tally, this.inboundPackage), source: RingSource.Inferred };
+    return { ...inferZone(tally, this.inboundPackage), source: ZoneSource.Inferred };
   }
 
   private node(ref: ComponentRef): NodeTally {
@@ -280,22 +280,22 @@ class GraphBuilder {
   }
 }
 
-function fixedRingOf(ref: ComponentRef): Ring | null {
-  if (ref.id === CLIENT_ID || EDGE_KINDS.has(ref.kind)) return Ring.Edge;
-  if (ref.kind === ComponentKind.External) return Ring.External;
-  if (ref.kind === ComponentKind.TestDouble) return Ring.TestDouble;
+function fixedZoneOf(ref: ComponentRef): Zone | null {
+  if (ref.id === CLIENT_ID || EDGE_KINDS.has(ref.kind)) return Zone.Edge;
+  if (ref.kind === ComponentKind.External) return Zone.External;
+  if (ref.kind === ComponentKind.TestDouble) return Zone.TestDouble;
   return null;
 }
 
-function inferRing(tally: NodeTally, inboundPackage: string | null): { ring: Ring; reason: string } {
-  if (tally.isRouteHandler) return { ring: Ring.InboundAdapter, reason: "handles a route" };
+function inferZone(tally: NodeTally, inboundPackage: string | null): { zone: Zone; reason: string } {
+  if (tally.isRouteHandler) return { zone: Zone.InboundAdapter, reason: "handles a route" };
   if (tally.calledByFramework) {
-    return { ring: Ring.InboundAdapter, reason: `the framework calls it while serving requests${inboundPackage ? ` (in ${inboundPackage})` : ""}` };
+    return { zone: Zone.InboundAdapter, reason: `the framework calls it while serving requests${inboundPackage ? ` (in ${inboundPackage})` : ""}` };
   }
   if (tally.externalSystems.size > 0) {
-    return { ring: Ring.OutboundAdapter, reason: `calls ${[...tally.externalSystems].sort().join(", ")} directly` };
+    return { zone: Zone.OutboundAdapter, reason: `calls ${[...tally.externalSystems].sort().join(", ")} directly` };
   }
-  return { ring: Ring.Core, reason: "receives no requests and calls no external system" };
+  return { zone: Zone.Core, reason: "receives no requests and calls no external system" };
 }
 
 /**
@@ -303,11 +303,11 @@ function inferRing(tally: NodeTally, inboundPackage: string | null): { ring: Rin
  * to an outbound adapter. Calling a request handler from further in, or reaching a
  * repository straight from a handler, is the shape the onion is meant to prevent.
  */
-function violationOf(from: Ring | undefined, to: Ring | undefined): EdgeViolation | null {
-  if (to === Ring.InboundAdapter && (from === Ring.Core || from === Ring.OutboundAdapter)) {
+function violationOf(from: Zone | undefined, to: Zone | undefined): EdgeViolation | null {
+  if (to === Zone.InboundAdapter && (from === Zone.Core || from === Zone.OutboundAdapter)) {
     return EdgeViolation.CallsIntoInboundAdapter;
   }
-  if (from === Ring.InboundAdapter && to === Ring.OutboundAdapter) return EdgeViolation.SkipsCore;
+  if (from === Zone.InboundAdapter && to === Zone.OutboundAdapter) return EdgeViolation.SkipsCore;
   return null;
 }
 

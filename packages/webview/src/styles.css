@@ -14,12 +14,12 @@
   --font: var(--vscode-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
   --mono: var(--vscode-editor-font-family, ui-monospace, "SF Mono", Menlo, monospace);
 
-  --ring-edge: #8a8f98;
-  --ring-inbound: #3b82f6;
-  --ring-core: #10b981;
-  --ring-outbound: #f59e0b;
-  --ring-double: #a1a1aa;
-  --ring-external: #a855f7;
+  --zone-edge: #8a8f98;
+  --zone-inbound: #3b82f6;
+  --zone-core: #10b981;
+  --zone-outbound: #f59e0b;
+  --zone-double: #a1a1aa;
+  --zone-external: #a855f7;
   --pulse: #fde047;
 }
 
@@ -276,7 +276,7 @@ button {
 
 /* ---- legend ---- */
 
-.legend-rings ul {
+.legend-zones ul {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -307,7 +307,7 @@ button {
   padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  border-left: 5px solid var(--ring-color, var(--border));
+  border-left: 5px solid var(--zone-color, var(--border));
   background: var(--panel);
   text-align: left;
   cursor: pointer;
@@ -330,23 +330,23 @@ button {
 }
 
 .smell {
-  color: var(--ring-outbound);
+  color: var(--zone-outbound);
 }
 
-.ring-edge { --ring-color: var(--ring-edge); }
-.ring-inbound-adapter { --ring-color: var(--ring-inbound); }
-.ring-core { --ring-color: var(--ring-core); }
-.ring-outbound-adapter { --ring-color: var(--ring-outbound); }
-.ring-test-double { --ring-color: var(--ring-double); border-style: dashed; }
-.ring-external { --ring-color: var(--ring-external); border-radius: 23px; }
+.zone-edge { --zone-color: var(--zone-edge); }
+.zone-inbound-adapter { --zone-color: var(--zone-inbound); }
+.zone-core { --zone-color: var(--zone-core); }
+.zone-outbound-adapter { --zone-color: var(--zone-outbound); }
+.zone-test-double { --zone-color: var(--zone-double); border-style: dashed; }
+.zone-external { --zone-color: var(--zone-external); border-radius: 23px; }
 
-.dot.ring-edge,
-.dot.ring-inbound-adapter,
-.dot.ring-core,
-.dot.ring-outbound-adapter,
-.dot.ring-test-double,
-.dot.ring-external {
-  background: var(--ring-color);
+.dot.zone-edge,
+.dot.zone-inbound-adapter,
+.dot.zone-core,
+.dot.zone-outbound-adapter,
+.dot.zone-test-double,
+.dot.zone-external {
+  background: var(--zone-color);
 }
 
 .component.emphasis-dimmed,
@@ -355,7 +355,7 @@ button {
 }
 
 .component.emphasis-highlighted {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring-color) 60%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--zone-color) 60%, transparent);
 }
 
 .component.active {
@@ -376,8 +376,8 @@ button {
 }
 
 .pulse-external {
-  fill: var(--ring-external);
-  filter: drop-shadow(0 0 6px var(--ring-external));
+  fill: var(--zone-external);
+  filter: drop-shadow(0 0 6px var(--zone-external));
 }
 
 .react-flow__handle {
@@ -429,7 +429,7 @@ button {
 }
 
 .step-external {
-  color: var(--ring-external);
+  color: var(--zone-external);
 }
 
 /* ---- detail panels ---- */
@@ -480,7 +480,7 @@ button {
 .coverage-fill {
   display: block;
   height: 100%;
-  background: var(--ring-core);
+  background: var(--zone-core);
 }
 
 .code {
@@ -568,7 +568,7 @@ button {
 
 .diff-summary {
   margin: 6px 0 0;
-  color: var(--ring-outbound);
+  color: var(--zone-outbound);
 }
 
 .scenarios li.unchanged {
@@ -606,7 +606,7 @@ button {
   position: absolute;
   top: 2px;
   right: 6px;
-  color: var(--ring-outbound);
+  color: var(--zone-outbound);
   font-weight: 700;
 }
 
@@ -649,24 +649,24 @@ button {
   color: var(--muted);
 }
 
-/* ---- rings: provenance, rules, advice, violations ---- */
+/* ---- zones: provenance, rules, advice, violations ---- */
 
-.ring-controls {
+.zone-controls {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
   margin: 8px 0;
 }
 
-.ring-controls p {
+.zone-controls p {
   margin: 4px 0;
 }
 
 .smell-note {
-  color: var(--ring-outbound);
+  color: var(--zone-outbound);
 }
 
-.set-ring {
+.set-zone {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -674,13 +674,13 @@ button {
   margin-top: 6px;
 }
 
-.set-ring input {
+.set-zone input {
   min-width: 220px;
 }
 
-.set-ring input,
-.set-ring select,
-.ring-controls button:not(.link) {
+.set-zone input,
+.set-zone select,
+.zone-controls button:not(.link) {
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
@@ -693,7 +693,7 @@ button {
 }
 
 .proposal {
-  border-left: 3px solid var(--ring-external);
+  border-left: 3px solid var(--zone-external);
   padding-left: 8px;
 }
 
@@ -801,7 +801,7 @@ button {
   color: var(--fg);
   background: color-mix(in srgb, var(--panel) 80%, transparent);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--ring-color, var(--border));
+  border-left: 3px solid var(--zone-color, var(--border));
   border-radius: 3px;
   padding: 1px 6px;
   cursor: pointer;

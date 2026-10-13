@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
 
-import { RingAdvisor, RingRules, RingRulesError, RingRuleStore, RULES_FILE } from "@hexvis/core";
+import { ZoneAdvisor, ZoneRules, ZoneRulesError, ZoneRuleStore, RULES_FILE } from "@hexvis/core";
 
 import type { Logger } from "./logger";
 
 export interface LoadedRules {
-  rules: RingRules;
+  rules: ZoneRules;
   /** Set when hexvis.json exists but can't be used; the view shows it and falls back to inference. */
   problem: string | null;
 }
@@ -15,20 +15,20 @@ export async function readRules(projectRoot: vscode.Uri): Promise<LoadedRules> {
   try {
     bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(projectRoot, RULES_FILE));
   } catch {
-    return { rules: RingRules.none(), problem: null }; // no file: everything is inferred
+    return { rules: ZoneRules.none(), problem: null }; // no file: everything is inferred
   }
   try {
-    return { rules: RingRules.parse(new TextDecoder("utf-8").decode(bytes)), problem: null };
+    return { rules: ZoneRules.parse(new TextDecoder("utf-8").decode(bytes)), problem: null };
   } catch (error) {
-    const message = error instanceof RingRulesError ? error.message : String(error);
-    return { rules: RingRules.none(), problem: `${message} (showing inferred rings until it is fixed)` };
+    const message = error instanceof ZoneRulesError ? error.message : String(error);
+    return { rules: ZoneRules.none(), problem: `${message} (showing inferred zones until it is fixed)` };
   }
 }
 
 /** Writes hexvis.json only after the person confirms the exact change, in a modal. */
-export function confirmingRuleStore(projectRoot: vscode.Uri, logger: Logger): RingRuleStore {
+export function confirmingRuleStore(projectRoot: vscode.Uri, logger: Logger): ZoneRuleStore {
   return {
-    async save(rules: RingRules, change: string): Promise<boolean> {
+    async save(rules: ZoneRules, change: string): Promise<boolean> {
       const choice = await vscode.window.showInformationMessage(
         `Add this rule to ${RULES_FILE}?`,
         { modal: true, detail: change },
@@ -51,7 +51,7 @@ export function confirmingRuleStore(projectRoot: vscode.Uri, logger: Logger): Ri
  * What is sent: the component's name, its functions, what called it and what it called,
  * and its own source — logged as a size only, never the content.
  */
-export function vscodeModelAdvisor(logger: Logger, available: boolean): RingAdvisor {
+export function vscodeModelAdvisor(logger: Logger, available: boolean): ZoneAdvisor {
   return {
     available,
     async complete(prompt: string): Promise<string> {
@@ -61,7 +61,7 @@ export function vscodeModelAdvisor(logger: Logger, available: boolean): RingAdvi
       const started = Date.now();
       const response = await model.sendRequest(
         [vscode.LanguageModelChatMessage.User(prompt)],
-        { justification: "HexVis asks a model which architectural ring a component belongs in." },
+        { justification: "HexVis asks a model which architectural zone a component belongs in." },
       );
       let text = "";
       for await (const part of response.text) text += part;

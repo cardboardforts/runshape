@@ -24,8 +24,8 @@
         "title": "HexVis: Reload Traces"
       },
       {
-        "command": "hexvis.suggestRing",
-        "title": "HexVis: Suggest Ring for Component\u2026"
+        "command": "hexvis.suggestZone",
+        "title": "HexVis: Suggest Zone for Component\u2026"
       }
     ]
   },

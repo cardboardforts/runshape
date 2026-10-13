@@ -1,7 +1,7 @@
 {
   "name": "hexvis-fake-model",
   "displayName": "HexVis test model",
-  "description": "Test-only language model provider: answers every request with one fixed ring proposal.",
+  "description": "Test-only language model provider: answers every request with one fixed zone proposal.",
   "version": "0.0.1",
   "publisher": "hexvis-test",
   "private": true,

@@ -1,13 +1,13 @@
-import { Ring, SystemGraph } from "@hexvis/core";
+import { Zone, SystemGraph } from "@hexvis/core";
 
 import type { HexagonLayout } from "./hexagon-layout";
 
 /**
- * How calls travel through the 3D scene. A call between two rings doesn't fly straight from
- * tile to tile: it rises, joins a trunk running between the two rings' hubs, and drops to
- * its target. Every call between the same pair of rings shares that trunk, so forty calls
+ * How calls travel through the 3D scene. A call between two zones doesn't fly straight from
+ * tile to tile: it rises, joins a trunk running between the two zones' hubs, and drops to
+ * its target. Every call between the same pair of zones shares that trunk, so forty calls
  * read as a handful of bundles (Heapscape does the same for references between heap
- * regions). Calls within one ring, and along the framework chain, stay direct arcs.
+ * regions). Calls within one zone, and along the framework chain, stay direct arcs.
  */
 export type Point = [number, number, number];
 
@@ -31,33 +31,33 @@ export const ATTACH_HEIGHT = 1.2;
 const RISE = 5;
 const TRUNK_BASE_HEIGHT = 14;
 const TRUNK_HEIGHT_PER_UNIT = 0.08;
-/** Hubs sit this far from their ring's centroid towards the floor's centre. */
+/** Hubs sit this far from their zone's centroid towards the floor's centre. */
 const HUB_PULL = 0.25;
-const BUNDLED_RINGS = new Set([Ring.InboundAdapter, Ring.Core, Ring.OutboundAdapter, Ring.TestDouble, Ring.External]);
+const BUNDLED_RINGS = new Set([Zone.InboundAdapter, Zone.Core, Zone.OutboundAdapter, Zone.TestDouble, Zone.External]);
 
 export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes: Route[]; trunks: Trunk[] } {
-  const ringOf = new Map(graph.nodes.map((node) => [node.id, node.ring]));
-  const hubs = ringHubs(graph, layout);
+  const zoneOf = new Map(graph.nodes.map((node) => [node.id, node.zone]));
+  const hubs = zoneHubs(graph, layout);
   const routes: Route[] = [];
   const trunks = new Map<string, Trunk>();
 
   for (const edge of graph.edges) {
     const from = layout.tiles.get(edge.from);
     const to = layout.tiles.get(edge.to);
-    const fromRing = ringOf.get(edge.from);
-    const toRing = ringOf.get(edge.to);
-    if (!from || !to || fromRing === undefined || toRing === undefined) continue;
+    const fromZone = zoneOf.get(edge.from);
+    const toZone = zoneOf.get(edge.to);
+    if (!from || !to || fromZone === undefined || toZone === undefined) continue;
     const start: Point = [from.x, ATTACH_HEIGHT, from.z];
     const end: Point = [to.x, ATTACH_HEIGHT, to.z];
 
-    const bundled = fromRing !== toRing && BUNDLED_RINGS.has(fromRing) && BUNDLED_RINGS.has(toRing);
+    const bundled = fromZone !== toZone && BUNDLED_RINGS.has(fromZone) && BUNDLED_RINGS.has(toZone);
     if (!bundled) {
       routes.push({ edgeId: edge.id, points: directArc(start, end), trunk: null });
       continue;
     }
-    const key = `${fromRing}>${toRing}`;
-    const hubFrom = hubs.get(fromRing)!;
-    const hubTo = hubs.get(toRing)!;
+    const key = `${fromZone}>${toZone}`;
+    const hubFrom = hubs.get(fromZone)!;
+    const hubTo = hubs.get(toZone)!;
     const height = TRUNK_BASE_HEIGHT + distance(hubFrom, hubTo) * TRUNK_HEIGHT_PER_UNIT;
     const trunkFrom: Point = [hubFrom[0], height, hubFrom[2]];
     const trunkTo: Point = [hubTo[0], height, hubTo[2]];
@@ -74,22 +74,22 @@ export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes:
   return { routes, trunks: [...trunks.values()] };
 }
 
-/** Each ring's hub: the centroid of its tiles, pulled a little towards the floor's centre. */
-function ringHubs(graph: SystemGraph, layout: HexagonLayout): Map<Ring, Point> {
-  const sums = new Map<Ring, { x: number; z: number; count: number }>();
+/** Each zone's hub: the centroid of its tiles, pulled a little towards the floor's centre. */
+function zoneHubs(graph: SystemGraph, layout: HexagonLayout): Map<Zone, Point> {
+  const sums = new Map<Zone, { x: number; z: number; count: number }>();
   for (const node of graph.nodes) {
     const tile = layout.tiles.get(node.id);
     if (!tile) continue;
-    const sum = sums.get(node.ring) ?? { x: 0, z: 0, count: 0 };
+    const sum = sums.get(node.zone) ?? { x: 0, z: 0, count: 0 };
     sum.x += tile.x;
     sum.z += tile.z;
     sum.count += 1;
-    sums.set(node.ring, sum);
+    sums.set(node.zone, sum);
   }
-  const hubs = new Map<Ring, Point>();
-  for (const [ring, sum] of sums) {
+  const hubs = new Map<Zone, Point>();
+  for (const [zone, sum] of sums) {
     const factor = (1 - HUB_PULL) / sum.count;
-    hubs.set(ring, [sum.x * factor, 0, sum.z * factor]);
+    hubs.set(zone, [sum.x * factor, 0, sum.z * factor]);
   }
   return hubs;
 }

@@ -66,11 +66,11 @@ describe("detectArchitecture", () => {
               "app.models.domain.**",
               "app.services.**",
             ],
-            "inbound": [
+            "inbound-adapter": [
               "app.api.**",
               "app.api.routes.**",
             ],
-            "outbound": [
+            "outbound-adapter": [
               "app.db.**",
               "app.db.repositories.**",
             ],

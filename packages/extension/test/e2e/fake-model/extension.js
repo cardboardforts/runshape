@@ -1,10 +1,10 @@
 // A language model for the end-to-end test only. It answers every request with the same
-// ring proposal and appends each prompt it was sent to HEXVIS_FAKE_MODEL_LOG, so the test
+// zone proposal and appends each prompt it was sent to HEXVIS_FAKE_MODEL_LOG, so the test
 // can check what HexVis actually sent through VS Code's language model API.
 const fs = require("node:fs");
 const vscode = require("vscode");
 
-const ANSWER = JSON.stringify({ ring: "core", reason: "Fake model: domain logic with no I/O of its own.", confidence: "medium" });
+const ANSWER = JSON.stringify({ zone: "core", reason: "Fake model: domain logic with no I/O of its own.", confidence: "medium" });
 
 exports.activate = function activate(context) {
   const model = {

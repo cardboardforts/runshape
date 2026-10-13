@@ -15,7 +15,7 @@ import { loadFixtureRun } from "./fixtures";
 function describeGraph(graph: SystemGraph): string {
   const label = new Map(graph.nodes.map((node) => [node.id, node.label]));
   const nodes = graph.nodes
-    .map((node) => `${node.ring.padEnd(17)}${node.label}${node.smells.length ? `  !${node.smells.join(",")}` : ""}`)
+    .map((node) => `${node.zone.padEnd(17)}${node.label}${node.smells.length ? `  !${node.smells.join(",")}` : ""}`)
     .sort();
   const edges = graph.edges.map((edge) => `${label.get(edge.from)} -> ${label.get(edge.to)}  x${edge.calls}`).sort();
   return [...nodes, "", ...edges].join("\n");
@@ -34,7 +34,7 @@ describe("system graph", () => {
     const run = await loadFixtureRun("django");
 
     // Django ORM models and DRF serializers query the database themselves, so they land in
-    // the outbound-adapter ring, and every view that queries directly is flagged: in an
+    // the outbound-adapter zone, and every view that queries directly is flagged: in an
     // onion the handler would go through the core instead.
     expect(describeGraph(buildSystemGraph(run))).toMatchInlineSnapshot(`
       "core             ProfileSerializer
@@ -142,7 +142,7 @@ describe("system graph", () => {
     const run = await loadFixtureRun("fastapi");
     const graph = buildSystemGraph(run);
 
-    expect(graph.nodes.map((node) => `${node.ring.padEnd(17)}${node.label}`).sort()).toMatchInlineSnapshot(`
+    expect(graph.nodes.map((node) => `${node.zone.padEnd(17)}${node.label}`).sort()).toMatchInlineSnapshot(`
       [
         "core             DateTimeModelMixin",
         "core             UserInDB",
@@ -182,11 +182,11 @@ describe("system graph", () => {
       topology: { ...run.topology, routes: onlyUserRoutes },
     });
 
-    const rings = new Map(buildSystemGraph(singleModuleRun).nodes.map((node) => [node.label, node.ring]));
+    const zones = new Map(buildSystemGraph(singleModuleRun).nodes.map((node) => [node.label, node.zone]));
 
     expect(onlyUserRoutes.length).toBeGreaterThan(0);
-    expect(rings.get("dependencies.authentication")).toBe("inbound-adapter");
-    expect(rings.get("dependencies.database")).toBe("inbound-adapter");
+    expect(zones.get("dependencies.authentication")).toBe("inbound-adapter");
+    expect(zones.get("dependencies.database")).toBe("inbound-adapter");
   });
 
   test("including the setup phase adds what the fixtures did: app startup and seeding data", async () => {

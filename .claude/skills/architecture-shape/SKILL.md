@@ -1,6 +1,6 @@
 ---
 name: architecture-shape
-description: Work out which architecture a codebase is shaped like (hexagonal, layered/n-tier, MVC/MVT, MVVM, MVP, or a frontend style such as container/presentational or feature-sliced), map its modules onto that style's zones with evidence, and propose a zones file for the HexVis viewer. Use when asked "what architecture is this?", "how is this organised?", to set up HexVis zones/rings for a project, or to suggest how to reorganise code toward a style.
+description: Work out which architecture a codebase is shaped like (hexagonal, layered/n-tier, MVC/MVT, MVVM, MVP, or a frontend style such as container/presentational or feature-sliced), map its modules onto that style's zones with evidence, and propose a zones file for the HexVis viewer. Use when asked "what architecture is this?", "how is this organised?", to set up HexVis zones/zones for a project, or to suggest how to reorganise code toward a style.
 ---
 
 # Architecture shape
@@ -95,6 +95,8 @@ Reply with:
   `UsersRepository` implement it; then routes depend on the port").
 - **Questions** you couldn't settle from the code.
 
-Ask before writing anything. When confirmed, write the zones file the project uses (today
-HexVis reads rings from `hexvis.json`; see `docs/architecture-profiles.md` for the planned
-zones format).
+Ask before writing anything. When confirmed, write the zones file the project uses. Today
+HexVis reads `hexvis.json` version 2 (`{"version": 2, "style": "hexagonal", "zones": [...]}`)
+and draws only the hexagonal style, with zone ids `inbound-adapter`, `core`,
+`outbound-adapter`; for any other style, give the proposal in the format above and say it
+can't be drawn yet (see `docs/architecture-profiles.md`).

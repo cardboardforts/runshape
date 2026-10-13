@@ -80,14 +80,14 @@ export function activate(context: vscode.ExtensionContext): void {
     { dispose: () => pending.forEach((timer) => clearTimeout(timer)) },
     vscode.commands.registerCommand("hexvis.open", open),
     vscode.commands.registerCommand("hexvis.reload", () => reloadAll("command")),
-    vscode.commands.registerCommand("hexvis.suggestRing", async (componentId?: string) => {
+    vscode.commands.registerCommand("hexvis.suggestZone", async (componentId?: string) => {
       const panel = [...panels.values()][0];
       if (panel === undefined) {
         void vscode.window.showInformationMessage("Open the HexVis view first (HexVis: Open Runtime View).");
         return null;
       }
       try {
-        return await panel.suggestRing(typeof componentId === "string" ? componentId : undefined);
+        return await panel.suggestZone(typeof componentId === "string" ? componentId : undefined);
       } catch (error) {
         logger.error("command.suggest_ring.failed", error);
         throw error;

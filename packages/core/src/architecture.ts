@@ -4,7 +4,7 @@
 // modules map onto that style's zones. A person (or a model, see
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
 import { Run } from "./model";
-import { buildSystemGraph, EdgeViolation, Ring } from "./views/system-graph";
+import { buildSystemGraph, EdgeViolation, Zone } from "./views/system-graph";
 
 export enum ArchitectureStyle {
   Hexagonal = "hexagonal",
@@ -21,7 +21,7 @@ export enum LayoutShape {
   Triangle = "triangle",
 }
 
-export interface Zone {
+export interface ZoneDefinition {
   id: string;
   name: string;
   meaning: string;
@@ -31,7 +31,7 @@ export interface ArchitectureProfile {
   style: ArchitectureStyle;
   name: string;
   layout: LayoutShape;
-  zones: Zone[];
+  zones: ZoneDefinition[];
   /** Calls the style permits between different zones; every other cross-zone call is a finding. */
   allowedCalls: [from: string, to: string][];
   /** Words that, in module or class names, suggest each zone. */
@@ -44,15 +44,16 @@ export const PROFILES: ArchitectureProfile[] = [
     name: "Hexagonal (ports and adapters)",
     layout: LayoutShape.Hexagon,
     zones: [
-      { id: "inbound", name: "Inbound adapters", meaning: "turn requests into calls on the core" },
+      // Same ids as the viewer's zones (DeclaredZone), so a detected mapping is a valid hexvis.json.
+      { id: "inbound-adapter", name: "Inbound adapters", meaning: "turn requests into calls on the core" },
       { id: "core", name: "Core", meaning: "domain and application logic; no I/O, no framework" },
-      { id: "outbound", name: "Outbound adapters", meaning: "implement the core's ports against the outside world" },
+      { id: "outbound-adapter", name: "Outbound adapters", meaning: "implement the core's ports against the outside world" },
     ],
-    allowedCalls: [["inbound", "core"], ["core", "outbound"], ["outbound", "core"]],
+    allowedCalls: [["inbound-adapter", "core"], ["core", "outbound-adapter"], ["outbound-adapter", "core"]],
     vocabulary: {
-      inbound: ["api", "routes", "handlers", "controllers", "cli", "consumers"],
+      "inbound-adapter": ["api", "routes", "handlers", "controllers", "cli", "consumers"],
       core: ["domain", "core", "usecases", "use_cases", "services", "entities", "ports"],
-      outbound: ["adapters", "infrastructure", "infra", "repositories", "gateways", "clients", "db"],
+      "outbound-adapter": ["adapters", "infrastructure", "infra", "repositories", "gateways", "clients", "db"],
     },
   },
   {
@@ -139,8 +140,8 @@ export interface ArchitectureCandidate {
 export function detectArchitecture(run: Run): ArchitectureCandidate[] {
   const packages = projectPackages(run);
   const graph = buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
-  const talksToStorage = graph.nodes.filter((n) => n.ring === Ring.OutboundAdapter).map((n) => n.qualifiedName ?? n.label);
-  const receivesRequests = graph.nodes.filter((n) => n.ring === Ring.InboundAdapter).map((n) => n.qualifiedName ?? n.label);
+  const talksToStorage = graph.nodes.filter((n) => n.zone === Zone.OutboundAdapter).map((n) => n.qualifiedName ?? n.label);
+  const receivesRequests = graph.nodes.filter((n) => n.zone === Zone.InboundAdapter).map((n) => n.qualifiedName ?? n.label);
   const activeRecord = talksToStorage.filter((name) => /\.models\./.test(name));
   const dataMappers = talksToStorage.filter((name) => /(repositor|dao|gateway|queries)/i.test(name));
   const handlerToStorage = graph.edges.filter((e) => e.violation === EdgeViolation.SkipsCore).length;

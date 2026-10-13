@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 
-import { DeclaredRing, loadLatestRun, loadPreviousRun, Phase, RingSource, Run, UiRequest, UiResponse, ViewerSession } from "@hexvis/core";
+import { DeclaredZone, loadLatestRun, loadPreviousRun, Phase, ZoneSource, Run, UiRequest, UiResponse, ViewerSession } from "@hexvis/core";
 
 import type { Logger } from "./logger";
-import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./ring-adapters";
+import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./zone-adapters";
 import { childUri, sourceReaderAt, traceFilesAt } from "./workspace-files";
 
 const VIEW_TYPE = "hexvis.runtime";
@@ -80,33 +80,33 @@ export class RuntimePanel {
    * offers a pick list, shows the proposal, and on "Accept" goes through the same
    * confirmed save as the view.
    */
-  async suggestRing(componentId?: string): Promise<UiResponse | null> {
+  async suggestZone(componentId?: string): Promise<UiResponse | null> {
     const requestId = this.nextRequestId++;
     const session = await this.loadSession(requestId);
     const grouping = { collapseMiddleware: true };
     let target = componentId;
     if (target === undefined) {
       const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping });
-      const placeable = graph?.type === "graph" ? graph.graph.nodes.filter((n) => n.qualifiedName !== null && n.ringSource !== RingSource.Fixed) : [];
+      const placeable = graph?.type === "graph" ? graph.graph.nodes.filter((n) => n.qualifiedName !== null && n.zoneSource !== ZoneSource.Fixed) : [];
       const picked = await vscode.window.showQuickPick(
-        placeable.map((node) => ({ label: node.label, description: `${node.ring} (${node.ringSource})`, detail: node.qualifiedName ?? "", id: node.id })),
+        placeable.map((node) => ({ label: node.label, description: `${node.zone} (${node.zoneSource})`, detail: node.qualifiedName ?? "", id: node.id })),
         { placeHolder: "Which component should the model place?" },
       );
       if (picked === undefined) return null;
       target = picked.id;
     }
     this.logger.info("command.suggest_ring", { request: requestId, component: target });
-    const response = await session.handle({ type: "adviseRing", componentId: target, grouping });
+    const response = await session.handle({ type: "adviseZone", componentId: target, grouping });
     if (response !== null) await this.post(response);
-    if (componentId === undefined && response?.type === "ringAdvice") {
+    if (componentId === undefined && response?.type === "zoneAdvice") {
       const { advice } = response;
       const accept = await vscode.window.showInformationMessage(
-        `Proposed ring: ${advice.ring} (${advice.confidence} confidence). ${advice.reason}`,
+        `Proposed zone: ${advice.zone} (${advice.confidence} confidence). ${advice.reason}`,
         "Accept into hexvis.json",
       );
       const qualifiedName = target.replace(/^(class|module):/, "");
-      if (accept) await this.respond({ type: "setRing", qualifiedName, ring: advice.ring as DeclaredRing, reason: advice.reason, by: "llm" }, requestId);
-    } else if (componentId === undefined && response?.type === "ringAdviceFailed") {
+      if (accept) await this.respond({ type: "setZone", qualifiedName, zone: advice.zone as DeclaredZone, reason: advice.reason, by: "llm" }, requestId);
+    } else if (componentId === undefined && response?.type === "zoneAdviceFailed") {
       void vscode.window.showWarningMessage(response.message);
     }
     return response;

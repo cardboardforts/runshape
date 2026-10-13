@@ -1,11 +1,11 @@
 import { useState } from "react";
 
-import { DeclaredRing, GraphNode, RingAdvice, RingSource, Smell } from "@hexvis/core";
+import { DeclaredZone, GraphNode, ZoneAdvice, ZoneSource, Smell } from "@hexvis/core";
 
 export type AdviceState =
   | { kind: "idle" }
   | { kind: "asking" }
-  | { kind: "proposed"; advice: RingAdvice }
+  | { kind: "proposed"; advice: ZoneAdvice }
   | { kind: "failed"; message: string };
 
 interface Props {
@@ -13,15 +13,15 @@ interface Props {
   canEdit: boolean;
   canAdvise: boolean;
   advice: AdviceState;
-  onSetRing: (ring: DeclaredRing, reason: string, by: "user" | "llm") => void;
+  onSetZone: (zone: DeclaredZone, reason: string, by: "user" | "llm") => void;
   onAskAdvice: () => void;
   onDismissAdvice: () => void;
 }
 
-const RING_NAMES: Record<DeclaredRing, string> = {
-  [DeclaredRing.InboundAdapter]: "inbound adapter",
-  [DeclaredRing.Core]: "core",
-  [DeclaredRing.OutboundAdapter]: "outbound adapter",
+const ZONE_NAMES: Record<DeclaredZone, string> = {
+  [DeclaredZone.InboundAdapter]: "inbound adapter",
+  [DeclaredZone.Core]: "core",
+  [DeclaredZone.OutboundAdapter]: "outbound adapter",
 };
 
 export const SMELL_TEXT: Record<Smell, string> = {
@@ -30,17 +30,17 @@ export const SMELL_TEXT: Record<Smell, string> = {
 };
 
 /** Where this component sits, why, and how to change it — by hand or from a model's proposal. */
-export function RingControls({ node, canEdit, canAdvise, advice, onSetRing, onAskAdvice, onDismissAdvice }: Props) {
-  const [ring, setRing] = useState<DeclaredRing>(DeclaredRing.Core);
+export function ZoneControls({ node, canEdit, canAdvise, advice, onSetZone, onAskAdvice, onDismissAdvice }: Props) {
+  const [zone, setZone] = useState<DeclaredZone>(DeclaredZone.Core);
   const [reason, setReason] = useState("");
-  const placeable = node.qualifiedName !== null && node.ringSource !== RingSource.Fixed;
+  const placeable = node.qualifiedName !== null && node.zoneSource !== ZoneSource.Fixed;
 
   return (
-    <div className="ring-controls">
+    <div className="zone-controls">
       <p>
-        <span className={`dot ring-${node.ring}`} /> <strong>{node.ring}</strong>{" "}
+        <span className={`dot zone-${node.zone}`} /> <strong>{node.zone}</strong>{" "}
         <span className="muted">
-          ({node.ringSource}) {node.ringReason}
+          ({node.zoneSource}) {node.zoneReason}
         </span>
       </p>
       {node.smells.map((smell) => (
@@ -51,18 +51,18 @@ export function RingControls({ node, canEdit, canAdvise, advice, onSetRing, onAs
 
       {placeable && canEdit && (
         <form
-          className="set-ring"
+          className="set-zone"
           onSubmit={(event) => {
             event.preventDefault();
-            if (reason.trim() !== "") onSetRing(ring, reason.trim(), "user");
+            if (reason.trim() !== "") onSetZone(zone, reason.trim(), "user");
           }}
         >
           <label>
             Declare as{" "}
-            <select value={ring} onChange={(event) => setRing(event.target.value as DeclaredRing)}>
-              {Object.values(DeclaredRing).map((value) => (
+            <select value={zone} onChange={(event) => setZone(event.target.value as DeclaredZone)}>
+              {Object.values(DeclaredZone).map((value) => (
                 <option key={value} value={value}>
-                  {RING_NAMES[value]}
+                  {ZONE_NAMES[value]}
                 </option>
               ))}
             </select>
@@ -81,7 +81,7 @@ export function RingControls({ node, canEdit, canAdvise, advice, onSetRing, onAs
         <div className="advice">
           {advice.kind === "idle" && (
             <button type="button" onClick={onAskAdvice}>
-              Suggest a ring
+              Suggest a zone
             </button>
           )}
           {advice.kind === "asking" && <p className="muted" role="status">Asking the model…</p>}
@@ -96,10 +96,10 @@ export function RingControls({ node, canEdit, canAdvise, advice, onSetRing, onAs
           {advice.kind === "proposed" && (
             <div className="proposal" role="region" aria-label="Model proposal">
               <p>
-                Proposed: <strong>{RING_NAMES[advice.advice.ring]}</strong> <span className="muted">({advice.advice.confidence} confidence)</span>
+                Proposed: <strong>{ZONE_NAMES[advice.advice.zone]}</strong> <span className="muted">({advice.advice.confidence} confidence)</span>
               </p>
               <p>{advice.advice.reason}</p>
-              <button type="button" onClick={() => onSetRing(advice.advice.ring, advice.advice.reason, "llm")}>
+              <button type="button" onClick={() => onSetZone(advice.advice.zone, advice.advice.reason, "llm")}>
                 Accept into hexvis.json
               </button>{" "}
               <button type="button" className="link" onClick={onDismissAdvice}>

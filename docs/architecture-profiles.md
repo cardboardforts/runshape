@@ -3,8 +3,9 @@
 HexVis draws every app as an onion because that's the architecture it was built to check.
 Most apps aren't one: Django is MVT, many FastAPI/Express apps are layered, React and Vue
 apps have their own shapes. This is the plan for drawing each app in its own shape, and for
-the rename that would come with it. Status: **proposal + prototype** — nothing in the viewer
-uses profiles yet.
+the rename that would come with it. Status: **ring → zone is done** (code, UI, docs, and
+`hexvis.json` version 2 with a `"style"` field, still reading version 1). Profiles beyond
+the hexagon are a **proposal + prototype**: the viewer still only draws `"hexagonal"`.
 
 ## What changes conceptually
 
@@ -13,7 +14,7 @@ uses profiles yet.
 | "ring": inbound adapter / core / outbound adapter | **zone**, defined by the active profile |
 | one rule for violations (calls against the onion) | each profile lists its **allowed calls between zones**; anything else is a finding |
 | hexagon floor in 3D, ring-coloured columns in 2D | the profile's **layout**: hexagon, bands (layered, feature-sliced), triangle (MVC/MVVM/MVP), cycle (Flux) |
-| `hexvis.json`: `{ match, ring, reason }` | `{ "style", "layout", "zones": [{ match, zone, reason, by }] }` (version 2) |
+| `hexvis.json` v1: `{ "rings": [{ match, ring, reason }] }` | v2 (done): `{ "style": "hexagonal", "zones": [{ match, zone, reason, by }] }`; layout to come from the style |
 | inferred ring when no rule matches | inferred zone from the profile's vocabulary and runtime evidence |
 
 Framework, test-double and external zones stay fixed: they're facts about the code, not
@@ -76,8 +77,8 @@ Worth picking something without that baggage before doing the mechanical part.
 The bigger lift is conceptual, not textual: "ring" → "zone" across core, UI and docs, and
 making layout and violation rules come from the profile. Suggested order:
 
-1. Rename (mechanical, one commit).
-2. Zones v2 config + profile-driven violations in core, hexagonal as the default profile
-   (behaviour unchanged for today's users).
+1. Rename (mechanical, one commit) — waiting on the name.
+2. ~~Ring → zone, zones v2 config~~ (done); profile-driven violations in core next, with
+   hexagonal as the default profile (behaviour unchanged).
 3. Layered "bands" layout in 2D and 3D; then the triangle.
 4. The skill behind a "Detect architecture" command, proposing the v2 config.

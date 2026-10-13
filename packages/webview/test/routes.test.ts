@@ -1,10 +1,10 @@
 /**
- * Bundling in the 3D scene, on the real FastAPI graph: calls between the same two rings
- * share one trunk; calls inside a ring, or along the framework chain, fly direct.
+ * Bundling in the 3D scene, on the real FastAPI graph: calls between the same two zones
+ * share one trunk; calls inside a zone, or along the framework chain, fly direct.
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, loadLatestRun, Ring } from "@hexvis/core";
+import { buildSystemGraph, loadLatestRun, Zone } from "@hexvis/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -18,7 +18,7 @@ async function fastapiGraph() {
 }
 
 describe("routeEdges", () => {
-  test("calls between different rings collapse into six ring-to-ring trunks", async () => {
+  test("calls between different zones collapse into six zone-to-zone trunks", async () => {
     const graph = await fastapiGraph();
 
     const { routes, trunks } = routeEdges(graph, layoutHexagon(graph));
@@ -38,19 +38,19 @@ describe("routeEdges", () => {
 
   test("bundled calls share their trunk's middle exactly; direct calls have no trunk", async () => {
     const graph = await fastapiGraph();
-    const ring = new Map(graph.nodes.map((n) => [n.id, n.ring]));
+    const zone = new Map(graph.nodes.map((n) => [n.id, n.zone]));
 
     const { routes } = routeEdges(graph, layoutHexagon(graph));
 
-    const inboundToOutbound = routes.filter((r) => r.trunk === `${Ring.InboundAdapter}>${Ring.OutboundAdapter}`);
+    const inboundToOutbound = routes.filter((r) => r.trunk === `${Zone.InboundAdapter}>${Zone.OutboundAdapter}`);
     expect(inboundToOutbound.length).toBeGreaterThan(1);
     const middles = new Set(inboundToOutbound.map((r) => JSON.stringify(r.points.slice(2, 4))));
     expect(middles.size).toBe(1);
 
     for (const route of routes.filter((r) => r.trunk === null)) {
       const edge = graph.edges.find((e) => e.id === route.edgeId)!;
-      const sameRing = ring.get(edge.from) === ring.get(edge.to);
-      const framework = ring.get(edge.from) === Ring.Edge || ring.get(edge.to) === Ring.Edge;
+      const sameRing = zone.get(edge.from) === zone.get(edge.to);
+      const framework = zone.get(edge.from) === Zone.Edge || zone.get(edge.to) === Zone.Edge;
       expect(sameRing || framework, route.edgeId).toBe(true);
       expect(route.points).toHaveLength(3);
     }

@@ -1,6 +1,6 @@
 import { Op } from "../align";
 import { Outcome, Phase, Run } from "../model";
-import { RingRules } from "../rings";
+import { ZoneRules } from "../zones";
 import { FINE_GROUPING, Grouping } from "./components";
 import { diffExecution } from "./execution-diff";
 import { Change, diffRuns } from "./run-diff";
@@ -65,7 +65,7 @@ const FAILING = new Set([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass])
 export function buildReview(
   base: Run,
   head: Run,
-  options: { phases?: Phase[]; grouping?: Grouping; rules?: RingRules } = {},
+  options: { phases?: Phase[]; grouping?: Grouping; rules?: ZoneRules } = {},
 ): ReviewSummary {
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;

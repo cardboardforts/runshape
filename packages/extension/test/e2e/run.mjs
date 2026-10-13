@@ -21,12 +21,12 @@ const modelLog = resolve(extensionRoot, ".vscode-test", "fake-model-prompts.json
 
 await rm(userDataDir, { recursive: true, force: true });
 await rm(modelLog, { force: true });
-// A declared ring, so the run proves hexvis.json is read; removed afterwards.
+// A declared zone, so the run proves hexvis.json is read; removed afterwards.
 const rulesFile = join(workspace, "hexvis.json");
-await writeFile(rulesFile, JSON.stringify({ version: 1, rings: [{ match: "conduit.apps.*.models.*", ring: "core", reason: "e2e" }] }));
+await writeFile(rulesFile, JSON.stringify({ version: 2, style: "hexagonal", zones: [{ match: "conduit.apps.*.models.*", zone: "core", reason: "e2e" }] }));
 try {
   await runTests({
-    // HexVis plus a fake language model, so "suggest a ring" runs through the real API.
+    // HexVis plus a fake language model, so "suggest a zone" runs through the real API.
     extensionDevelopmentPath: [extensionRoot, fakeModel],
     extensionTestsPath: join(here, "suite.cjs"),
     extensionTestsEnv: { HEXVIS_FAKE_MODEL_LOG: modelLog },

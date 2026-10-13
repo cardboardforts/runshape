@@ -1,7 +1,7 @@
 import { Outcome, Phase, Role, Run, Scenario } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 import { buildReplay, StepKind } from "./replay";
-import { RingRules } from "../rings";
+import { ZoneRules } from "../zones";
 import { buildSystemGraph, GraphEdge, GraphNode } from "./system-graph";
 
 /**
@@ -59,13 +59,13 @@ export interface RunDiff {
 export interface DiffOptions {
   phases?: Phase[];
   grouping?: Grouping;
-  rules?: RingRules;
+  rules?: ZoneRules;
 }
 
 export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): RunDiff {
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
-  const rules = options.rules ?? RingRules.none();
+  const rules = options.rules ?? ZoneRules.none();
   const graphBefore = buildSystemGraph(before, { phases, grouping, rules });
   const graphAfter = buildSystemGraph(after, { phases, grouping, rules });
 

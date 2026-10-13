@@ -4,14 +4,14 @@ See how a Python web app actually runs: record its tests, then watch each reques
 the client through middleware, router, handlers and services to the database — laid out as
 the onion it is (or isn't).
 
-- **Runtime map.** Every component that ran, the calls between them, coloured by ring
+- **Runtime map.** Every component that ran, the calls between them, coloured by zone
   (inbound adapter, core, outbound adapter, external), inferred from what each one was seen
   doing. Handlers that query the database directly are flagged.
 - **Replay.** Pick a test and watch its calls pulse along the graph, hop by hop.
 - **Test wires.** Open a function: one wire per test runs down its source and splits where
   tests branch. Lines with no wire are untested; tests that take identical paths are grouped
   as candidates for consolidation.
-- **Declared rings.** Say where a component is *meant* to sit — by hand, or by accepting a
+- **Declared zones.** Say where a component is *meant* to sit — by hand, or by accepting a
   language model's proposal — and it's saved as a rule with its reason in a checked-in
   `hexvis.json`. Where behaviour contradicts a declaration (core code querying the database,
   a request handler calling a repository directly), the graph flags it.
@@ -19,7 +19,7 @@ the onion it is (or isn't).
   the three sides facing the incoming traffic, outbound adapters on the three facing the
   outside world, external systems beyond. Components are tiles with their live objects as
   cubes above them, dashed lines joining objects that hold one another (per object once you
-  pick a test); calls between rings run along shared trunks; replay steps are packets of
+  pick a test); calls between zones run along shared trunks; replay steps are packets of
   light travelling them.
 - **Review a PR by behaviour.** `hexvis-review --base origin/main` records the tests on the
   base and on your branch; the viewer then leads with the tests that are *still green but

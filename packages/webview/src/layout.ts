@@ -1,7 +1,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import { ComponentKind, GraphNode, Ring, SystemGraph } from "@hexvis/core";
+import { ComponentKind, GraphNode, Zone, SystemGraph } from "@hexvis/core";
 
 export const NODE_WIDTH = 188;
 export const NODE_HEIGHT = 46;
@@ -13,7 +13,7 @@ export interface Positioned {
 
 /**
  * Left to right, the way a request travels: client, framework edge, then the onion's
- * rings, then the outside world. Partitions force that column order even when a test
+ * zones, then the outside world. Partitions force that column order even when a test
  * reaches past the edge straight into a repository.
  */
 function partitionOf(node: GraphNode): number {
@@ -29,16 +29,16 @@ function partitionOf(node: GraphNode): number {
     default:
       break;
   }
-  switch (node.ring) {
-    case Ring.InboundAdapter:
+  switch (node.zone) {
+    case Zone.InboundAdapter:
       return 4;
-    case Ring.Core:
+    case Zone.Core:
       return 5;
-    case Ring.OutboundAdapter:
+    case Zone.OutboundAdapter:
       return 6;
-    case Ring.TestDouble:
+    case Zone.TestDouble:
       return 7;
-    case Ring.External:
+    case Zone.External:
       return 8;
     default:
       return 5;

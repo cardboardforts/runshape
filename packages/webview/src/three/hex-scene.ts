@@ -6,19 +6,19 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, Ring, StepKind, SystemGraph } from "@hexvis/core";
+import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, Zone, StepKind, SystemGraph } from "@hexvis/core";
 
 import { HexagonLayout, hexagonCorners, OBJECT_SIDE, objectSlots, Tile } from "./hexagon-layout";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
 
-const RING_COLOR: Record<Ring, number> = {
-  [Ring.Edge]: 0x8a8f98,
-  [Ring.InboundAdapter]: 0x3b82f6,
-  [Ring.Core]: 0x10b981,
-  [Ring.OutboundAdapter]: 0xf59e0b,
-  [Ring.TestDouble]: 0xa1a1aa,
-  [Ring.External]: 0xa855f7,
+const ZONE_COLOR: Record<Zone, number> = {
+  [Zone.Edge]: 0x8a8f98,
+  [Zone.InboundAdapter]: 0x3b82f6,
+  [Zone.Core]: 0x10b981,
+  [Zone.OutboundAdapter]: 0xf59e0b,
+  [Zone.TestDouble]: 0xa1a1aa,
+  [Zone.External]: 0xa855f7,
 };
 const CALL_COLOR = 0x5eead4;
 const VIOLATION_COLOR = 0xe5534b;
@@ -188,7 +188,7 @@ export class HexScene {
       const count = own ? own.length : tile.node.instances;
       if (count === 0) continue;
       const slots = objectSlots(tile.layout, count);
-      const color = RING_COLOR[tile.node.ring];
+      const color = ZONE_COLOR[tile.node.zone];
       const mesh = new THREE.InstancedMesh(
         new THREE.BoxGeometry(OBJECT_SIDE, OBJECT_SIDE, OBJECT_SIDE),
         new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9 }),
@@ -250,7 +250,7 @@ export class HexScene {
       const change = nodeChanges?.get(id) ?? null;
       tile.body.material.opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.55;
       tile.body.material.emissiveIntensity = active ? 1.2 : 0.25;
-      tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : RING_COLOR[tile.node.ring]));
+      tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : ZONE_COLOR[tile.node.zone]));
       tile.outline.material.opacity = emphasis === "dimmed" ? 0.2 : 1;
       const objects = this.objectMeshes.get(id);
       if (objects) (objects.material as THREE.MeshStandardMaterial).opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.9;
@@ -317,12 +317,12 @@ export class HexScene {
     const shape = new THREE.Shape(corners.map(([x, z]) => new THREE.Vector2(x, -z)));
     const floor = new THREE.Mesh(
       new THREE.ShapeGeometry(shape),
-      new THREE.MeshBasicMaterial({ color: RING_COLOR[Ring.Core], transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: ZONE_COLOR[Zone.Core], transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
     );
     floor.rotation.x = -Math.PI / 2;
     const rim = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints(corners.map(([x, z]) => new THREE.Vector3(x, 0.05, z))),
-      new THREE.LineBasicMaterial({ color: RING_COLOR[Ring.Core], transparent: true, opacity: 0.6 }),
+      new THREE.LineBasicMaterial({ color: ZONE_COLOR[Zone.Core], transparent: true, opacity: 0.6 }),
     );
     const grid = new THREE.PolarGridHelper(radius * 2.6, 6, 8, 64, 0x2a3240, 0x1d232c);
     grid.position.y = -0.05;
@@ -331,7 +331,7 @@ export class HexScene {
 
   private addTile(node: GraphNode, tile: Tile): void {
     const { x, z, size } = tile;
-    const color = RING_COLOR[node.ring];
+    const color = ZONE_COLOR[node.zone];
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(size, TILE_HEIGHT, size),
       new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.25, transparent: true, opacity: 0.55, roughness: 0.6 }),
@@ -343,9 +343,9 @@ export class HexScene {
 
     const element = document.createElement("button");
     element.type = "button";
-    element.className = `label3d ring-${node.ring}`;
+    element.className = `label3d zone-${node.zone}`;
     element.textContent = node.label;
-    element.title = `${node.qualifiedName ?? node.label}\n${node.ring}: ${node.ringReason}`;
+    element.title = `${node.qualifiedName ?? node.label}\n${node.zone}: ${node.zoneReason}`;
     // No click listener: orbit controls capture the pointer, so clicks are resolved in
     // handlePointerUp, which checks labels before tiles.
     element.dataset.nodeId = node.id;

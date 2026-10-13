@@ -1,4 +1,4 @@
-import { ComponentKind, GraphNode, Ring, SystemGraph } from "@hexvis/core";
+import { ComponentKind, GraphNode, Zone, SystemGraph } from "@hexvis/core";
 
 /**
  * Places the system on a literal hexagon floor (XZ plane, Y up). The hexagon's vertices sit
@@ -43,20 +43,20 @@ export function tileSize(node: GraphNode): number {
 
 export function layoutHexagon(graph: SystemGraph): HexagonLayout {
   const byLabel = (a: GraphNode, b: GraphNode) => a.label.localeCompare(b.label);
-  const core = graph.nodes.filter((n) => n.ring === Ring.Core).sort(byLabel);
-  const inbound = graph.nodes.filter((n) => n.ring === Ring.InboundAdapter).sort(byLabel);
-  const outbound = graph.nodes.filter((n) => n.ring === Ring.OutboundAdapter).sort(byLabel);
-  const doubles = graph.nodes.filter((n) => n.ring === Ring.TestDouble).sort(byLabel);
-  const externals = graph.nodes.filter((n) => n.ring === Ring.External).sort(byLabel);
+  const core = graph.nodes.filter((n) => n.zone === Zone.Core).sort(byLabel);
+  const inbound = graph.nodes.filter((n) => n.zone === Zone.InboundAdapter).sort(byLabel);
+  const outbound = graph.nodes.filter((n) => n.zone === Zone.OutboundAdapter).sort(byLabel);
+  const doubles = graph.nodes.filter((n) => n.zone === Zone.TestDouble).sort(byLabel);
+  const externals = graph.nodes.filter((n) => n.zone === Zone.External).sort(byLabel);
   const framework = graph.nodes
-    .filter((n) => n.ring === Ring.Edge)
+    .filter((n) => n.zone === Zone.Edge)
     .sort((a, b) => FRAMEWORK_ORDER.indexOf(a.kind) - FRAMEWORK_ORDER.indexOf(b.kind) || byLabel(a, b));
 
   const spacing = MAX_TILE + TILE_GAP;
   const coreRadius = spacing * Math.sqrt(core.length) * 0.75;
   // The adapters on each side share a 120° arc, which must be long enough to hold them.
   const arcNeeded = (count: number) => (count * spacing * 3) / (2 * Math.PI);
-  // Adapters stand at ADAPTER_RING × radius; that ring must clear the core's spiral.
+  // Adapters stand on a ring at ADAPTER_RING × radius; that ring must clear the core's spiral.
   const radius = Math.max(
     MIN_RADIUS,
     (coreRadius + spacing * 1.2) / ADAPTER_RING,

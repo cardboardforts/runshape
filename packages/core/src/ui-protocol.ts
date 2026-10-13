@@ -1,8 +1,8 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
 import { Phase } from "./model";
-import type { RingAdvice } from "./ring-advice";
-import type { DeclaredRing, RingRule } from "./rings";
+import type { ZoneAdvice } from "./zone-advice";
+import type { DeclaredZone, ZoneRule } from "./zones";
 import type { Grouping } from "./views/components";
 import type { RunSummary } from "./session";
 import type { ComponentView } from "./views/component-view";
@@ -22,8 +22,8 @@ export type UiRequest =
   | { type: "function"; module: string; qualname: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping }
-  | { type: "setRing"; qualifiedName: string; ring: DeclaredRing; reason: string; by: RingRule["by"] }
-  | { type: "adviseRing"; componentId: string; grouping: Grouping }
+  | { type: "setZone"; qualifiedName: string; zone: DeclaredZone; reason: string; by: ZoneRule["by"] }
+  | { type: "adviseZone"; componentId: string; grouping: Grouping }
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "objects"; scenarioId: string }
   | { type: "functionExecutionDiff"; scenarioId: string; module: string; qualname: string; phases: Phase[] }
@@ -43,5 +43,5 @@ export type UiResponse =
   | { type: "rulesChanged"; count: number }
   | { type: "executionDiff"; diff: ExecutionDiff; replay: MergedReplayStep[] }
   | { type: "functionExecutionDiff"; diff: FunctionExecutionDiff }
-  | { type: "ringAdvice"; componentId: string; advice: RingAdvice }
-  | { type: "ringAdviceFailed"; componentId: string; message: string };
+  | { type: "zoneAdvice"; componentId: string; advice: ZoneAdvice }
+  | { type: "zoneAdviceFailed"; componentId: string; message: string };

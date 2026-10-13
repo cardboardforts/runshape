@@ -1,14 +1,14 @@
 /**
- * "Suggest ring": the model proposes, a person accepts, only then does hexvis.json change.
+ * "Suggest zone": the model proposes, a person accepts, only then does hexvis.json change.
  * The advisor and the rule store are ports; these fakes stand in for VS Code's language
  * model API and the file write (with its confirmation dialog).
  */
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "../src/model";
-import { parseRingAdvice, RingAdvisor, ringFacts } from "../src/ring-advice";
-import { DeclaredRing, RingRules } from "../src/rings";
-import { RingRuleStore, ViewerSession } from "../src/session";
+import { parseZoneAdvice, ZoneAdvisor, zoneFacts } from "../src/zone-advice";
+import { DeclaredZone, ZoneRules } from "../src/zones";
+import { ZoneRuleStore, ViewerSession } from "../src/session";
 import { buildComponentView } from "../src/views/component-view";
 import { buildSystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
@@ -16,7 +16,7 @@ import { loadFixtureRun } from "./fixtures";
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";
 const GROUPING = { collapseMiddleware: true };
 
-class ScriptedAdvisor implements RingAdvisor {
+class ScriptedAdvisor implements ZoneAdvisor {
   readonly available = true;
   readonly prompts: string[] = [];
   constructor(private readonly answer: string) {}
@@ -26,24 +26,24 @@ class ScriptedAdvisor implements RingAdvisor {
   }
 }
 
-class RecordingStore implements RingRuleStore {
+class RecordingStore implements ZoneRuleStore {
   readonly asked: string[] = [];
-  saved: RingRules | null = null;
+  saved: ZoneRules | null = null;
   constructor(private readonly accept: boolean) {}
-  async save(rules: RingRules, change: string): Promise<boolean> {
+  async save(rules: ZoneRules, change: string): Promise<boolean> {
     this.asked.push(change);
     if (this.accept) this.saved = rules;
     return this.accept;
   }
 }
 
-describe("ring facts and the model's answer", () => {
+describe("zone facts and the model's answer", () => {
   test("the model is given the recorded evidence about the component", async () => {
     const run = await loadFixtureRun("fastapi");
     const graph = buildSystemGraph(run, { grouping: GROUPING });
     const node = graph.nodes.find((n) => n.id === USERS_REPOSITORY)!;
 
-    expect(ringFacts(graph, node, buildComponentView(run, USERS_REPOSITORY, GROUPING))).toMatchInlineSnapshot(`
+    expect(zoneFacts(graph, node, buildComponentView(run, USERS_REPOSITORY, GROUPING))).toMatchInlineSnapshot(`
       {
         "calledBy": [
           "app.db.repositories.profiles.ProfilesRepository (outbound-adapter)",
@@ -58,7 +58,7 @@ describe("ring facts and the model's answer", () => {
           "app.models.domain.users.UserInDB (core)",
         ],
         "currentReason": "calls postgres directly",
-        "currentRing": "outbound-adapter",
+        "currentZone": "outbound-adapter",
         "externalSystems": [
           "postgres",
         ],
@@ -76,27 +76,27 @@ describe("ring facts and the model's answer", () => {
   });
 
   test("answers are accepted inside prose or code fences, and rejected when unusable", () => {
-    expect(parseRingAdvice('Sure!\n```json\n{"ring": "outbound-adapter", "reason": "Wraps SQL for users."}\n```')).toEqual({
-      ring: "outbound-adapter",
+    expect(parseZoneAdvice('Sure!\n```json\n{"zone": "outbound-adapter", "reason": "Wraps SQL for users."}\n```')).toEqual({
+      zone: "outbound-adapter",
       reason: "Wraps SQL for users.",
       confidence: "low", // missing confidence is treated as low, never as high
     });
-    expect(() => parseRingAdvice('{"ring": "domain", "reason": ""}')).toThrowErrorMatchingInlineSnapshot(`[Error: the model's answer was unusable: unknown ring "domain"; no reason given]`);
-    expect(() => parseRingAdvice("I think it's an adapter.")).toThrowErrorMatchingInlineSnapshot(`[Error: the model did not answer with a JSON object]`);
+    expect(() => parseZoneAdvice('{"zone": "domain", "reason": ""}')).toThrowErrorMatchingInlineSnapshot(`[Error: the model's answer was unusable: unknown zone "domain"; no reason given]`);
+    expect(() => parseZoneAdvice("I think it's an adapter.")).toThrowErrorMatchingInlineSnapshot(`[Error: the model did not answer with a JSON object]`);
   });
 });
 
 describe("the source the model is shown", () => {
   test("starts at the class statement, even when its bases span several lines", async () => {
     const run = await loadFixtureRun("fastapi");
-    const advisor = new ScriptedAdvisor('{"ring": "outbound-adapter", "reason": "r"}');
+    const advisor = new ScriptedAdvisor('{"zone": "outbound-adapter", "reason": "r"}');
     const lines = ["from x import y", "", "class UsersRepository(", "    BaseRepository,", "):", '    """Users."""', ""];
     // Pad so the first method sits where the recording says it does.
     const firstMethod = run.catalogFunction("app.db.repositories.users", "UsersRepository.get_user_by_email")!.firstLine;
     while (lines.length < firstMethod - 1) lines.push("");
     const sources = { readLines: async () => [...lines, ...Array(200).fill("    pass")] };
 
-    await new ViewerSession(run, { sources, advisor }).handle({ type: "adviseRing", componentId: USERS_REPOSITORY, grouping: GROUPING });
+    await new ViewerSession(run, { sources, advisor }).handle({ type: "adviseZone", componentId: USERS_REPOSITORY, grouping: GROUPING });
 
     expect(advisor.prompts[0]).toContain("class UsersRepository(\n    BaseRepository,\n):");
   });
@@ -105,32 +105,32 @@ describe("the source the model is shown", () => {
 describe("suggest, then accept", () => {
   test("nothing changes until the proposal is accepted; then the graph shows who decided", async () => {
     const run = await loadFixtureRun("fastapi");
-    const advisor = new ScriptedAdvisor('{"ring": "outbound-adapter", "reason": "Repository over the users table.", "confidence": "high"}');
+    const advisor = new ScriptedAdvisor('{"zone": "outbound-adapter", "reason": "Repository over the users table.", "confidence": "high"}');
     const declining = new RecordingStore(false);
     const accepting = new RecordingStore(true);
     const sources = { readLines: async () => null };
 
-    const proposal = await new ViewerSession(run, { sources, advisor }).handle({ type: "adviseRing", componentId: USERS_REPOSITORY, grouping: GROUPING });
+    const proposal = await new ViewerSession(run, { sources, advisor }).handle({ type: "adviseZone", componentId: USERS_REPOSITORY, grouping: GROUPING });
     const declined = await new ViewerSession(run, { sources, ruleStore: declining }).handle({
-      type: "setRing", qualifiedName: "app.db.repositories.users.UsersRepository", ring: DeclaredRing.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
+      type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: DeclaredZone.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
     });
     const session = new ViewerSession(run, { sources, ruleStore: accepting });
     const accepted = await session.handle({
-      type: "setRing", qualifiedName: "app.db.repositories.users.UsersRepository", ring: DeclaredRing.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
+      type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: DeclaredZone.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
     });
     const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
 
     expect(proposal).toEqual({
-      type: "ringAdvice",
+      type: "zoneAdvice",
       componentId: USERS_REPOSITORY,
-      advice: { ring: "outbound-adapter", reason: "Repository over the users table.", confidence: "high" },
+      advice: { zone: "outbound-adapter", reason: "Repository over the users table.", confidence: "high" },
     });
     expect(declined).toBeNull();
     expect(declining.asked).toMatchInlineSnapshot(`
       [
         "{
         "match": "app.db.repositories.users.UsersRepository",
-        "ring": "outbound-adapter",
+        "zone": "outbound-adapter",
         "reason": "Repository over the users table.",
         "by": "llm"
       }
@@ -141,11 +141,12 @@ describe("suggest, then accept", () => {
     expect(accepted).toEqual({ type: "rulesChanged", count: 1 });
     expect(accepting.saved?.serialize()).toMatchInlineSnapshot(`
       "{
-        "version": 1,
-        "rings": [
+        "version": 2,
+        "style": "hexagonal",
+        "zones": [
           {
             "match": "app.db.repositories.users.UsersRepository",
-            "ring": "outbound-adapter",
+            "zone": "outbound-adapter",
             "reason": "Repository over the users table.",
             "by": "llm"
           }
@@ -154,17 +155,17 @@ describe("suggest, then accept", () => {
       "
     `);
     const node = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.id === USERS_REPOSITORY) : undefined;
-    expect(`${node?.ring} [${node?.ringSource}] ${node?.ringReason}`).toMatchInlineSnapshot(`"outbound-adapter [rule] proposed by a model, accepted in hexvis.json (app.db.repositories.users.UsersRepository): Repository over the users table."`);
+    expect(`${node?.zone} [${node?.zoneSource}] ${node?.zoneReason}`).toMatchInlineSnapshot(`"outbound-adapter [rule] proposed by a model, accepted in hexvis.json (app.db.repositories.users.UsersRepository): Repository over the users table."`);
   });
 
   test("without a language model the viewer says so instead of failing", async () => {
     const run = await loadFixtureRun("fastapi");
 
     const response = await new ViewerSession(run, { sources: { readLines: async () => null } }).handle({
-      type: "adviseRing", componentId: USERS_REPOSITORY, grouping: GROUPING,
+      type: "adviseZone", componentId: USERS_REPOSITORY, grouping: GROUPING,
     });
 
-    expect(response).toMatchObject({ type: "ringAdviceFailed", message: expect.stringContaining("No language model") });
+    expect(response).toMatchObject({ type: "zoneAdviceFailed", message: expect.stringContaining("No language model") });
   });
 });
 
@@ -172,9 +173,9 @@ describe("saving rules safely", () => {
   test("while hexvis.json can't be read, saving is refused instead of overwriting the file", async () => {
     const run = await loadFixtureRun("fastapi");
     const store = new RecordingStore(true);
-    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rulesProblem: "rings[3].ring must be one of …" });
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rulesProblem: "zones[3].zone must be one of …" });
 
-    const response = await session.handle({ type: "setRing", qualifiedName: "app.x.Y", ring: DeclaredRing.Core, reason: "r", by: "user" });
+    const response = await session.handle({ type: "setZone", qualifiedName: "app.x.Y", zone: DeclaredZone.Core, reason: "r", by: "user" });
 
     expect(response).toMatchObject({ type: "error", message: expect.stringContaining("Fix hexvis.json before adding rules") });
     expect(store.asked).toEqual([]);
@@ -185,20 +186,20 @@ describe("saving rules safely", () => {
     const store = new RecordingStore(true);
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store });
 
-    const response = await session.handle({ type: "setRing", qualifiedName: "", ring: "domain" as DeclaredRing, reason: " ", by: "robot" as "user" });
+    const response = await session.handle({ type: "setZone", qualifiedName: "", zone: "domain" as DeclaredZone, reason: " ", by: "robot" as "user" });
 
-    expect(response).toEqual({ type: "error", message: 'Can\'t save that rule: no component name; unknown ring "domain"; no reason; unknown decider "robot"' });
+    expect(response).toEqual({ type: "error", message: 'Can\'t save that rule: no component name; unknown zone "domain"; no reason; unknown decider "robot"' });
     expect(store.asked).toEqual([]);
   });
 
   test("a failed model request ends the 'asking' state with a message", async () => {
     const run = await loadFixtureRun("fastapi");
-    const failing: RingAdvisor = { available: true, complete: async () => Promise.reject(new Error("access denied by the user")) };
+    const failing: ZoneAdvisor = { available: true, complete: async () => Promise.reject(new Error("access denied by the user")) };
 
     const response = await new ViewerSession(run, { sources: { readLines: async () => null }, advisor: failing }).handle({
-      type: "adviseRing", componentId: USERS_REPOSITORY, grouping: GROUPING,
+      type: "adviseZone", componentId: USERS_REPOSITORY, grouping: GROUPING,
     });
 
-    expect(response).toEqual({ type: "ringAdviceFailed", componentId: USERS_REPOSITORY, message: "The model request failed: access denied by the user" });
+    expect(response).toEqual({ type: "zoneAdviceFailed", componentId: USERS_REPOSITORY, message: "The model request failed: access denied by the user" });
   });
 });

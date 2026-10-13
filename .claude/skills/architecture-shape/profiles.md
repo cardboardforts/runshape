@@ -13,7 +13,7 @@ confirms or contradicts it.
 ## Backend
 
 ### Hexagonal / ports and adapters / onion / clean
-- **Zones**: `inbound` · `core` (domain + application) · `outbound`. Layout: hexagon.
+- **Zones**: `inbound-adapter` · `core` (domain + application) · `outbound-adapter`. Layout: hexagon. (These are the ids HexVis draws today.)
 - **Allowed**: inbound → core; core → port interfaces (implemented by outbound adapters);
   outbound → core types. The core imports no framework, ORM or HTTP client.
 - **Vocabulary**: `domain`, `core`, `ports`, `adapters`, `application`, `usecases`, `infrastructure`.
