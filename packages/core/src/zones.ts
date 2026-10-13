@@ -45,14 +45,14 @@ export interface RuleMatch {
 
 /** First matching rule wins, so specific rules go above broad ones. */
 export class ZoneRules {
-  private readonly compiled: { rule: ZoneRule; pattern: RegExp }[];
+  private readonly compiled: { rule: ZoneRule; glob: Glob }[];
 
   constructor(
     readonly rules: ZoneRule[],
     /** The style the file declares; its zones are the ones rules may name. */
     readonly profile: ArchitectureProfile = HEXAGONAL,
   ) {
-    this.compiled = rules.map((rule) => ({ rule, pattern: globToRegExp(rule.match) }));
+    this.compiled = rules.map((rule) => ({ rule, glob: new Glob(rule.match) }));
   }
 
   static none(profile: ArchitectureProfile = HEXAGONAL): ZoneRules {
@@ -103,7 +103,7 @@ export class ZoneRules {
   matchFor(qualifiedName: string): RuleMatch | null {
     for (let index = 0; index < this.compiled.length; index += 1) {
       const entry = this.compiled[index]!;
-      if (entry.pattern.test(qualifiedName)) return { rule: entry.rule, index };
+      if (entry.glob.matches(qualifiedName)) return { rule: entry.rule, index };
     }
     return null;
   }
@@ -119,27 +119,66 @@ export class ZoneRules {
   }
 }
 
-function globToRegExp(glob: string): RegExp {
-  let source = "";
-  for (let i = 0; i < glob.length; i += 1) {
-    const char = glob[i]!;
-    // A leading "**." and any ".**" may stand for no segments at all, taking their dot with them.
-    if (i === 0 && glob.startsWith("**.")) {
-      source += "(?:.*\\.)?";
-      i += 2;
-    } else if (glob.startsWith(".**", i) && (i + 3 === glob.length || glob[i + 3] === ".")) {
-      source += "(?:\\..*)?";
-      i += 2;
-    } else if (char === "*" && glob[i + 1] === "*") {
-      source += ".*";
-      i += 1;
-    } else if (char === "*") {
-      source += "[^.]*";
+/**
+ * Matches dotted names against a glob, segment by segment: "**" is any number of segments
+ * (none too), "*" any text within one segment. Not a regular expression: a run of "**"
+ * made one backtrack exponentially, and the globs come from a file in the repository. The
+ * memo bounds the work to pattern segments × name segments.
+ */
+class Glob {
+  private readonly segments: string[];
+
+  constructor(pattern: string) {
+    this.segments = pattern.split(".");
+  }
+
+  matches(name: string): boolean {
+    const parts = name.split(".");
+    const memo = new Map<number, boolean>();
+    const from = (p: number, n: number): boolean => {
+      const key = p * (parts.length + 1) + n;
+      const known = memo.get(key);
+      if (known !== undefined) return known;
+      let result: boolean;
+      if (p === this.segments.length) {
+        result = n === parts.length;
+      } else if (this.segments[p] === "**") {
+        // Zero segments, or one more and stay on "**".
+        result = from(p + 1, n) || (n < parts.length && from(p, n + 1));
+      } else {
+        result = n < parts.length && segmentMatches(this.segments[p]!, parts[n]!) && from(p + 1, n + 1);
+      }
+      memo.set(key, result);
+      return result;
+    };
+    return from(0, 0);
+  }
+}
+
+/** "*" is any text (a "**" inside a segment counts as "*"); greedy with one backtrack point, so linear. */
+function segmentMatches(pattern: string, text: string): boolean {
+  let p = 0;
+  let t = 0;
+  let star = -1;
+  let resume = 0;
+  while (t < text.length) {
+    if (p < pattern.length && pattern[p] !== "*" && pattern[p] === text[t]) {
+      p += 1;
+      t += 1;
+    } else if (p < pattern.length && pattern[p] === "*") {
+      star = p;
+      resume = t;
+      p += 1;
+    } else if (star !== -1) {
+      p = star + 1;
+      resume += 1;
+      t = resume;
     } else {
-      source += char.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+      return false;
     }
   }
-  return new RegExp(`^${source}$`);
+  while (p < pattern.length && pattern[p] === "*") p += 1;
+  return p === pattern.length;
 }
 
 /** Reads a version 1 file ("rings", "ring") as version 2; the next save writes version 2. */

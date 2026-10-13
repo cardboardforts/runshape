@@ -89,6 +89,21 @@ describe("ZoneRules", () => {
     expect(["models", "app.models", "app.x.models", "app.modelsx"].map((name) => leading.matchFor(name) !== null)).toEqual([true, true, true, false]);
   });
 
+  test("a hostile glob in a cloned repo's runshape.json can't hang the viewer", () => {
+    // As a regular expression, eight ".**" in a row took 3.4 s against this name (and each
+    // more one about 6x longer): catastrophic backtracking, run once per graph node.
+    const hostile = new ZoneRules([{ match: `a${".**".repeat(30)}.zzz`, zone: HexagonalZone.Core, reason: "r", by: "user" }]);
+    const wildcards = new ZoneRules([{ match: `a.${"*a".repeat(30)}b`, zone: HexagonalZone.Core, reason: "r", by: "user" }]);
+    const name = `a${".b".repeat(200)}`;
+
+    const started = performance.now();
+    const matched = [hostile.matchFor(name), wildcards.matchFor(`a.${"a".repeat(200)}`), hostile.matchFor(`${name}.zzz`)];
+    const elapsedMs = performance.now() - started;
+
+    expect(matched.map((match) => match !== null)).toEqual([false, false, true]);
+    expect(elapsedMs).toBeLessThan(100);
+  });
+
   test("setting the zone of one component adds the most specific rule first and round-trips", () => {
     const rules = ZoneRules.none()
       .withRuleFor("app.**", HexagonalZone.Core, "default", "user")
