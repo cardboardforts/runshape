@@ -1,6 +1,6 @@
 import { FixedZone, SystemGraph, ZoneId } from "@runshape/core";
 
-import type { HexagonLayout } from "./hexagon-layout";
+import type { FloorLayout } from "./floor";
 
 /**
  * How calls travel through the 3D scene. A call between two zones doesn't fly straight from
@@ -34,7 +34,7 @@ const TRUNK_HEIGHT_PER_UNIT = 0.08;
 /** Hubs sit this far from their zone's centroid towards the floor's centre. */
 const HUB_PULL = 0.25;
 
-export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes: Route[]; trunks: Trunk[] } {
+export function routeEdges(graph: SystemGraph, layout: FloorLayout): { routes: Route[]; trunks: Trunk[] } {
   const zoneOf = new Map(graph.nodes.map((node) => [node.id, node.zone]));
   const hubs = zoneHubs(graph, layout);
   const routes: Route[] = [];
@@ -46,8 +46,8 @@ export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes:
     const fromZone = zoneOf.get(edge.from);
     const toZone = zoneOf.get(edge.to);
     if (!from || !to || fromZone === undefined || toZone === undefined) continue;
-    const start: Point = [from.x, ATTACH_HEIGHT, from.z];
-    const end: Point = [to.x, ATTACH_HEIGHT, to.z];
+    const start: Point = [from.x, from.y + ATTACH_HEIGHT, from.z];
+    const end: Point = [to.x, to.y + ATTACH_HEIGHT, to.z];
 
     const bundled = fromZone !== toZone && fromZone !== FixedZone.Edge && toZone !== FixedZone.Edge;
     if (!bundled) {
@@ -57,7 +57,8 @@ export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes:
     const key = `${fromZone}>${toZone}`;
     const hubFrom = hubs.get(fromZone)!;
     const hubTo = hubs.get(toZone)!;
-    const height = TRUNK_BASE_HEIGHT + distance(hubFrom, hubTo) * TRUNK_HEIGHT_PER_UNIT;
+    // Above the higher of the two zones: on terraces, trunks clear the upper step.
+    const height = Math.max(hubFrom[1], hubTo[1]) + TRUNK_BASE_HEIGHT + distance(hubFrom, hubTo) * TRUNK_HEIGHT_PER_UNIT;
     const trunkFrom: Point = [hubFrom[0], height, hubFrom[2]];
     const trunkTo: Point = [hubTo[0], height, hubTo[2]];
     routes.push({
@@ -74,13 +75,14 @@ export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes:
 }
 
 /** Each zone's hub: the centroid of its tiles, pulled a little towards the floor's centre. */
-function zoneHubs(graph: SystemGraph, layout: HexagonLayout): Map<ZoneId, Point> {
-  const sums = new Map<ZoneId, { x: number; z: number; count: number }>();
+function zoneHubs(graph: SystemGraph, layout: FloorLayout): Map<ZoneId, Point> {
+  const sums = new Map<ZoneId, { x: number; y: number; z: number; count: number }>();
   for (const node of graph.nodes) {
     const tile = layout.tiles.get(node.id);
     if (!tile) continue;
-    const sum = sums.get(node.zone) ?? { x: 0, z: 0, count: 0 };
+    const sum = sums.get(node.zone) ?? { x: 0, y: 0, z: 0, count: 0 };
     sum.x += tile.x;
+    sum.y += tile.y;
     sum.z += tile.z;
     sum.count += 1;
     sums.set(node.zone, sum);
@@ -88,14 +90,15 @@ function zoneHubs(graph: SystemGraph, layout: HexagonLayout): Map<ZoneId, Point>
   const hubs = new Map<ZoneId, Point>();
   for (const [zone, sum] of sums) {
     const factor = (1 - HUB_PULL) / sum.count;
-    hubs.set(zone, [sum.x * factor, 0, sum.z * factor]);
+    // Pulled towards the centre on the floor, but at the zone's own elevation.
+    hubs.set(zone, [sum.x * factor, sum.y / sum.count, sum.z * factor]);
   }
   return hubs;
 }
 
 function directArc(start: Point, end: Point): Point[] {
   const lift = 6 + distance(start, end) * 0.22;
-  const middle: Point = [(start[0] + end[0]) / 2, lift, (start[2] + end[2]) / 2];
+  const middle: Point = [(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + lift, (start[2] + end[2]) / 2];
   return [start, middle, end];
 }
 

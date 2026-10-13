@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { layoutHexagon, MAX_OBJECTS_SHOWN, objectSlots } from "../src/three/hexagon-layout";
+import { overlappingTiles } from "./tiles";
 
 async function fastapiGraph() {
   const fixtures = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", "fastapi");
@@ -69,31 +70,16 @@ describe("layoutHexagon", () => {
   });
 });
 
-function overlappingTiles(tiles: ReturnType<typeof layoutHexagon>["tiles"]): string[] {
-  const all = [...tiles.values()];
-
-    const overlapping: string[] = [];
-    for (let i = 0; i < all.length; i += 1) {
-      for (let j = i + 1; j < all.length; j += 1) {
-        const a = all[i]!;
-        const b = all[j]!;
-        const apart = Math.max(Math.abs(a.x - b.x), Math.abs(a.z - b.z));
-        if (apart < (a.size + b.size) / 2) overlapping.push(`${a.id} / ${b.id}`);
-      }
-    }
-  return overlapping;
-}
-
 describe("objectSlots", () => {
-  test("one slot per object (up to the cap), all distinct, floating above their tile", () => {
-    const tile = { id: "class:app.Repo", x: 10, z: -4, size: 8, angle: null };
+  test("one slot per object (up to the cap), all distinct, floating above their tile, even on a terrace", () => {
+    const tile = { id: "class:app.Repo", x: 10, y: 24, z: -4, size: 8, angle: null };
 
     const slots = objectSlots(tile, 5);
     const capped = objectSlots(tile, 500);
 
     expect(slots).toHaveLength(5);
     expect(new Set(slots.map((s) => s.join(","))).size).toBe(5);
-    expect(slots.every(([x, y, z]) => y > 1.2 && Math.abs(x - tile.x) < tile.size && Math.abs(z - tile.z) < tile.size)).toBe(true);
+    expect(slots.every(([x, y, z]) => y > tile.y + 1.2 && Math.abs(x - tile.x) < tile.size && Math.abs(z - tile.z) < tile.size)).toBe(true);
     expect(capped).toHaveLength(MAX_OBJECTS_SHOWN);
   });
 });

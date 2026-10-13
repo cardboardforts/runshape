@@ -10,7 +10,8 @@ import { ArchitectureProfile, Change, ComponentWiring, GraphNode, HEXAGONAL, Obj
 
 import { zoneColor } from "../zone-style";
 
-import { HexagonLayout, hexagonCorners, OBJECT_SIDE, objectSlots, Tile } from "./hexagon-layout";
+import type { FloorLayout, FloorPiece, Tile } from "./floor";
+import { OBJECT_SIDE, objectSlots } from "./hexagon-layout";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
 
@@ -19,7 +20,7 @@ const VIOLATION_COLOR = 0xe5534b;
 const ADDED_COLOR = 0x10b981;
 const REMOVED_COLOR = 0xe5534b;
 const CHANGED_COLOR = 0xf59e0b;
-/** The hexagon floor is tinted like the zone that stands in its middle. */
+/** A shared floor (the hexagon, the triangle) is tinted like the hexagon's core. */
 const CORE_FLOOR_COLOR = 0x10b981;
 // Above 1.0 so only the packets cross the bloom threshold and glow.
 const PULSE_BRIGHTNESS = 3;
@@ -32,6 +33,8 @@ const WIRE_COLOR = 0xc4b5fd;
 const WIRE_LIFT = 3;
 const DIMMED_OPACITY = 0.08;
 const CLICK_TOLERANCE_PX = 4;
+/** Below 1 crops the bounding sphere's empty edges; much lower and a triangle's corners fall off screen. */
+const FRAMING = 0.8;
 /** Re-decide which labels fit every few frames: often enough to follow the camera, cheaply. */
 const LABEL_CULL_EVERY_FRAMES = 6;
 
@@ -137,10 +140,10 @@ export class HexScene {
     this.frame = requestAnimationFrame(this.animate);
   }
 
-  setGraph(graph: SystemGraph, layout: HexagonLayout): void {
+  setGraph(graph: SystemGraph, layout: FloorLayout): void {
     this.profile = graph.profile;
     this.clearWorld();
-    this.addFloor(layout.radius);
+    this.addFloor(layout);
     for (const node of graph.nodes) {
       const tile = layout.tiles.get(node.id);
       if (tile) this.addTile(node, tile);
@@ -312,31 +315,43 @@ export class HexScene {
     this.labels.domElement.remove();
   }
 
-  private addFloor(radius: number): void {
-    const corners = hexagonCorners(radius);
-    const shape = new THREE.Shape(corners.map(([x, z]) => new THREE.Vector2(x, -z)));
+  private addFloor(layout: FloorLayout): void {
+    const grid = new THREE.PolarGridHelper(layout.radius * 2.6, 6, 8, 64, 0x2a3240, 0x1d232c);
+    grid.position.y = -0.05;
+    this.world.add(grid);
+    for (const piece of layout.floor) this.addFloorPiece(piece);
+  }
+
+  /** A flat polygon at its elevation; a raised one (a terrace) gets a face down to the ground. */
+  private addFloorPiece(piece: FloorPiece): void {
+    const color = piece.zone === null ? CORE_FLOOR_COLOR : zoneColor(this.profile, piece.zone);
+    const shape = new THREE.Shape(piece.corners.map(([x, z]) => new THREE.Vector2(x, -z)));
     const floor = new THREE.Mesh(
       new THREE.ShapeGeometry(shape),
-      new THREE.MeshBasicMaterial({ color: CORE_FLOOR_COLOR, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: piece.zone === null ? 0.05 : 0.09, side: THREE.DoubleSide, depthWrite: false }),
     );
     floor.rotation.x = -Math.PI / 2;
+    floor.position.y = piece.y;
     const rim = new THREE.LineLoop(
-      new THREE.BufferGeometry().setFromPoints(corners.map(([x, z]) => new THREE.Vector3(x, 0.05, z))),
-      new THREE.LineBasicMaterial({ color: CORE_FLOOR_COLOR, transparent: true, opacity: 0.6 }),
+      new THREE.BufferGeometry().setFromPoints(piece.corners.map(([x, z]) => new THREE.Vector3(x, piece.y + 0.05, z))),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 }),
     );
-    const grid = new THREE.PolarGridHelper(radius * 2.6, 6, 8, 64, 0x2a3240, 0x1d232c);
-    grid.position.y = -0.05;
-    this.world.add(grid, floor, rim);
+    this.world.add(floor, rim);
+    if (piece.y > 0) {
+      // Posts at the corners, so a terrace reads as standing on the ground, not floating.
+      const posts = piece.corners.flatMap(([x, z]) => [new THREE.Vector3(x, 0, z), new THREE.Vector3(x, piece.y, z)]);
+      this.world.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(posts), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.25 })));
+    }
   }
 
   private addTile(node: GraphNode, tile: Tile): void {
-    const { x, z, size } = tile;
+    const { x, y, z, size } = tile;
     const color = zoneColor(this.profile, node.zone);
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(size, TILE_HEIGHT, size),
       new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.25, transparent: true, opacity: 0.55, roughness: 0.6 }),
     );
-    body.position.set(x, TILE_HEIGHT / 2, z);
+    body.position.set(x, y + TILE_HEIGHT / 2, z);
     body.userData.nodeId = node.id;
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(body.geometry), new THREE.LineBasicMaterial({ color, transparent: true }));
     outline.position.copy(body.position);
@@ -351,19 +366,19 @@ export class HexScene {
     element.dataset.nodeId = node.id;
     const label = new CSS2DObject(element);
     // Above the object cloud when the class has live objects, else just above the tile.
-    label.position.set(x, node.instances > 0 ? 9 : 3.2, z);
+    label.position.set(x, y + (node.instances > 0 ? 9 : 3.2), z);
     this.world.add(body, outline, label);
     this.tiles.set(node.id, { node, body, outline, label, layout: tile, tier: LabelTier.Normal, labelSize: null });
   }
 
-  /** Fit everything, from the client on the far left to the external systems on the right. */
+  /** Fit everything, from the client to the external systems, whatever the floor's shape. */
   private frameCamera(): void {
     const bounds = new THREE.Box3();
     for (const tile of this.tiles.values()) bounds.expandByObject(tile.body);
     if (bounds.isEmpty()) return;
     const sphere = bounds.getBoundingSphere(new THREE.Sphere());
     const halfFov = THREE.MathUtils.degToRad(this.camera.fov / 2);
-    const distance = (sphere.radius / Math.sin(halfFov)) * 0.7;
+    const distance = (sphere.radius / Math.sin(halfFov)) * FRAMING;
     const fromFrontAbove = new THREE.Vector3(-0.15, 0.85, 0.9).normalize();
     this.camera.position.copy(sphere.center).addScaledVector(fromFrontAbove, distance);
     this.controls.target.copy(sphere.center);

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, ReplayStep, SystemGraph } from "@runshape/core";
 
 import { Emphasis, HexScene } from "./hex-scene";
-import { layoutHexagon } from "./hexagon-layout";
+import { layoutFloor } from "./layout-floor";
 
 interface Props {
   graph: SystemGraph;
@@ -49,7 +49,7 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
   }, []);
 
   useEffect(() => {
-    scene.current?.setGraph(graph, layoutHexagon(graph));
+    scene.current?.setGraph(graph, layoutFloor(graph));
   }, [graph]);
 
   useEffect(() => {
