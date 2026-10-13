@@ -37,6 +37,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("hexvis", "record execution traces for the HexVis viewer")
     group.addoption("--hexvis", action="store_true", default=False, help="record one trace per test")
     group.addoption("--hexvis-out", default=None, help="output directory (default .hexvis/traces)")
+    group.addoption("--hexvis-run-name", default=None, help="name this run's directory (default: the start time)")
     parser.addini("hexvis_source", type="args", default=[], help="directories with app code, traced line by line")
     parser.addini("hexvis_tests", type="args", default=[], help="directories with test code")
     parser.addini("hexvis_backend", default=BackendChoice.AUTO.value, help="auto | settrace | monitoring")
@@ -75,7 +76,7 @@ def pytest_configure(config: pytest.Config) -> None:
         catalog=catalog,
         recorder=ScenarioRecorder(scope, catalog),
         backend=_choose_backend(settings.backend),
-        store=JsonTraceStore(settings.out_directory),
+        store=JsonTraceStore(settings.out_directory, config.getoption("hexvis_run_name")),
     )
     config.pluginmanager.register(session, PLUGIN_NAME)
 
