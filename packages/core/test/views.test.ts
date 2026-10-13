@@ -55,17 +55,17 @@ describe("system graph", () => {
       edge             XFrameOptionsMiddleware
       external         sqlite
       inbound-adapter  ArticleJSONRenderer
-      inbound-adapter  ArticleViewSet  !handler-touches-external
-      inbound-adapter  ArticlesFavoriteAPIView  !handler-touches-external
+      inbound-adapter  ArticleViewSet  !touches-external
+      inbound-adapter  ArticlesFavoriteAPIView  !touches-external
       inbound-adapter  CommentJSONRenderer
-      inbound-adapter  CommentsListCreateAPIView  !handler-touches-external
-      inbound-adapter  JWTAuthentication  !handler-touches-external
+      inbound-adapter  CommentsListCreateAPIView  !touches-external
+      inbound-adapter  JWTAuthentication  !touches-external
       inbound-adapter  LoginAPIView
-      inbound-adapter  ProfileFollowAPIView  !handler-touches-external
+      inbound-adapter  ProfileFollowAPIView  !touches-external
       inbound-adapter  ProfileJSONRenderer
-      inbound-adapter  RegistrationAPIView  !handler-touches-external
+      inbound-adapter  RegistrationAPIView  !touches-external
       inbound-adapter  UserJSONRenderer
-      inbound-adapter  UserRetrieveUpdateAPIView  !handler-touches-external
+      inbound-adapter  UserRetrieveUpdateAPIView  !touches-external
       inbound-adapter  core.exceptions
       outbound-adapter ArticleSerializer
       outbound-adapter CommentSerializer

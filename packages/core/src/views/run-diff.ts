@@ -1,6 +1,7 @@
 import { Outcome, Phase, Role, Run, Scenario } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 import { buildReplay, StepKind } from "./replay";
+import { ArchitectureProfile } from "../profiles";
 import { ZoneRules } from "../zones";
 import { buildSystemGraph, GraphEdge, GraphNode } from "./system-graph";
 
@@ -54,6 +55,8 @@ export interface RunDiff {
   nodes: DiffNode[];
   edges: DiffEdge[];
   scenarios: ScenarioDiff[];
+  /** Both sides are drawn in the rules' style. */
+  profile: ArchitectureProfile;
 }
 
 export interface DiffOptions {
@@ -85,7 +88,7 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
     const [textBefore, textAfter] = lineTexts(before, after);
     scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter));
   }
-  return { caveats: caveatsFor(before, after), nodes, edges, scenarios };
+  return { caveats: caveatsFor(before, after), nodes, edges, scenarios, profile: graphAfter.profile };
 }
 
 function caveatsFor(before: Run, after: Run): string[] {

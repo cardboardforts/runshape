@@ -1,4 +1,4 @@
-import { ComponentKind, GraphNode, Zone, SystemGraph } from "@runshape/core";
+import { ComponentKind, FixedZone, GraphNode, SystemGraph, zonePosition } from "@runshape/core";
 
 /**
  * Places the system on a literal hexagon floor (XZ plane, Y up). The hexagon's vertices sit
@@ -43,13 +43,17 @@ export function tileSize(node: GraphNode): number {
 
 export function layoutHexagon(graph: SystemGraph): HexagonLayout {
   const byLabel = (a: GraphNode, b: GraphNode) => a.label.localeCompare(b.label);
-  const core = graph.nodes.filter((n) => n.zone === Zone.Core).sort(byLabel);
-  const inbound = graph.nodes.filter((n) => n.zone === Zone.InboundAdapter).sort(byLabel);
-  const outbound = graph.nodes.filter((n) => n.zone === Zone.OutboundAdapter).sort(byLabel);
-  const doubles = graph.nodes.filter((n) => n.zone === Zone.TestDouble).sort(byLabel);
-  const externals = graph.nodes.filter((n) => n.zone === Zone.External).sort(byLabel);
+  // Until other styles have floors of their own, a style's first zone stands on the inbound
+  // side, its last on the outbound side, and the rest fill the middle.
+  const lastPosition = graph.profile.zones.length - 1;
+  const at = (n: GraphNode) => zonePosition(graph.profile, n.zone);
+  const core = graph.nodes.filter((n) => at(n) !== null && at(n) !== 0 && at(n) !== lastPosition).sort(byLabel);
+  const inbound = graph.nodes.filter((n) => at(n) === 0).sort(byLabel);
+  const outbound = graph.nodes.filter((n) => at(n) === lastPosition).sort(byLabel);
+  const doubles = graph.nodes.filter((n) => n.zone === FixedZone.TestDouble).sort(byLabel);
+  const externals = graph.nodes.filter((n) => n.zone === FixedZone.External).sort(byLabel);
   const framework = graph.nodes
-    .filter((n) => n.zone === Zone.Edge)
+    .filter((n) => n.zone === FixedZone.Edge)
     .sort((a, b) => FRAMEWORK_ORDER.indexOf(a.kind) - FRAMEWORK_ORDER.indexOf(b.kind) || byLabel(a, b));
 
   const spacing = MAX_TILE + TILE_GAP;

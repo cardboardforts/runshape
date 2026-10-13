@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, loadLatestRun, Zone } from "@runshape/core";
+import { buildSystemGraph, FixedZone, HEXAGONAL, HexagonalZone, loadLatestRun } from "@runshape/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -42,7 +42,7 @@ describe("routeEdges", () => {
 
     const { routes } = routeEdges(graph, layoutHexagon(graph));
 
-    const inboundToOutbound = routes.filter((r) => r.trunk === `${Zone.InboundAdapter}>${Zone.OutboundAdapter}`);
+    const inboundToOutbound = routes.filter((r) => r.trunk === `${HexagonalZone.InboundAdapter}>${HexagonalZone.OutboundAdapter}`);
     expect(inboundToOutbound.length).toBeGreaterThan(1);
     const middles = new Set(inboundToOutbound.map((r) => JSON.stringify(r.points.slice(2, 4))));
     expect(middles.size).toBe(1);
@@ -50,7 +50,7 @@ describe("routeEdges", () => {
     for (const route of routes.filter((r) => r.trunk === null)) {
       const edge = graph.edges.find((e) => e.id === route.edgeId)!;
       const sameRing = zone.get(edge.from) === zone.get(edge.to);
-      const framework = zone.get(edge.from) === Zone.Edge || zone.get(edge.to) === Zone.Edge;
+      const framework = zone.get(edge.from) === FixedZone.Edge || zone.get(edge.to) === FixedZone.Edge;
       expect(sameRing || framework, route.edgeId).toBe(true);
       expect(route.points).toHaveLength(3);
     }

@@ -2,23 +2,17 @@
 // Inference says what a component *does*; a rule says what it *is supposed to be*. Where the
 // two disagree is the architecture finding.
 
+import { ArchitectureProfile, HEXAGONAL, PROFILES, profileFor } from "./profiles";
+
 export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */
 export const RULES_VERSION = 2;
-/** The only style the viewer draws so far; see docs/architecture-profiles.md for the rest. */
-export const DRAWN_STYLE = "hexagonal";
-
-/** The zones a rule may assign. Framework, external and test-double zones are facts, not choices. */
-export enum DeclaredZone {
-  InboundAdapter = "inbound-adapter",
-  Core = "core",
-  OutboundAdapter = "outbound-adapter",
-}
 
 export interface ZoneRule {
   /** Dotted-name glob: `*` is any text within one segment, `**` any number of segments (zero too: `app.**` matches `app`). */
   match: string;
-  zone: DeclaredZone;
+  /** One of the style's zone ids (profiles.ts). Framework, external and test-double zones are facts, not choices. */
+  zone: string;
   reason: string;
   /** Who decided: a person, or a model's proposal a person accepted. */
   by: "user" | "llm";
@@ -51,12 +45,16 @@ export interface RuleMatch {
 export class ZoneRules {
   private readonly compiled: { rule: ZoneRule; pattern: RegExp }[];
 
-  constructor(readonly rules: ZoneRule[]) {
+  constructor(
+    readonly rules: ZoneRule[],
+    /** The style the file declares; its zones are the ones rules may name. */
+    readonly profile: ArchitectureProfile = HEXAGONAL,
+  ) {
     this.compiled = rules.map((rule) => ({ rule, pattern: globToRegExp(rule.match) }));
   }
 
-  static none(): ZoneRules {
-    return new ZoneRules([]);
+  static none(profile: ArchitectureProfile = HEXAGONAL): ZoneRules {
+    return new ZoneRules([], profile);
   }
 
   /** Validates every rule and reports all problems at once. */
@@ -71,29 +69,32 @@ export class ZoneRules {
     if (typeof data !== "object" || data === null) throw new ZoneRulesError(["expected an object"]);
     const file = upgrade(data as Partial<ZoneRulesFile> | RingRulesFileV1);
     if (file.version !== RULES_VERSION) problems.push(`"version" must be ${RULES_VERSION} (or 1, the older "rings" format)`);
-    if (file.style !== undefined && file.style !== DRAWN_STYLE) {
-      problems.push(`"style" ${JSON.stringify(file.style)} isn't drawn yet; only "${DRAWN_STYLE}" is (see docs/architecture-profiles.md)`);
+    const profile = file.style === undefined ? HEXAGONAL : profileFor(file.style);
+    if (profile === undefined) {
+      problems.push(`"style" ${JSON.stringify(file.style)} is not one of ${PROFILES.map((p) => p.style).join(", ")}`);
     }
     if (!Array.isArray(file.zones)) problems.push(`"zones" must be a list of rules`);
-    const allowed = Object.values(DeclaredZone) as string[];
+    const allowed = (profile ?? HEXAGONAL).zones.map((zone) => zone.id);
     const rules: ZoneRule[] = [];
     (Array.isArray(file.zones) ? file.zones : []).forEach((candidate: Partial<ZoneRule>, index) => {
       const where = `zones[${index}]`;
       const before = problems.length;
       if (typeof candidate?.match !== "string" || candidate.match.trim() === "") problems.push(`${where}.match must be a non-empty string`);
-      if (!allowed.includes(candidate?.zone as string)) problems.push(`${where}.zone must be one of ${allowed.join(", ")}`);
+      if (profile !== undefined && !allowed.includes(candidate?.zone as string)) {
+        problems.push(`${where}.zone must be one of ${allowed.join(", ")} (the ${profile.style} zones)`);
+      }
       if (typeof candidate?.reason !== "string" || candidate.reason.trim() === "") problems.push(`${where}.reason must say why`);
       if (candidate?.by !== undefined && candidate.by !== "user" && candidate.by !== "llm") problems.push(`${where}.by must be "user" or "llm"`);
       if (problems.length === before) {
-        rules.push({ match: candidate.match!, zone: candidate.zone as DeclaredZone, reason: candidate.reason!, by: candidate.by ?? "user" });
+        rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user" });
       }
     });
     if (problems.length > 0) throw new ZoneRulesError(problems);
-    return new ZoneRules(rules);
+    return new ZoneRules(rules, profile);
   }
 
   serialize(): string {
-    const file: ZoneRulesFile = { version: RULES_VERSION, style: DRAWN_STYLE, zones: this.rules };
+    const file: ZoneRulesFile = { version: RULES_VERSION, style: this.profile.style, zones: this.rules };
     return `${JSON.stringify(file, null, 2)}\n`;
   }
 
@@ -106,9 +107,13 @@ export class ZoneRules {
   }
 
   /** The rule for exactly this name replaces any earlier one and goes first: it's the most specific. */
-  withRuleFor(qualifiedName: string, zone: DeclaredZone, reason: string, by: ZoneRule["by"]): ZoneRules {
+  withRuleFor(qualifiedName: string, zone: string, reason: string, by: ZoneRule["by"]): ZoneRules {
     const others = this.rules.filter((rule) => rule.match !== qualifiedName);
-    return new ZoneRules([{ match: qualifiedName, zone, reason, by }, ...others]);
+    return new ZoneRules([{ match: qualifiedName, zone, reason, by }, ...others], this.profile);
+  }
+
+  isZoneOfStyle(zone: string): boolean {
+    return this.profile.zones.some((candidate) => candidate.id === zone);
   }
 }
 
@@ -136,5 +141,6 @@ function globToRegExp(glob: string): RegExp {
 function upgrade(file: Partial<ZoneRulesFile> | RingRulesFileV1): Partial<ZoneRulesFile> {
   if (file.version !== 1 || !Array.isArray((file as RingRulesFileV1).rings)) return file as Partial<ZoneRulesFile>;
   const zones = (file as RingRulesFileV1).rings.map(({ ring, ...rest }) => ({ ...rest, zone: ring }));
-  return { version: RULES_VERSION, style: DRAWN_STYLE, zones: zones as unknown as ZoneRule[] };
+  // Version 1 predates styles: its rings were the hexagon's zones.
+  return { version: RULES_VERSION, style: HEXAGONAL.style, zones: zones as unknown as ZoneRule[] };
 }

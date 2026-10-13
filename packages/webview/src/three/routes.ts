@@ -1,4 +1,4 @@
-import { Zone, SystemGraph } from "@runshape/core";
+import { FixedZone, SystemGraph, ZoneId } from "@runshape/core";
 
 import type { HexagonLayout } from "./hexagon-layout";
 
@@ -33,7 +33,6 @@ const TRUNK_BASE_HEIGHT = 14;
 const TRUNK_HEIGHT_PER_UNIT = 0.08;
 /** Hubs sit this far from their zone's centroid towards the floor's centre. */
 const HUB_PULL = 0.25;
-const BUNDLED_RINGS = new Set([Zone.InboundAdapter, Zone.Core, Zone.OutboundAdapter, Zone.TestDouble, Zone.External]);
 
 export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes: Route[]; trunks: Trunk[] } {
   const zoneOf = new Map(graph.nodes.map((node) => [node.id, node.zone]));
@@ -50,7 +49,7 @@ export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes:
     const start: Point = [from.x, ATTACH_HEIGHT, from.z];
     const end: Point = [to.x, ATTACH_HEIGHT, to.z];
 
-    const bundled = fromZone !== toZone && BUNDLED_RINGS.has(fromZone) && BUNDLED_RINGS.has(toZone);
+    const bundled = fromZone !== toZone && fromZone !== FixedZone.Edge && toZone !== FixedZone.Edge;
     if (!bundled) {
       routes.push({ edgeId: edge.id, points: directArc(start, end), trunk: null });
       continue;
@@ -75,8 +74,8 @@ export function routeEdges(graph: SystemGraph, layout: HexagonLayout): { routes:
 }
 
 /** Each zone's hub: the centroid of its tiles, pulled a little towards the floor's centre. */
-function zoneHubs(graph: SystemGraph, layout: HexagonLayout): Map<Zone, Point> {
-  const sums = new Map<Zone, { x: number; z: number; count: number }>();
+function zoneHubs(graph: SystemGraph, layout: HexagonLayout): Map<ZoneId, Point> {
+  const sums = new Map<ZoneId, { x: number; z: number; count: number }>();
   for (const node of graph.nodes) {
     const tile = layout.tiles.get(node.id);
     if (!tile) continue;
@@ -86,7 +85,7 @@ function zoneHubs(graph: SystemGraph, layout: HexagonLayout): Map<Zone, Point> {
     sum.count += 1;
     sums.set(node.zone, sum);
   }
-  const hubs = new Map<Zone, Point>();
+  const hubs = new Map<ZoneId, Point>();
   for (const [zone, sum] of sums) {
     const factor = (1 - HUB_PULL) / sum.count;
     hubs.set(zone, [sum.x * factor, 0, sum.z * factor]);

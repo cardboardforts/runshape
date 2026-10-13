@@ -2,7 +2,7 @@
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
 import { Phase } from "./model";
 import type { ZoneAdvice } from "./zone-advice";
-import type { DeclaredZone, ZoneRule } from "./zones";
+import type { ZoneRule } from "./zones";
 import type { Grouping } from "./views/components";
 import type { RunSummary } from "./session";
 import type { ComponentView } from "./views/component-view";
@@ -22,7 +22,7 @@ export type UiRequest =
   | { type: "function"; module: string; qualname: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping }
-  | { type: "setZone"; qualifiedName: string; zone: DeclaredZone; reason: string; by: ZoneRule["by"] }
+  | { type: "setZone"; qualifiedName: string; zone: string; reason: string; by: ZoneRule["by"] }
   | { type: "adviseZone"; componentId: string; grouping: Grouping }
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "objects"; scenarioId: string }

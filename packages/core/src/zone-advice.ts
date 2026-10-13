@@ -1,7 +1,7 @@
 // Asking a language model where a component belongs. The model only proposes; a person
 // accepts, and only then does it become a rule in runshape.json. Everything here is pure so
 // the prompt and the validation of the answer are testable without a model.
-import { DeclaredZone } from "./zones";
+import { ArchitectureProfile } from "./profiles";
 import type { ComponentView } from "./views/component-view";
 import type { GraphNode, SystemGraph } from "./views/system-graph";
 
@@ -18,7 +18,7 @@ export enum Confidence {
 }
 
 export interface ZoneAdvice {
-  zone: DeclaredZone;
+  zone: string;
   reason: string;
   confidence: Confidence;
 }
@@ -59,18 +59,19 @@ export function zoneFacts(graph: SystemGraph, node: GraphNode, view: ComponentVi
   };
 }
 
-export function zoneAdvicePrompt(facts: ZoneFacts, source: string[] | null): string {
+export function zoneAdvicePrompt(facts: ZoneFacts, source: string[] | null, profile: ArchitectureProfile): string {
   const list = (items: string[]) => (items.length ? items.map((item) => `  - ${item}`).join("\n") : "  (none)");
   const code = source ? source.slice(0, MAX_SOURCE_LINES).join("\n") : "(source not available)";
-  return `You are reviewing a Python web application against onion / hexagonal architecture.
+  const zones = profile.zones.map((zone) => `- ${zone.id}: ${zone.meaning}.`).join("\n");
+  const answers = profile.zones.map((zone) => JSON.stringify(zone.id)).join(" | ");
+  return `You are reviewing a Python web application against this architecture: ${profile.name}.
 Zones:
-- inbound-adapter: turns a request (HTTP, CLI, message) into calls on the core; framework-facing.
-- core: domain entities, value objects and application services; no framework or I/O knowledge.
-- outbound-adapter: implements a port by talking to the outside world (database, HTTP API, queue).
+${zones}
 
 Decide which zone this component is MEANT to be in. Base it on its responsibility, not only on
-what it currently does: if it is a domain object that currently talks to the database, it is
-still core (and that is a violation worth naming in the reason).
+what it currently does: if its role belongs in one zone but it currently behaves like another
+(for example a domain object that queries the database), choose the zone it is meant for and
+name the mismatch in the reason.
 
 Component: ${facts.qualifiedName}
 Currently shown as: ${facts.currentZone} (${facts.currentReason})
@@ -89,11 +90,11 @@ ${code}
 \`\`\`
 
 Answer with only a JSON object, no prose around it:
-{"zone": "inbound-adapter" | "core" | "outbound-adapter", "reason": "<one or two sentences>", "confidence": "low" | "medium" | "high"}`;
+{"zone": ${answers}, "reason": "<one or two sentences>", "confidence": "low" | "medium" | "high"}`;
 }
 
 /** Models wrap JSON in prose or code fences; take the first object and validate it strictly. */
-export function parseZoneAdvice(text: string): ZoneAdvice {
+export function parseZoneAdvice(text: string, profile: ArchitectureProfile): ZoneAdvice {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start === -1 || end <= start) throw new ZoneAdviceError("the model did not answer with a JSON object");
@@ -104,9 +105,9 @@ export function parseZoneAdvice(text: string): ZoneAdvice {
     throw new ZoneAdviceError("the model's answer was not valid JSON");
   }
   const problems: string[] = [];
-  if (!(Object.values(DeclaredZone) as string[]).includes(data.zone as string)) problems.push(`unknown zone ${JSON.stringify(data.zone)}`);
+  if (!profile.zones.some((zone) => zone.id === data.zone)) problems.push(`unknown zone ${JSON.stringify(data.zone)}`);
   if (typeof data.reason !== "string" || data.reason.trim() === "") problems.push("no reason given");
   const confidence = (Object.values(Confidence) as string[]).includes(data.confidence as string) ? (data.confidence as Confidence) : Confidence.Low;
   if (problems.length > 0) throw new ZoneAdviceError(`the model's answer was unusable: ${problems.join("; ")}`);
-  return { zone: data.zone as DeclaredZone, reason: data.reason!.trim(), confidence };
+  return { zone: data.zone!, reason: data.reason!.trim(), confidence };
 }

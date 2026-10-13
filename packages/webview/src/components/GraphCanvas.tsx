@@ -45,6 +45,7 @@ export function GraphCanvas({
     position: positions.get(node.id) ?? { x: 0, y: 0 },
     data: {
       node,
+      profile: graph.profile,
       emphasis: emphasisOf(node.scenarioIds),
       active: step !== null && (step.from === node.id || step.to === node.id),
       change: nodeChanges?.get(node.id) ?? null,

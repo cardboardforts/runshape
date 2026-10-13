@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  ArchitectureProfile,
   CallStep,
   Change,
   ExecutionDiff,
@@ -34,6 +35,7 @@ import { FunctionExecutionPanel } from "./components/ExecutionDiffView";
 import { ScenarioList } from "./components/ScenarioList";
 import type { Host } from "./host";
 import { layoutGraph, Positioned } from "./layout";
+import { zoneClass } from "./zone-style";
 import { Scene3D } from "./three/Scene3D";
 
 type Status =
@@ -96,7 +98,7 @@ export function App({ host }: { host: Host }) {
   // In compare mode the canvas shows the union of both recordings. Memoised only so the
   // layout effect below sees a stable object, not a new one every render.
   const displayed = useMemo<SystemGraph | null>(
-    () => (compare && diff !== null ? { nodes: diff.nodes, edges: diff.edges } : graph),
+    () => (compare && diff !== null ? { nodes: diff.nodes, edges: diff.edges, profile: diff.profile } : graph),
     [compare, diff, graph],
   );
 
@@ -355,7 +357,7 @@ export function App({ host }: { host: Host }) {
           onSelect={selectScenario}
           onReplay={startReplay}
         />
-        <Legend ruleCount={ruleCount} />
+        <Legend ruleCount={ruleCount} profile={displayed?.profile ?? null} />
       </aside>
 
       <main className="canvas">
@@ -445,11 +447,13 @@ export function App({ host }: { host: Host }) {
               onOpenFunction={openFunction}
               relations={<Holdings componentId={detail.component.id} wiring={wiring} graph={displayed} />}
               zone={
-                componentNode && (
+                componentNode &&
+                displayed && (
                   <ZoneControls
                     // A new zone (after saving a rule) starts the form afresh.
                     key={`${componentNode.id}|${componentNode.zone}|${componentNode.zoneReason}`}
                     node={componentNode}
+                    profile={displayed.profile}
                     canEdit={summary.canEditRules}
                     canAdvise={summary.canAdviseZones}
                     advice={advice.componentId === componentNode.id ? advice.state : { kind: "idle" }}
@@ -550,7 +554,7 @@ function DiffSummary({ diff, review }: { diff: RunDiff; review: ReviewSummary })
   );
 }
 
-function Legend({ ruleCount }: { ruleCount: number }) {
+function Legend({ ruleCount, profile }: { ruleCount: number; profile: ArchitectureProfile | null }) {
   return (
     <section className="legend-zones" aria-label="Legend">
       <h2>
@@ -561,12 +565,14 @@ function Legend({ ruleCount }: { ruleCount: number }) {
       </h2>
       <ul>
         <li><span className="dot zone-edge" /> framework: entry, middleware, router</li>
-        <li><span className="dot zone-inbound-adapter" /> inbound adapter: the framework hands it requests</li>
-        <li><span className="dot zone-core" /> core: neither receives requests nor leaves the process</li>
-        <li><span className="dot zone-outbound-adapter" /> outbound adapter: calls an external system</li>
+        {profile?.zones.map((zone) => (
+          <li key={zone.id}>
+            <span className={`dot ${zoneClass(profile, zone.id)}`} /> {zone.name.toLowerCase()}: {zone.meaning}
+          </li>
+        ))}
         <li><span className="dot zone-test-double" /> test double: test code the app calls</li>
         <li><span className="dot zone-external" /> external system</li>
-        <li><span className="line-violation" /> call against the onion (hover it)</li>
+        <li><span className="line-violation" /> call against {profile ? profile.name : "the architecture"} (hover it)</li>
       </ul>
     </section>
   );

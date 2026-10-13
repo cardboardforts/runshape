@@ -6,25 +6,21 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, Zone, StepKind, SystemGraph } from "@runshape/core";
+import { ArchitectureProfile, Change, ComponentWiring, GraphNode, HEXAGONAL, ObjectGraph, Op, StepKind, SystemGraph } from "@runshape/core";
+
+import { zoneColor } from "../zone-style";
 
 import { HexagonLayout, hexagonCorners, OBJECT_SIDE, objectSlots, Tile } from "./hexagon-layout";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
 
-const ZONE_COLOR: Record<Zone, number> = {
-  [Zone.Edge]: 0x8a8f98,
-  [Zone.InboundAdapter]: 0x3b82f6,
-  [Zone.Core]: 0x10b981,
-  [Zone.OutboundAdapter]: 0xf59e0b,
-  [Zone.TestDouble]: 0xa1a1aa,
-  [Zone.External]: 0xa855f7,
-};
 const CALL_COLOR = 0x5eead4;
 const VIOLATION_COLOR = 0xe5534b;
 const ADDED_COLOR = 0x10b981;
 const REMOVED_COLOR = 0xe5534b;
 const CHANGED_COLOR = 0xf59e0b;
+/** The hexagon floor is tinted like the zone that stands in its middle. */
+const CORE_FLOOR_COLOR = 0x10b981;
 // Above 1.0 so only the packets cross the bloom threshold and glow.
 const PULSE_BRIGHTNESS = 3;
 const PULSE_MS = 450;
@@ -83,6 +79,7 @@ export class HexScene {
   private readonly controls: OrbitControls;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
+  private profile: ArchitectureProfile = HEXAGONAL;
   private readonly world = new THREE.Group();
   private readonly tiles = new Map<string, TileParts>();
   private readonly arcs = new Map<string, ArcParts>();
@@ -139,6 +136,7 @@ export class HexScene {
   }
 
   setGraph(graph: SystemGraph, layout: HexagonLayout): void {
+    this.profile = graph.profile;
     this.clearWorld();
     this.addFloor(layout.radius);
     for (const node of graph.nodes) {
@@ -188,7 +186,7 @@ export class HexScene {
       const count = own ? own.length : tile.node.instances;
       if (count === 0) continue;
       const slots = objectSlots(tile.layout, count);
-      const color = ZONE_COLOR[tile.node.zone];
+      const color = zoneColor(this.profile, tile.node.zone);
       const mesh = new THREE.InstancedMesh(
         new THREE.BoxGeometry(OBJECT_SIDE, OBJECT_SIDE, OBJECT_SIDE),
         new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9 }),
@@ -250,7 +248,7 @@ export class HexScene {
       const change = nodeChanges?.get(id) ?? null;
       tile.body.material.opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.55;
       tile.body.material.emissiveIntensity = active ? 1.2 : 0.25;
-      tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : ZONE_COLOR[tile.node.zone]));
+      tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : zoneColor(this.profile, tile.node.zone)));
       tile.outline.material.opacity = emphasis === "dimmed" ? 0.2 : 1;
       const objects = this.objectMeshes.get(id);
       if (objects) (objects.material as THREE.MeshStandardMaterial).opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.9;
@@ -317,12 +315,12 @@ export class HexScene {
     const shape = new THREE.Shape(corners.map(([x, z]) => new THREE.Vector2(x, -z)));
     const floor = new THREE.Mesh(
       new THREE.ShapeGeometry(shape),
-      new THREE.MeshBasicMaterial({ color: ZONE_COLOR[Zone.Core], transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: CORE_FLOOR_COLOR, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
     );
     floor.rotation.x = -Math.PI / 2;
     const rim = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints(corners.map(([x, z]) => new THREE.Vector3(x, 0.05, z))),
-      new THREE.LineBasicMaterial({ color: ZONE_COLOR[Zone.Core], transparent: true, opacity: 0.6 }),
+      new THREE.LineBasicMaterial({ color: CORE_FLOOR_COLOR, transparent: true, opacity: 0.6 }),
     );
     const grid = new THREE.PolarGridHelper(radius * 2.6, 6, 8, 64, 0x2a3240, 0x1d232c);
     grid.position.y = -0.05;
@@ -331,7 +329,7 @@ export class HexScene {
 
   private addTile(node: GraphNode, tile: Tile): void {
     const { x, z, size } = tile;
-    const color = ZONE_COLOR[node.zone];
+    const color = zoneColor(this.profile, node.zone);
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(size, TILE_HEIGHT, size),
       new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.25, transparent: true, opacity: 0.55, roughness: 0.6 }),

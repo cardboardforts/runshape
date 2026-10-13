@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, loadLatestRun, Zone } from "@runshape/core";
+import { buildSystemGraph, FixedZone, HEXAGONAL, HexagonalZone, loadLatestRun } from "@runshape/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -30,29 +30,30 @@ describe("layoutHexagon", () => {
       const tile = tiles.get(node.id)!;
       const distance = Math.hypot(tile.x, tile.z);
       const angle = angleOf(tile.x, tile.z);
-      if (node.zone === Zone.InboundAdapter) {
+      if (node.zone === HexagonalZone.InboundAdapter) {
         expect(angle, node.label).toBeGreaterThanOrEqual(120);
         expect(angle, node.label).toBeLessThanOrEqual(240);
       }
-      if (node.zone === Zone.OutboundAdapter) expect(Math.abs(angle), node.label).toBeLessThanOrEqual(60);
-      if (node.zone === Zone.Core) expect(distance, node.label).toBeLessThan(radius * 0.7);
-      if (node.zone === Zone.External) expect(tile.x, node.label).toBeGreaterThan(radius);
-      if (node.zone === Zone.Edge) expect(tile.x, node.label).toBeLessThan(-radius);
+      if (node.zone === HexagonalZone.OutboundAdapter) expect(Math.abs(angle), node.label).toBeLessThanOrEqual(60);
+      if (node.zone === HexagonalZone.Core) expect(distance, node.label).toBeLessThan(radius * 0.7);
+      if (node.zone === FixedZone.External) expect(tile.x, node.label).toBeGreaterThan(radius);
+      if (node.zone === FixedZone.Edge) expect(tile.x, node.label).toBeLessThan(-radius);
     }
     expect(tiles.size).toBe(graph.nodes.length);
   });
 
   test("no two tiles overlap, on the real graph or on a big synthetic one", async () => {
     const real = await fastapiGraph();
-    const node = (id: string, zone: Zone, calls: number) =>
+    const node = (id: string, zone: string, calls: number) =>
       ({ id, kind: "class", label: id, qualifiedName: id, zone, zoneSource: "inferred", zoneReason: "", smells: [], calls, instances: 0, scenarioIds: [] }) as never;
     const big = {
       nodes: [
-        ...Array.from({ length: 120 }, (_, i) => node(`core${i}`, Zone.Core, 1 + (i % 500))),
-        ...Array.from({ length: 4 }, (_, i) => node(`in${i}`, Zone.InboundAdapter, 400)),
-        ...Array.from({ length: 4 }, (_, i) => node(`out${i}`, Zone.OutboundAdapter, 400)),
+        ...Array.from({ length: 120 }, (_, i) => node(`core${i}`, HexagonalZone.Core, 1 + (i % 500))),
+        ...Array.from({ length: 4 }, (_, i) => node(`in${i}`, HexagonalZone.InboundAdapter, 400)),
+        ...Array.from({ length: 4 }, (_, i) => node(`out${i}`, HexagonalZone.OutboundAdapter, 400)),
       ],
       edges: [],
+      profile: HEXAGONAL,
     };
     for (const graph of [real, big]) {
       const { tiles } = layoutHexagon(graph);
@@ -61,8 +62,8 @@ describe("layoutHexagon", () => {
       // core region, whichever angle the core's outermost tiles end up at.
       const reach = (ids: string[], outward: 1 | -1) =>
         ids.map((id) => tiles.get(id)!).map((t) => Math.hypot(t.x, t.z) + (outward * t.size * Math.SQRT2) / 2);
-      const coreIds = graph.nodes.filter((n) => n.zone === Zone.Core).map((n) => n.id);
-      const adapterIds = graph.nodes.filter((n) => n.zone === Zone.InboundAdapter || n.zone === Zone.OutboundAdapter).map((n) => n.id);
+      const coreIds = graph.nodes.filter((n) => n.zone === HexagonalZone.Core).map((n) => n.id);
+      const adapterIds = graph.nodes.filter((n) => n.zone === HexagonalZone.InboundAdapter || n.zone === HexagonalZone.OutboundAdapter).map((n) => n.id);
       expect(Math.min(...reach(adapterIds, -1))).toBeGreaterThan(Math.max(...reach(coreIds, 1)));
     }
   });

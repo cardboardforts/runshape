@@ -1,7 +1,7 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import { ComponentKind, GraphNode, Zone, SystemGraph } from "@runshape/core";
+import { ComponentKind, FixedZone, GraphNode, SystemGraph, zonePosition } from "@runshape/core";
 
 export const NODE_WIDTH = 188;
 export const NODE_HEIGHT = 46;
@@ -11,12 +11,15 @@ export interface Positioned {
   y: number;
 }
 
+/** Client, entry, middleware and router take partitions 0–3. */
+const FIRST_STYLE_PARTITION = 4;
+
 /**
- * Left to right, the way a request travels: client, framework edge, then the onion's
- * zones, then the outside world. Partitions force that column order even when a test
- * reaches past the edge straight into a repository.
+ * Left to right, the way a request travels: client, framework edge, then the style's
+ * zones in order, then the outside world. Partitions force that column order even when a
+ * test reaches past the edge straight into a repository.
  */
-function partitionOf(node: GraphNode): number {
+function partitionOf(node: GraphNode, graph: SystemGraph): number {
   switch (node.kind) {
     case ComponentKind.Client:
       return 0;
@@ -29,19 +32,15 @@ function partitionOf(node: GraphNode): number {
     default:
       break;
   }
+  const position = zonePosition(graph.profile, node.zone);
+  if (position !== null) return FIRST_STYLE_PARTITION + position;
   switch (node.zone) {
-    case Zone.InboundAdapter:
-      return 4;
-    case Zone.Core:
-      return 5;
-    case Zone.OutboundAdapter:
-      return 6;
-    case Zone.TestDouble:
-      return 7;
-    case Zone.External:
-      return 8;
+    case FixedZone.TestDouble:
+      return FIRST_STYLE_PARTITION + graph.profile.zones.length;
+    case FixedZone.External:
+      return FIRST_STYLE_PARTITION + graph.profile.zones.length + 1;
     default:
-      return 5;
+      return FIRST_STYLE_PARTITION;
   }
 }
 
@@ -67,7 +66,7 @@ export async function layoutGraph(graph: SystemGraph): Promise<Map<string, Posit
       id: node.id,
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
-      layoutOptions: { "elk.partitioning.partition": String(partitionOf(node)) },
+      layoutOptions: { "elk.partitioning.partition": String(partitionOf(node, graph)) },
     })),
     edges: graph.edges.map((edge) => ({ id: edge.id, sources: [edge.from], targets: [edge.to] })),
   };

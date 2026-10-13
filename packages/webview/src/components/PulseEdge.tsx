@@ -1,6 +1,6 @@
 import { BaseEdge, Edge, EdgeProps, getBezierPath } from "@xyflow/react";
 
-import { Change, EdgeViolation, Op, StepKind } from "@runshape/core";
+import { Change, Op, StepKind } from "@runshape/core";
 
 import type { Emphasis } from "./ComponentNode";
 
@@ -16,13 +16,9 @@ export type PulseEdgeData = {
   calls: number;
   emphasis: Emphasis;
   change: Change | null;
-  violation: EdgeViolation | null;
+  /** Why the call goes against the style, or null. */
+  violation: string | null;
   pulse: Pulse | null;
-};
-
-const VIOLATION_TEXT: Record<EdgeViolation, string> = {
-  [EdgeViolation.CallsIntoInboundAdapter]: "Calls back into a request handler: the dependency points outward",
-  [EdgeViolation.SkipsCore]: "A request handler using an outbound adapter directly: no core in between",
 };
 
 export type PulseFlowEdge = Edge<PulseEdgeData, "pulse">;
@@ -52,7 +48,7 @@ export function PulseEdge(props: EdgeProps<PulseFlowEdge>) {
       />
       {violation && (
         <path d={path} className="violation-hit" fill="none">
-          <title>{VIOLATION_TEXT[violation]}</title>
+          <title>{violation}</title>
         </path>
       )}
       {pulse && (

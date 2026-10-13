@@ -4,115 +4,8 @@
 // modules map onto that style's zones. A person (or a model, see
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
 import { Run } from "./model";
-import { buildSystemGraph, EdgeViolation, Zone } from "./views/system-graph";
-
-export enum ArchitectureStyle {
-  Hexagonal = "hexagonal",
-  Layered = "layered",
-  Mvc = "mvc",
-  Mvvm = "mvvm",
-  Mvp = "mvp",
-}
-
-/** How a style is drawn: the hexagon floor, stacked bands, or a triangle of three roles. */
-export enum LayoutShape {
-  Hexagon = "hexagon",
-  Bands = "bands",
-  Triangle = "triangle",
-}
-
-export interface ZoneDefinition {
-  id: string;
-  name: string;
-  meaning: string;
-}
-
-export interface ArchitectureProfile {
-  style: ArchitectureStyle;
-  name: string;
-  layout: LayoutShape;
-  zones: ZoneDefinition[];
-  /** Calls the style permits between different zones; every other cross-zone call is a finding. */
-  allowedCalls: [from: string, to: string][];
-  /** Words that, in module or class names, suggest each zone. */
-  vocabulary: Record<string, string[]>;
-}
-
-export const PROFILES: ArchitectureProfile[] = [
-  {
-    style: ArchitectureStyle.Hexagonal,
-    name: "Hexagonal (ports and adapters)",
-    layout: LayoutShape.Hexagon,
-    zones: [
-      // Same ids as the viewer's zones (DeclaredZone), so a detected mapping is a valid runshape.json.
-      { id: "inbound-adapter", name: "Inbound adapters", meaning: "turn requests into calls on the core" },
-      { id: "core", name: "Core", meaning: "domain and application logic; no I/O, no framework" },
-      { id: "outbound-adapter", name: "Outbound adapters", meaning: "implement the core's ports against the outside world" },
-    ],
-    allowedCalls: [["inbound-adapter", "core"], ["core", "outbound-adapter"], ["outbound-adapter", "core"]],
-    vocabulary: {
-      "inbound-adapter": ["api", "routes", "handlers", "controllers", "cli", "consumers"],
-      core: ["domain", "core", "usecases", "use_cases", "services", "entities", "ports"],
-      "outbound-adapter": ["adapters", "infrastructure", "infra", "repositories", "gateways", "clients", "db"],
-    },
-  },
-  {
-    style: ArchitectureStyle.Layered,
-    name: "Layered (n-tier)",
-    layout: LayoutShape.Bands,
-    zones: [
-      { id: "presentation", name: "Presentation", meaning: "HTTP routes, views, serialisation" },
-      { id: "business", name: "Business", meaning: "services, rules, workflows" },
-      { id: "data", name: "Data access", meaning: "repositories, queries, persistence" },
-    ],
-    allowedCalls: [["presentation", "business"], ["business", "data"]],
-    vocabulary: {
-      presentation: ["api", "routes", "views", "controllers", "schemas", "serializers", "web"],
-      business: ["services", "business", "logic", "domain", "managers"],
-      data: ["db", "repositories", "dal", "dao", "queries", "persistence", "models"],
-    },
-  },
-  {
-    style: ArchitectureStyle.Mvc,
-    name: "Model–View–Controller (incl. Django's MVT)",
-    layout: LayoutShape.Triangle,
-    zones: [
-      { id: "controller", name: "Controller", meaning: "receives the request, picks the model and the view" },
-      { id: "model", name: "Model", meaning: "data and the rules on it (often active record)" },
-      { id: "view", name: "View", meaning: "renders the response" },
-    ],
-    allowedCalls: [["controller", "model"], ["controller", "view"], ["view", "model"]],
-    vocabulary: {
-      controller: ["views", "controllers", "viewsets", "handlers"],
-      model: ["models", "managers", "signals"],
-      view: ["templates", "renderers", "serializers", "presenters"],
-    },
-  },
-  {
-    style: ArchitectureStyle.Mvvm,
-    name: "Model–View–ViewModel",
-    layout: LayoutShape.Triangle,
-    zones: [
-      { id: "view", name: "View", meaning: "binds to the view model; no logic" },
-      { id: "viewmodel", name: "View model", meaning: "state and commands for one view" },
-      { id: "model", name: "Model", meaning: "data and services" },
-    ],
-    allowedCalls: [["view", "viewmodel"], ["viewmodel", "model"]],
-    vocabulary: { view: ["views", "components", "pages"], viewmodel: ["viewmodels", "viewmodel", "stores", "composables"], model: ["models", "services", "api"] },
-  },
-  {
-    style: ArchitectureStyle.Mvp,
-    name: "Model–View–Presenter",
-    layout: LayoutShape.Triangle,
-    zones: [
-      { id: "view", name: "View", meaning: "passive; forwards events to the presenter" },
-      { id: "presenter", name: "Presenter", meaning: "decides what the view shows" },
-      { id: "model", name: "Model", meaning: "data and services" },
-    ],
-    allowedCalls: [["view", "presenter"], ["presenter", "view"], ["presenter", "model"]],
-    vocabulary: { view: ["views", "screens"], presenter: ["presenters", "presenter"], model: ["models", "services", "repositories"] },
-  },
-];
+import { ArchitectureStyle, HexagonalZone, LayoutShape, PROFILES } from "./profiles";
+import { buildSystemGraph } from "./views/system-graph";
 
 export interface ZoneProposal {
   zone: string;
@@ -140,11 +33,15 @@ export interface ArchitectureCandidate {
 export function detectArchitecture(run: Run): ArchitectureCandidate[] {
   const packages = projectPackages(run);
   const graph = buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
-  const talksToStorage = graph.nodes.filter((n) => n.zone === Zone.OutboundAdapter).map((n) => n.qualifiedName ?? n.label);
-  const receivesRequests = graph.nodes.filter((n) => n.zone === Zone.InboundAdapter).map((n) => n.qualifiedName ?? n.label);
+  const talksToStorage = graph.nodes.filter((n) => n.zone === HexagonalZone.OutboundAdapter).map((n) => n.qualifiedName ?? n.label);
+  const receivesRequests = graph.nodes.filter((n) => n.zone === HexagonalZone.InboundAdapter).map((n) => n.qualifiedName ?? n.label);
   const activeRecord = talksToStorage.filter((name) => /\.models\./.test(name));
   const dataMappers = talksToStorage.filter((name) => /(repositor|dao|gateway|queries)/i.test(name));
-  const handlerToStorage = graph.edges.filter((e) => e.violation === EdgeViolation.SkipsCore).length;
+  const zoneOf = new Map(graph.nodes.map((n) => [n.id, n.zone]));
+  // Drawn as a hexagon (the default), a handler calling persistence is a forbidden call.
+  const handlerToStorage = graph.edges.filter(
+    (e) => e.violation !== null && zoneOf.get(e.from) === HexagonalZone.InboundAdapter && zoneOf.get(e.to) === HexagonalZone.OutboundAdapter,
+  ).length;
 
   const candidates = PROFILES.map((profile): ArchitectureCandidate => {
     const evidence: string[] = [];

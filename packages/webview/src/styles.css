@@ -334,16 +334,16 @@ button {
 }
 
 .zone-edge { --zone-color: var(--zone-edge); }
-.zone-inbound-adapter { --zone-color: var(--zone-inbound); }
-.zone-core { --zone-color: var(--zone-core); }
-.zone-outbound-adapter { --zone-color: var(--zone-outbound); }
+.zone-at-0 { --zone-color: var(--zone-inbound); }
+.zone-at-1 { --zone-color: var(--zone-core); }
+.zone-at-2 { --zone-color: var(--zone-outbound); }
 .zone-test-double { --zone-color: var(--zone-double); border-style: dashed; }
 .zone-external { --zone-color: var(--zone-external); border-radius: 23px; }
 
 .dot.zone-edge,
-.dot.zone-inbound-adapter,
-.dot.zone-core,
-.dot.zone-outbound-adapter,
+.dot.zone-at-0,
+.dot.zone-at-1,
+.dot.zone-at-2,
 .dot.zone-test-double,
 .dot.zone-external {
   background: var(--zone-color);

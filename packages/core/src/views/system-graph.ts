@@ -1,5 +1,6 @@
 import { Phase, Run, Scenario, Span } from "../model";
-import { DeclaredZone, ZoneRules } from "../zones";
+import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName } from "../profiles";
+import { ZoneRules } from "../zones";
 import {
   CLIENT_ID,
   ComponentKind,
@@ -12,35 +13,17 @@ import {
 } from "./components";
 
 /**
- * Where a component sits in the onion. A rule in runshape.json decides when one matches;
- * otherwise it is inferred from what the component was seen doing at runtime:
- * - inbound adapter: the framework hands it requests (a route handler, or a dependency
- *   the router calls directly)
- * - outbound adapter: it calls an external system itself
- * - core: neither — everything else the request passes through
+ * Where a component sits, in the active profile's zones (see profiles.ts): a FixedZone for
+ * framework, test-double and external code, otherwise one of the style's own zones. A rule in
+ * runshape.json decides when one matches; otherwise it's inferred, by the style's rules for
+ * names and for runtime behaviour (does the framework hand it requests? does it call an
+ * external system?).
  */
-export enum Zone {
-  Edge = "edge",
-  InboundAdapter = "inbound-adapter",
-  OutboundAdapter = "outbound-adapter",
-  Core = "core",
-  TestDouble = "test-double",
-  External = "external",
-}
+export type ZoneId = string;
 
 export enum Smell {
-  /** An inbound adapter that also talks to an external system skips the core entirely. */
-  HandlerTouchesExternal = "handler-touches-external",
-  /** Declared core, but seen talking to an external system: persistence leaking into the domain. */
-  CoreTouchesExternal = "core-touches-external",
-}
-
-/** Calls that run against the onion: only these directions are flagged, the rest are normal. */
-export enum EdgeViolation {
-  /** core or an outbound adapter calling a request handler: the dependency points outward. */
-  CallsIntoInboundAdapter = "calls-into-inbound-adapter",
-  /** A request handler calling an outbound adapter directly, with no core in between. */
-  SkipsCore = "skips-core",
+  /** Talks to an external system directly from a zone the style says shouldn't. */
+  TouchesExternal = "touches-external",
 }
 
 export enum ZoneSource {
@@ -55,7 +38,7 @@ export interface GraphNode {
   kind: ComponentKind;
   label: string;
   qualifiedName: string | null;
-  zone: Zone;
+  zone: ZoneId;
   zoneSource: ZoneSource;
   /** Why it has this zone: the rule (pattern and reason) or the observed behaviour. */
   zoneReason: string;
@@ -71,12 +54,15 @@ export interface GraphEdge {
   to: string;
   calls: number;
   scenarioIds: string[];
-  violation: EdgeViolation | null;
+  /** Why this call breaks the active style; null when the style allows it. */
+  violation: string | null;
 }
 
 export interface SystemGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** The style the graph was drawn in: its zones name and order what the viewer shows. */
+  profile: ArchitectureProfile;
 }
 
 export interface GraphOptions {
@@ -85,21 +71,21 @@ export interface GraphOptions {
   /** Restrict to these scenarios (by nodeid); defaults to all. */
   scenarioIds?: string[];
   grouping?: Grouping;
+  /** The style to draw in; defaults to the rules file's style, else hexagonal. */
+  profile?: ArchitectureProfile;
   rules?: ZoneRules;
 }
 
 const DEFAULT_PHASES = [Phase.Call];
-const DECLARED_ZONE: Record<DeclaredZone, Zone> = {
-  [DeclaredZone.InboundAdapter]: Zone.InboundAdapter,
-  [DeclaredZone.Core]: Zone.Core,
-  [DeclaredZone.OutboundAdapter]: Zone.OutboundAdapter,
-};
+
 const EDGE_KINDS = new Set([ComponentKind.Client, ComponentKind.Entry, ComponentKind.Middleware, ComponentKind.Router]);
 
 export function buildSystemGraph(run: Run, options: GraphOptions = {}): SystemGraph {
   const phases = new Set(options.phases ?? DEFAULT_PHASES);
   const wanted = options.scenarioIds ? new Set(options.scenarioIds) : null;
-  const builder = new GraphBuilder(run, options.grouping ?? FINE_GROUPING, options.rules ?? ZoneRules.none());
+  const rules = options.rules ?? ZoneRules.none();
+  const profile = options.profile ?? rules.profile;
+  const builder = new GraphBuilder(run, options.grouping ?? FINE_GROUPING, profile, rules);
 
   for (const scenario of run.scenarios) {
     if (wanted !== null && !wanted.has(scenario.nodeid)) continue;
@@ -141,6 +127,7 @@ class GraphBuilder {
   constructor(
     run: Run,
     private readonly grouping: Grouping,
+    private readonly profile: ArchitectureProfile,
     private readonly rules: ZoneRules,
   ) {
     this.middlewareCount = run.topology?.middleware.length ?? 0;
@@ -182,14 +169,15 @@ class GraphBuilder {
 
   build(): SystemGraph {
     const nodes: GraphNode[] = [];
-    const zones = new Map<string, Zone>();
+    const zones = new Map<string, ZoneId>();
     for (const tally of this.nodes.values()) {
       const placement = this.place(tally);
       zones.set(tally.ref.id, placement.zone);
       const callsExternal = tally.externalSystems.size > 0;
       const smells: Smell[] = [];
-      if (placement.zone === Zone.InboundAdapter && callsExternal) smells.push(Smell.HandlerTouchesExternal);
-      if (placement.zone === Zone.Core && callsExternal) smells.push(Smell.CoreTouchesExternal);
+      if (callsExternal && this.isStyleZone(placement.zone) && !this.profile.externalAccess.includes(placement.zone)) {
+        smells.push(Smell.TouchesExternal);
+      }
       nodes.push({
         id: tally.ref.id,
         kind: tally.ref.kind,
@@ -213,29 +201,34 @@ class GraphBuilder {
         calls: tally.calls,
         scenarioIds: [...tally.scenarioIds].sort(),
         // Constructing an adapter (dependency injection) isn't using it.
-        violation: tally.uses > 0 ? violationOf(zones.get(tally.from), zones.get(tally.to)) : null,
+        violation: tally.uses > 0 ? forbiddenCall(this.profile, zones.get(tally.from) ?? "", zones.get(tally.to) ?? "") : null,
       });
     }
     nodes.sort((a, b) => a.id.localeCompare(b.id));
     edges.sort((a, b) => a.id.localeCompare(b.id));
-    return { nodes, edges };
+    return { nodes, edges, profile: this.profile };
   }
 
-  private place(tally: NodeTally): { zone: Zone; source: ZoneSource; reason: string } {
+  private isStyleZone(zone: ZoneId): boolean {
+    return this.profile.zones.some((candidate) => candidate.id === zone);
+  }
+
+  private place(tally: NodeTally): { zone: ZoneId; source: ZoneSource; reason: string } {
     const fixed = fixedZoneOf(tally.ref);
     if (fixed !== null) return { zone: fixed, source: ZoneSource.Fixed, reason: "framework, test or external code" };
-    if (tally.ref.qualifiedName !== null) {
+    // Rules name zones of the style they were written for; drawing another style ignores them.
+    if (tally.ref.qualifiedName !== null && this.rules.profile.style === this.profile.style) {
       const match = this.rules.matchFor(tally.ref.qualifiedName);
       if (match !== null) {
         const decidedBy = match.rule.by === "llm" ? "proposed by a model, accepted" : "declared";
         return {
-          zone: DECLARED_ZONE[match.rule.zone],
+          zone: match.rule.zone,
           source: ZoneSource.Rule,
           reason: `${decidedBy} in runshape.json (${match.rule.match}): ${match.rule.reason}`,
         };
       }
     }
-    return { ...inferZone(tally, this.inboundPackage), source: ZoneSource.Inferred };
+    return { ...inferZone(tally, this.profile, this.inboundPackage), source: ZoneSource.Inferred };
   }
 
   private node(ref: ComponentRef): NodeTally {
@@ -280,35 +273,34 @@ class GraphBuilder {
   }
 }
 
-function fixedZoneOf(ref: ComponentRef): Zone | null {
-  if (ref.id === CLIENT_ID || EDGE_KINDS.has(ref.kind)) return Zone.Edge;
-  if (ref.kind === ComponentKind.External) return Zone.External;
-  if (ref.kind === ComponentKind.TestDouble) return Zone.TestDouble;
+function fixedZoneOf(ref: ComponentRef): FixedZone | null {
+  if (ref.id === CLIENT_ID || EDGE_KINDS.has(ref.kind)) return FixedZone.Edge;
+  if (ref.kind === ComponentKind.External) return FixedZone.External;
+  if (ref.kind === ComponentKind.TestDouble) return FixedZone.TestDouble;
   return null;
-}
-
-function inferZone(tally: NodeTally, inboundPackage: string | null): { zone: Zone; reason: string } {
-  if (tally.isRouteHandler) return { zone: Zone.InboundAdapter, reason: "handles a route" };
-  if (tally.calledByFramework) {
-    return { zone: Zone.InboundAdapter, reason: `the framework calls it while serving requests${inboundPackage ? ` (in ${inboundPackage})` : ""}` };
-  }
-  if (tally.externalSystems.size > 0) {
-    return { zone: Zone.OutboundAdapter, reason: `calls ${[...tally.externalSystems].sort().join(", ")} directly` };
-  }
-  return { zone: Zone.Core, reason: "receives no requests and calls no external system" };
 }
 
 /**
- * Runtime calls in an onion go inward (adapter -> core) or, through a port, from core out
- * to an outbound adapter. Calling a request handler from further in, or reaching a
- * repository straight from a handler, is the shape the onion is meant to prevent.
+ * A component no rule places: by its name first if the style says names are telling
+ * (layered, MVC), then by what it was seen doing.
  */
-function violationOf(from: Zone | undefined, to: Zone | undefined): EdgeViolation | null {
-  if (to === Zone.InboundAdapter && (from === Zone.Core || from === Zone.OutboundAdapter)) {
-    return EdgeViolation.CallsIntoInboundAdapter;
+function inferZone(tally: NodeTally, profile: ArchitectureProfile, inboundPackage: string | null): { zone: ZoneId; reason: string } {
+  if (profile.namesFirst && tally.ref.qualifiedName !== null) {
+    const byName = zoneFromName(profile, tally.ref.qualifiedName);
+    if (byName !== null) {
+      const zoneName = profile.zones.find((zone) => zone.id === byName.zone)?.name ?? byName.zone;
+      return { zone: byName.zone, reason: `named like ${zoneName.toLowerCase()} code ("${byName.word}")` };
+    }
   }
-  if (from === Zone.InboundAdapter && to === Zone.OutboundAdapter) return EdgeViolation.SkipsCore;
-  return null;
+  const { handlesRequests, callsExternal, otherwise } = profile.behaviour;
+  if (tally.isRouteHandler) return { zone: handlesRequests, reason: "handles a route" };
+  if (tally.calledByFramework) {
+    return { zone: handlesRequests, reason: `the framework calls it while serving requests${inboundPackage ? ` (in ${inboundPackage})` : ""}` };
+  }
+  if (tally.externalSystems.size > 0) {
+    return { zone: callsExternal, reason: `calls ${[...tally.externalSystems].sort().join(", ")} directly` };
+  }
+  return { zone: otherwise, reason: "receives no requests and calls no external system" };
 }
 
 /**

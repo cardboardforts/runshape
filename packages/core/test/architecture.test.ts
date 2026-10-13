@@ -5,7 +5,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { ArchitectureCandidate, ArchitectureStyle, detectArchitecture } from "../src/architecture";
+import { ArchitectureCandidate, detectArchitecture } from "../src/architecture";
+import { ArchitectureStyle } from "../src/profiles";
 import { loadFixtureRun } from "./fixtures";
 
 const describeTop = (candidates: ArchitectureCandidate[]) =>
@@ -25,7 +26,7 @@ describe("detectArchitecture", () => {
       [
         {
           "evidence": [
-            "Presentation: app.api, app.api.routes",
+            "Presentation: app.api, app.api.dependencies, app.api.routes",
             "Business: app.models.domain, app.services",
             "Data access: app.db, app.db.queries, app.db.repositories, app.models",
             "persistence sits behind repositories/gateways: ArticlesRepository, ProfilesRepository, TagsRepository and 1 more",
@@ -46,6 +47,7 @@ describe("detectArchitecture", () => {
             ],
             "presentation": [
               "app.api.**",
+              "app.api.dependencies.**",
               "app.api.routes.**",
             ],
           },

@@ -7,7 +7,8 @@ import { describe, expect, test } from "vitest";
 
 import { Phase } from "../src/model";
 import { parseZoneAdvice, ZoneAdvisor, zoneFacts } from "../src/zone-advice";
-import { DeclaredZone, ZoneRules } from "../src/zones";
+import { HexagonalZone, HEXAGONAL } from "../src/profiles";
+import { ZoneRules } from "../src/zones";
 import { ZoneRuleStore, ViewerSession } from "../src/session";
 import { buildComponentView } from "../src/views/component-view";
 import { buildSystemGraph } from "../src/views/system-graph";
@@ -76,13 +77,13 @@ describe("zone facts and the model's answer", () => {
   });
 
   test("answers are accepted inside prose or code fences, and rejected when unusable", () => {
-    expect(parseZoneAdvice('Sure!\n```json\n{"zone": "outbound-adapter", "reason": "Wraps SQL for users."}\n```')).toEqual({
+    expect(parseZoneAdvice('Sure!\n```json\n{"zone": "outbound-adapter", "reason": "Wraps SQL for users."}\n```', HEXAGONAL)).toEqual({
       zone: "outbound-adapter",
       reason: "Wraps SQL for users.",
       confidence: "low", // missing confidence is treated as low, never as high
     });
-    expect(() => parseZoneAdvice('{"zone": "domain", "reason": ""}')).toThrowErrorMatchingInlineSnapshot(`[Error: the model's answer was unusable: unknown zone "domain"; no reason given]`);
-    expect(() => parseZoneAdvice("I think it's an adapter.")).toThrowErrorMatchingInlineSnapshot(`[Error: the model did not answer with a JSON object]`);
+    expect(() => parseZoneAdvice('{"zone": "domain", "reason": ""}', HEXAGONAL)).toThrowErrorMatchingInlineSnapshot(`[Error: the model's answer was unusable: unknown zone "domain"; no reason given]`);
+    expect(() => parseZoneAdvice("I think it's an adapter.", HEXAGONAL)).toThrowErrorMatchingInlineSnapshot(`[Error: the model did not answer with a JSON object]`);
   });
 });
 
@@ -112,11 +113,11 @@ describe("suggest, then accept", () => {
 
     const proposal = await new ViewerSession(run, { sources, advisor }).handle({ type: "adviseZone", componentId: USERS_REPOSITORY, grouping: GROUPING });
     const declined = await new ViewerSession(run, { sources, ruleStore: declining }).handle({
-      type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: DeclaredZone.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
+      type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: HexagonalZone.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
     });
     const session = new ViewerSession(run, { sources, ruleStore: accepting });
     const accepted = await session.handle({
-      type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: DeclaredZone.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
+      type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: HexagonalZone.OutboundAdapter, reason: "Repository over the users table.", by: "llm",
     });
     const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
 
@@ -175,7 +176,7 @@ describe("saving rules safely", () => {
     const store = new RecordingStore(true);
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rulesProblem: "zones[3].zone must be one of …" });
 
-    const response = await session.handle({ type: "setZone", qualifiedName: "app.x.Y", zone: DeclaredZone.Core, reason: "r", by: "user" });
+    const response = await session.handle({ type: "setZone", qualifiedName: "app.x.Y", zone: HexagonalZone.Core, reason: "r", by: "user" });
 
     expect(response).toMatchObject({ type: "error", message: expect.stringContaining("Fix runshape.json before adding rules") });
     expect(store.asked).toEqual([]);
@@ -186,9 +187,9 @@ describe("saving rules safely", () => {
     const store = new RecordingStore(true);
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store });
 
-    const response = await session.handle({ type: "setZone", qualifiedName: "", zone: "domain" as DeclaredZone, reason: " ", by: "robot" as "user" });
+    const response = await session.handle({ type: "setZone", qualifiedName: "", zone: "domain", reason: " ", by: "robot" as "user" });
 
-    expect(response).toEqual({ type: "error", message: 'Can\'t save that rule: no component name; unknown zone "domain"; no reason; unknown decider "robot"' });
+    expect(response).toEqual({ type: "error", message: 'Can\'t save that rule: no component name; unknown zone "domain" for the hexagonal style; no reason; unknown decider "robot"' });
     expect(store.asked).toEqual([]);
   });
 

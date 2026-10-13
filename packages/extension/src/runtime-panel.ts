@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { DeclaredZone, loadLatestRun, loadPreviousRun, Phase, ZoneSource, Run, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
+import { loadLatestRun, loadPreviousRun, Phase, ZoneSource, Run, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
 
 import type { Logger } from "./logger";
 import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./zone-adapters";
@@ -85,27 +85,29 @@ export class RuntimePanel {
     const session = await this.loadSession(requestId);
     const grouping = { collapseMiddleware: true };
     let target = componentId;
+    let qualifiedName: string | null = null;
     if (target === undefined) {
       const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping });
       const placeable = graph?.type === "graph" ? graph.graph.nodes.filter((n) => n.qualifiedName !== null && n.zoneSource !== ZoneSource.Fixed) : [];
       const picked = await vscode.window.showQuickPick(
-        placeable.map((node) => ({ label: node.label, description: `${node.zone} (${node.zoneSource})`, detail: node.qualifiedName ?? "", id: node.id })),
+        placeable.map((node) => ({ label: node.label, description: `${node.zone} (${node.zoneSource})`, detail: node.qualifiedName ?? "", node })),
         { placeHolder: "Which component should the model place?" },
       );
       if (picked === undefined) return null;
-      target = picked.id;
+      target = picked.node.id;
+      qualifiedName = picked.node.qualifiedName;
     }
     this.logger.info("command.suggest_zone", { request: requestId, component: target });
     const response = await session.handle({ type: "adviseZone", componentId: target, grouping });
     if (response !== null) await this.post(response);
-    if (componentId === undefined && response?.type === "zoneAdvice") {
+    if (qualifiedName !== null && response?.type === "zoneAdvice") {
       const { advice } = response;
       const accept = await vscode.window.showInformationMessage(
         `Proposed zone: ${advice.zone} (${advice.confidence} confidence). ${advice.reason}`,
         "Accept into runshape.json",
       );
-      const qualifiedName = target.replace(/^(class|module):/, "");
-      if (accept) await this.respond({ type: "setZone", qualifiedName, zone: advice.zone as DeclaredZone, reason: advice.reason, by: "llm" }, requestId);
+      // The session validates the zone against the rules' style before anything is written.
+      if (accept) await this.respond({ type: "setZone", qualifiedName, zone: advice.zone, reason: advice.reason, by: "llm" }, requestId);
     } else if (componentId === undefined && response?.type === "zoneAdviceFailed") {
       void vscode.window.showWarningMessage(response.message);
     }

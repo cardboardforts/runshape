@@ -1,13 +1,16 @@
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 
-import { Change, GraphNode, Zone } from "@runshape/core";
+import { ArchitectureProfile, Change, GraphNode } from "@runshape/core";
 
-import { SMELL_TEXT } from "./ZoneControls";
+import { zoneClass, zoneLabel } from "../zone-style";
+
+import { smellText } from "./ZoneControls";
 
 export type Emphasis = "normal" | "highlighted" | "dimmed";
 
 export type ComponentNodeData = {
   node: GraphNode;
+  profile: ArchitectureProfile;
   emphasis: Emphasis;
   active: boolean;
   change: Change | null;
@@ -16,25 +19,16 @@ export type ComponentNodeData = {
 
 export type ComponentFlowNode = Node<ComponentNodeData, "component">;
 
-const ZONE_LABEL: Record<Zone, string> = {
-  [Zone.Edge]: "framework",
-  [Zone.InboundAdapter]: "inbound adapter",
-  [Zone.Core]: "core",
-  [Zone.OutboundAdapter]: "outbound adapter",
-  [Zone.TestDouble]: "test double",
-  [Zone.External]: "external system",
-};
-
 export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
-  const { node, emphasis, active, change, onOpen } = data;
-  const smells = node.smells.map((smell) => SMELL_TEXT[smell]);
+  const { node, profile, emphasis, active, change, onOpen } = data;
+  const smells = node.smells.map((smell) => smellText(profile, node, smell));
   return (
     <>
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <button
         type="button"
-        className={`component zone-${node.zone} emphasis-${emphasis}${active ? " active" : ""}${change ? ` change-${change}` : ""}`}
-        title={[node.qualifiedName ?? node.label, `${node.zone}: ${node.zoneReason}`, ...smells, ...(change && change !== Change.Unchanged ? [`${change} since the previous recording`] : [])].join("\n")}
+        className={`component ${zoneClass(profile, node.zone)} emphasis-${emphasis}${active ? " active" : ""}${change ? ` change-${change}` : ""}`}
+        title={[node.qualifiedName ?? node.label, `${zoneLabel(profile, node.zone)}: ${node.zoneReason}`, ...smells, ...(change && change !== Change.Unchanged ? [`${change} since the previous recording`] : [])].join("\n")}
         onClick={() => onOpen(node)}
       >
         <span className="component-label">
@@ -46,7 +40,7 @@ export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
           {node.label}
         </span>
         <span className="component-meta">
-          {ZONE_LABEL[node.zone]} · {node.calls} call{node.calls === 1 ? "" : "s"}
+          {zoneLabel(profile, node.zone)} · {node.calls} call{node.calls === 1 ? "" : "s"}
           {node.instances > 0 ? ` · ${node.instances} obj` : ""}
         </span>
       </button>

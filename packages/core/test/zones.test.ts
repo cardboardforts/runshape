@@ -4,7 +4,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { DeclaredZone, ZoneRules, ZoneRulesError } from "../src/zones";
+import { HexagonalZone, HEXAGONAL } from "../src/profiles";
+import { ZoneRules, ZoneRulesError } from "../src/zones";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
 
@@ -34,7 +35,7 @@ describe("ZoneRules", () => {
     expect(() => ZoneRules.parse(text)).toThrowErrorMatchingInlineSnapshot(`
       [Error: runshape.json is invalid:
         - zones[1].match must be a non-empty string
-        - zones[1].zone must be one of inbound-adapter, core, outbound-adapter
+        - zones[1].zone must be one of inbound-adapter, core, outbound-adapter (the hexagonal zones)
         - zones[1].reason must say why
         - zones[2].by must be "user" or "llm"]
     `);
@@ -49,17 +50,22 @@ describe("ZoneRules", () => {
     expect(JSON.parse(rules.serialize())).toEqual({ version: 2, style: "hexagonal", zones: rules.rules });
   });
 
-  test("a style the viewer can't draw yet is reported, not silently drawn as a hexagon", () => {
-    const layered = JSON.stringify({ version: 2, style: "layered", zones: [] });
+  test("the file's style picks the zones its rules may use; an unknown style is reported", () => {
+    const layered = ZoneRules.parse(JSON.stringify({ version: 2, style: "layered", zones: [{ match: "app.db.**", zone: "data", reason: "repositories" }] }));
+    const wrongZone = JSON.stringify({ version: 2, style: "layered", zones: [{ match: "app.db.**", zone: "outbound-adapter", reason: "r" }] });
+    const unknown = JSON.stringify({ version: 2, style: "microservices", zones: [] });
 
-    expect(() => ZoneRules.parse(layered)).toThrowError(/"style" "layered" isn't drawn yet/);
+    expect(layered.profile.style).toBe("layered");
+    expect(layered.rules[0]?.zone).toBe("data");
+    expect(() => ZoneRules.parse(wrongZone)).toThrowError(/zone must be one of presentation, business, data \(the layered zones\)/);
+    expect(() => ZoneRules.parse(unknown)).toThrowError(/"style" "microservices" is not one of hexagonal, layered, mvc, mvvm, mvp/);
   });
 
   test("first match wins; `*` stays within one dotted segment, `**` spans any number", () => {
     const rules = new ZoneRules([
-      { match: "app.db.repositories.base.*", zone: DeclaredZone.Core, reason: "shared base", by: "user" },
-      { match: "app.db.**", zone: DeclaredZone.OutboundAdapter, reason: "persistence", by: "user" },
-      { match: "app.*", zone: DeclaredZone.InboundAdapter, reason: "top-level modules", by: "user" },
+      { match: "app.db.repositories.base.*", zone: HexagonalZone.Core, reason: "shared base", by: "user" },
+      { match: "app.db.**", zone: HexagonalZone.OutboundAdapter, reason: "persistence", by: "user" },
+      { match: "app.*", zone: HexagonalZone.InboundAdapter, reason: "top-level modules", by: "user" },
     ]);
 
     expect(
@@ -73,16 +79,16 @@ describe("ZoneRules", () => {
       "app.services.jwt -> no rule",
     ]);
     // `**` also stands for no segments, so a package's own module matches its subtree rule.
-    const subtree = new ZoneRules([{ match: "app.db.**", zone: DeclaredZone.OutboundAdapter, reason: "persistence", by: "user" }]);
+    const subtree = new ZoneRules([{ match: "app.db.**", zone: HexagonalZone.OutboundAdapter, reason: "persistence", by: "user" }]);
     expect(["app.db", "app.db.users", "app.dbx"].map((name) => subtree.matchFor(name) !== null)).toEqual([true, true, false]);
-    const middle = new ZoneRules([{ match: "a.**.b", zone: DeclaredZone.Core, reason: "r", by: "user" }]);
+    const middle = new ZoneRules([{ match: "a.**.b", zone: HexagonalZone.Core, reason: "r", by: "user" }]);
     expect(["a.b", "a.x.b", "a.x.y.b", "ab"].map((name) => middle.matchFor(name) !== null)).toEqual([true, true, true, false]);
   });
 
   test("setting the zone of one component adds the most specific rule first and round-trips", () => {
     const rules = ZoneRules.none()
-      .withRuleFor("app.**", DeclaredZone.Core, "default", "user")
-      .withRuleFor("app.db.users.UsersRepository", DeclaredZone.OutboundAdapter, "talks to postgres", "llm");
+      .withRuleFor("app.**", HexagonalZone.Core, "default", "user")
+      .withRuleFor("app.db.users.UsersRepository", HexagonalZone.OutboundAdapter, "talks to postgres", "llm");
 
     expect(ZoneRules.parse(rules.serialize()).rules).toEqual([
       { match: "app.db.users.UsersRepository", zone: "outbound-adapter", reason: "talks to postgres", by: "llm" },
@@ -97,7 +103,7 @@ describe("zones on the system graph", () => {
 
     expect(describeZones(buildSystemGraph(run), ["Profile", "ArticleViewSet", "ProfileSerializer", "sqlite"])).toMatchInlineSnapshot(`
       [
-        "ArticleViewSet: inbound-adapter [inferred] handles a route !handler-touches-external",
+        "ArticleViewSet: inbound-adapter [inferred] handles a route !touches-external",
         "Profile: outbound-adapter [inferred] calls sqlite directly",
         "ProfileSerializer: core [inferred] receives no requests and calls no external system",
         "sqlite: external [fixed] framework, test or external code",
@@ -108,7 +114,7 @@ describe("zones on the system graph", () => {
   test("declaring Django's models as core turns their database access into a finding", async () => {
     const run = await loadFixtureRun("django");
     const rules = new ZoneRules([
-      { match: "conduit.apps.*.models.*", zone: DeclaredZone.Core, reason: "the domain entities", by: "user" },
+      { match: "conduit.apps.*.models.*", zone: HexagonalZone.Core, reason: "the domain entities", by: "user" },
     ]);
 
     const graph = buildSystemGraph(run, { rules });
@@ -119,7 +125,7 @@ describe("zones on the system graph", () => {
     expect(describeZones(graph, ["Profile", "User"])).toMatchInlineSnapshot(`
       [
         "User: core [rule] declared in runshape.json (conduit.apps.*.models.*): the domain entities",
-        "Profile: core [rule] declared in runshape.json (conduit.apps.*.models.*): the domain entities !core-touches-external",
+        "Profile: core [rule] declared in runshape.json (conduit.apps.*.models.*): the domain entities !touches-external",
       ]
     `);
   });
@@ -132,10 +138,10 @@ describe("zones on the system graph", () => {
 
     expect(violations(buildSystemGraph(run))).toMatchInlineSnapshot(`
       [
-        "dependencies.authentication -> UsersRepository: skips-core",
-        "articles.articles_common -> ArticlesRepository: skips-core",
-        "articles.articles_resource -> ArticlesRepository: skips-core",
-        "routes.authentication -> UsersRepository: skips-core",
+        "dependencies.authentication -> UsersRepository: a request handler using an outbound adapter directly: no core in between",
+        "articles.articles_common -> ArticlesRepository: a request handler using an outbound adapter directly: no core in between",
+        "articles.articles_resource -> ArticlesRepository: a request handler using an outbound adapter directly: no core in between",
+        "routes.authentication -> UsersRepository: a request handler using an outbound adapter directly: no core in between",
       ]
     `);
   });

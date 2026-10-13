@@ -1,6 +1,6 @@
 import { Outcome, Run } from "./model";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
-import { DeclaredZone, ZoneRules } from "./zones";
+import { ZoneRules } from "./zones";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
 import { Grouping } from "./views/components";
@@ -168,7 +168,7 @@ export class ViewerSession {
           // now would replace every rule in it with this one.
           return { type: "error", message: `Fix runshape.json before adding rules: ${this.rulesProblem}` };
         }
-        const invalid = invalidZoneRequest(request);
+        const invalid = invalidZoneRequest(request, this.rules);
         if (invalid !== null) return { type: "error", message: invalid };
         const next = this.rules.withRuleFor(request.qualifiedName, request.zone, request.reason, request.by);
         const replaces = this.rules.rules.some((rule) => rule.match === request.qualifiedName);
@@ -216,7 +216,7 @@ export class ViewerSession {
       return { type: "zoneAdviceFailed", componentId, message: "Only project classes and modules can be placed in a zone." };
     }
     const view = buildComponentView(this.run, componentId, grouping);
-    const prompt = zoneAdvicePrompt(zoneFacts(graph, node, view), await this.componentSource(view));
+    const prompt = zoneAdvicePrompt(zoneFacts(graph, node, view), await this.componentSource(view), this.rules.profile);
     let answer: string;
     try {
       answer = await this.advisor.complete(prompt);
@@ -225,7 +225,7 @@ export class ViewerSession {
       return { type: "zoneAdviceFailed", componentId, message: `The model request failed: ${error instanceof Error ? error.message : String(error)}` };
     }
     try {
-      return { type: "zoneAdvice", componentId, advice: parseZoneAdvice(answer) };
+      return { type: "zoneAdvice", componentId, advice: parseZoneAdvice(answer, this.rules.profile) };
     } catch (error) {
       if (error instanceof ZoneAdviceError) return { type: "zoneAdviceFailed", componentId, message: error.message };
       throw error;
@@ -250,10 +250,10 @@ export class ViewerSession {
 }
 
 /** setZone arrives from the webview: check it like any input crossing into the session. */
-function invalidZoneRequest(request: Extract<UiRequest, { type: "setZone" }>): string | null {
+function invalidZoneRequest(request: Extract<UiRequest, { type: "setZone" }>, rules: ZoneRules): string | null {
   const problems: string[] = [];
   if (typeof request.qualifiedName !== "string" || request.qualifiedName.trim() === "") problems.push("no component name");
-  if (!(Object.values(DeclaredZone) as string[]).includes(request.zone)) problems.push(`unknown zone ${JSON.stringify(request.zone)}`);
+  if (!rules.isZoneOfStyle(request.zone)) problems.push(`unknown zone ${JSON.stringify(request.zone)} for the ${rules.profile.style} style`);
   if (typeof request.reason !== "string" || request.reason.trim() === "") problems.push("no reason");
   if (request.by !== "user" && request.by !== "llm") problems.push(`unknown decider ${JSON.stringify(request.by)}`);
   return problems.length > 0 ? `Can't save that rule: ${problems.join("; ")}` : null;
