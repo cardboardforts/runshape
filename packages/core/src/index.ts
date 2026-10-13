@@ -10,3 +10,4 @@ export * from "./views/replay";
 export * from "./session";
 export * from "./ui-protocol";
 export * from "./views/run-diff";
+export * from "./rings";
