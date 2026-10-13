@@ -70,7 +70,8 @@ class MonitoringBackend:
         return self._enter(fresh=False)
 
     def _on_throw(self, code: CodeType, offset: int, exception: BaseException) -> Any:
-        return self._enter(fresh=False)
+        self._enter(fresh=False)
+        return None  # PY_THROW cannot be disabled: returning DISABLE drops the callback
 
     def _enter(self, fresh: bool) -> Any:
         recorder = self._recorder

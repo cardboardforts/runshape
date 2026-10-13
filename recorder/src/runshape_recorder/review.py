@@ -16,13 +16,19 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from runshape_recorder.settings import DEFAULT_OUT_DIRECTORY
 
 # pytest exit codes 0 (all passed), 1 (some failed) and 5 (none collected) are results;
 # anything else (usage error, internal error, interrupted) means there's no recording.
 RECORDED_EXIT_CODES = {0, 1, 5}
+SOME_TESTS_FAILED = 1
+# A src layout is importable only through the environment (PYTHONPATH or an editable
+# install); each side puts its own checkout's src first so it can't import the other's.
+SRC_LAYOUT_DIRECTORY = "src"
+# Not changes to the code: what earlier runs leave behind.
+NOT_CHANGES = (f":(exclude){DEFAULT_OUT_DIRECTORY}", ":(exclude,glob)**/__pycache__/**")
 
 
 class ReviewError(Exception):
@@ -57,7 +63,7 @@ def record_base_and_head(project: str, base_ref: str, pytest_args: List[str]) ->
     repository = _git(project, "rev-parse", "--show-toplevel")
     base = Revision("base", _git(project, "rev-parse", "--verify", f"{base_ref}^{{commit}}"))
     head_sha = _git(project, "rev-parse", "HEAD")
-    dirty = _git(project, "status", "--porcelain") != ""
+    dirty = _git(project, "status", "--porcelain", "--", ".", *NOT_CHANGES) != ""
     head = Revision("head", head_sha, dirty)
     out_directory = os.path.join(project, DEFAULT_OUT_DIRECTORY)
     relative_project = os.path.relpath(os.path.realpath(project), os.path.realpath(repository))
@@ -65,18 +71,37 @@ def record_base_and_head(project: str, base_ref: str, pytest_args: List[str]) ->
     worktree = tempfile.mkdtemp(prefix="runshape-base-")
     try:
         _git(project, "worktree", "add", "--detach", "--quiet", worktree, base.sha)
+        base_project = os.path.join(worktree, relative_project)
+        if not os.path.isdir(base_project):
+            raise ReviewError(f"{relative_project} does not exist at base {base.sha[:10]}; there is nothing to compare against")
         print(f"runshape-review: recording base {base.sha[:10]} in a temporary worktree")
-        _record(os.path.join(worktree, relative_project), out_directory, base, pytest_args)
+        _record(base_project, out_directory, base, pytest_args, _environment(repository, worktree, base_project))
     finally:
         subprocess.run(["git", "-C", project, "worktree", "remove", "--force", worktree], capture_output=True)
         shutil.rmtree(worktree, ignore_errors=True)
 
     print(f"runshape-review: recording head {head.sha[:10]}{' (with uncommitted changes)' if dirty else ''}")
-    _record(project, out_directory, head, pytest_args)
+    _record(project, out_directory, head, pytest_args, _environment(repository, repository, project))
     print("runshape-review: done. In VS Code: Runshape: Open Runtime View, then tick 'Compare with previous recording'.")
 
 
-def _record(directory: str, out_directory: str, revision: Revision, pytest_args: List[str]) -> None:
+def _environment(repository: str, checkout: str, directory: str) -> Dict[str, str]:
+    """PYTHONPATH entries inside the repository point into `checkout` instead."""
+    environment = dict(os.environ)
+    entries = []
+    src = os.path.join(directory, SRC_LAYOUT_DIRECTORY)
+    if os.path.isdir(src):
+        entries.append(src)
+    for entry in environment.get("PYTHONPATH", "").split(os.pathsep):
+        if entry == "":
+            continue
+        inside = os.path.relpath(os.path.realpath(entry), os.path.realpath(repository))
+        entries.append(entry if inside.startswith(os.pardir) else os.path.join(checkout, inside))
+    environment["PYTHONPATH"] = os.pathsep.join(entries)
+    return environment
+
+
+def _record(directory: str, out_directory: str, revision: Revision, pytest_args: List[str], environment: Dict[str, str]) -> None:
     command = [
         sys.executable,
         "-m",
@@ -86,13 +111,22 @@ def _record(directory: str, out_directory: str, revision: Revision, pytest_args:
         f"--runshape-run-name={revision.run_name}",
         *pytest_args,
     ]
-    completed = subprocess.run(command, cwd=directory)
+    completed = subprocess.run(command, cwd=directory, env=environment)
     if completed.returncode not in RECORDED_EXIT_CODES:
         raise ReviewError(f"pytest on {revision.label} exited with {completed.returncode}; no recording made")
+    if completed.returncode == SOME_TESTS_FAILED:
+        print(
+            f"runshape-review: some tests failed on {revision.label}; recorded anyway. The base checkout has only"
+            " committed files, so a test needing an untracked one (.env, local fixtures) fails there for that alone.",
+            file=sys.stderr,
+        )
 
 
 def _git(directory: str, *args: str) -> str:
-    completed = subprocess.run(["git", "-C", directory, *args], capture_output=True, text=True)
+    try:
+        completed = subprocess.run(["git", "-C", directory, *args], capture_output=True, text=True)
+    except FileNotFoundError:
+        raise ReviewError("git is not installed or not on PATH") from None
     if completed.returncode != 0:
         raise ReviewError(f"git {' '.join(args)} failed: {completed.stderr.strip()}")
     return completed.stdout.strip()

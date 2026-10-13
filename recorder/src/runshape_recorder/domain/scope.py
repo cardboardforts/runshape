@@ -110,7 +110,7 @@ class CodeScope:
         filename = self._files.get(code)
         if filename is None:
             module_file = frame.f_globals.get("__file__")
-            if isinstance(module_file, str) and module_file.endswith(".py") and code.co_filename.endswith(os.path.basename(module_file)):
+            if isinstance(module_file, str) and module_file.endswith(".py") and os.path.basename(code.co_filename) == os.path.basename(module_file):
                 filename = os.path.realpath(module_file)
             else:
                 filename = os.path.realpath(code.co_filename)

@@ -49,7 +49,15 @@ def test_a_one_line_function_still_has_its_one_executable_line(tmp_path):
 def test_closing_a_generator_counts_as_resuming_it_on_every_backend(tmp_path, monkeypatch, backend_class):
     # gen.close() / task.cancel() resume a suspended frame by throwing into it; its
     # cleanup code (finally, except CancelledError) runs then, and must not go missing.
+    # A library generator is closed first: sys.monitoring can't switch PY_THROW off for
+    # code we ignore, and asking it to drops the callback for every later throw.
+    write_package(tmp_path, "library", {"__init__.py": """
+        def letters():
+            yield "a"
+        """})
     write_package(tmp_path, "gens", {"__init__.py": """
+        from library import letters
+
         def numbers():
             try:
                 yield 1
@@ -57,6 +65,9 @@ def test_closing_a_generator_counts_as_resuming_it_on_every_backend(tmp_path, mo
                 pass
 
         def drive():
+            letters_left = letters()
+            next(letters_left)
+            letters_left.close()
             numbers_left = numbers()
             next(numbers_left)
             numbers_left.close()
@@ -78,6 +89,7 @@ def test_closing_a_generator_counts_as_resuming_it_on_every_backend(tmp_path, mo
     assert [e for e in recording.events if isinstance(e, SpanResumed) and e.span == numbers_span] != []
     assert recording.recorder_errors == []
     sys.modules.pop("gens", None)
+    sys.modules.pop("library", None)
 
 
 def test_source_snapshot_keeps_python_line_numbers_and_only_project_files(tmp_path):
@@ -105,6 +117,9 @@ def test_code_compiled_under_an_old_path_is_still_project_code(tmp_path, backend
     module = types.ModuleType("tests.test_moved")
     module.__file__ = str(path)
     exec(compile(path.read_text(), "/old/checkout/tests/test_moved.py", "exec"), module.__dict__)
+    # Code from another file run with the module's globals is still that other file's, even
+    # when its name ends the same way; it's outside the project, so it isn't recorded.
+    exec(compile("def borrowed():\n    return 2\n", "/lib/not_test_moved.py", "exec"), module.__dict__)
     recorder = ScenarioRecorder(CodeScope(str(tmp_path), [], ["tests"]), SourceCatalog(str(tmp_path)))
     backend = backend_class()
 
@@ -112,6 +127,7 @@ def test_code_compiled_under_an_old_path_is_still_project_code(tmp_path, backend
     backend.start(recorder)
     try:
         module.test_moved()
+        module.borrowed()
     finally:
         backend.stop()
     recording = recorder.finish("passed")
