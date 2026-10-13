@@ -10,7 +10,7 @@ __pycache__/
 # Example apps are cloned + patched by examples/setup.sh, never committed here.
 examples/django-realworld/
 examples/fastapi-realworld/
+examples/heapspace/
 examples/.pg-venv/
 examples/.pgdata/
 .vscode-test/
-examples/heapspace/
