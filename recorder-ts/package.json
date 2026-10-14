@@ -1,0 +1,7 @@
+{
+  "name": "@runshape/recorder-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Records TypeScript test runs (vitest) in the runshape trace format, version 2"
+}

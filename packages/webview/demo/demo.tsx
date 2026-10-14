@@ -1,7 +1,8 @@
 // Runs the webview in a plain browser against the recorded example traces, with no VS Code:
 // `npm run dev -w packages/webview` then open /demo/index.html?app=django (or fastapi, or
 // django-feed-fix / fastapi-slug-refactor: two recordings, before and after a change, for
-// compare mode).
+// compare mode). ?app=self:<label> opens Runshape's own tests as recorded by
+// `npm run self-review` (.runshape/self/<label>), source included.
 // Never part of the extension bundle.
 import { createRoot } from "react-dom/client";
 
@@ -15,6 +16,7 @@ import type { Host } from "../src/host";
 
 const traceFiles = import.meta.glob("../../core/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
 const sourceFiles = import.meta.glob("../../core/test/fixtures/*/source/**/*.py", { query: "?raw", import: "default" });
+const selfTraceFiles = import.meta.glob("../../../.runshape/self/*/**/*.json", { query: "?raw", import: "default" });
 // Django's source isn't redistributed in fixtures (no upstream license); use a local checkout.
 const exampleSources = import.meta.glob("../../../examples/django-realworld/conduit/**/*.py", {
   query: "?raw",
@@ -29,10 +31,19 @@ function fixtureReader(app: string, files: Record<string, () => Promise<unknown>
   };
 }
 
+function selfReader(label: string) {
+  return async (relativePath: string): Promise<string> => {
+    const load = selfTraceFiles[`../../../.runshape/self/${label}/${relativePath}`];
+    if (load === undefined) throw new Error(`demo: no self-review file ${relativePath} (run npm run self-review)`);
+    return (await load()) as string;
+  };
+}
+
 function demoHost(app: string): Host {
   const listeners = new Set<(response: UiResponse) => void>();
   const emit = (response: UiResponse) => listeners.forEach((listener) => listener(response));
-  const traces: TraceFiles = { readText: fixtureReader(app, traceFiles, "") };
+  const selfLabel = app.startsWith("self:") ? app.slice("self:".length) : null;
+  const traces: TraceFiles = { readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) };
   // Fixtures named "<app>-<change>" (django-feed-fix, fastapi-slug-refactor) share the app's source.
   const baseApp = app.split("-")[0] ?? app;
   const readFixtureSource = fixtureReader(baseApp, sourceFiles, "source/");
@@ -40,10 +51,15 @@ function demoHost(app: string): Host {
     const local = exampleSources[`../../../examples/${baseApp}-realworld/${file}`];
     return local ? ((await local()) as string) : readFixtureSource(file);
   };
-  const sources = { readLines: (file: string) => readSource(file).then((text) => text.split("\n"), () => null) };
+  const latest = loadLatestRun(traces);
+  // Self-review recordings carry their source; the example apps' comes from fixtures or examples/.
+  const sources = {
+    readLines: async (file: string) =>
+      (await latest).sources?.get(file) ?? readSource(file).then((text) => text.split("\n"), () => null),
+  };
   // Rules live in memory here (nothing to write to); the confirm mirrors the extension's modal.
   const ruleStore = { save: async (_rules: unknown, change: RuleChange) => window.confirm(`${change.question}\n\n${change.detail}`) };
-  const session = Promise.all([loadLatestRun(traces), loadPreviousRun(traces)]).then(
+  const session = Promise.all([latest, loadPreviousRun(traces)]).then(
     ([run, baseline]) => new ViewerSession(run, { sources, baseline, ruleStore }),
   );
 
