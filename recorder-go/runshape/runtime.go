@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -109,9 +110,13 @@ type recorder struct {
 	limits   Limits
 	registry []functionEntry
 	current  *scenarioState
+	// seenIn is the scenario each goroutine first ran recorded code in (Go never reuses ids).
+	seenIn map[uint64]*scenarioState
 }
 
-func newRecorder(limits Limits) *recorder { return &recorder{limits: limits} }
+func newRecorder(limits Limits) *recorder {
+	return &recorder{limits: limits, seenIn: map[uint64]*scenarioState{}}
+}
 
 var global = newRecorder(DefaultLimits)
 
@@ -186,6 +191,7 @@ func (r *recorder) scenario(t TB, file, name string) func() scenarioFile {
 	s.spanFn[rootSpan] = root
 	s.events = append(s.events, []any{"P", int64(0), "call"}, []any{"S", int64(0), rootSpan, 0, nil, s.thread, nil})
 	r.current = s
+	r.seenIn[s.thread] = s
 	return func() scenarioFile {
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -228,6 +234,8 @@ func (r *recorder) enter(id int, recv any) *Frame {
 	parent := rootSpan
 	if len(stack) > 0 {
 		parent = stack[len(stack)-1].span
+	} else {
+		parent = r.firstCallParent(s, thread)
 	}
 	frame := &Frame{r: r, s: s, span: notRecorded, fn: id, thread: thread}
 	if parent != notRecorded && r.admits(s, parent, id) {
@@ -308,6 +316,28 @@ func (f *Frame) Line(n int) {
 	}
 	seen[n] = true
 	f.s.events = append(f.s.events, []any{"L", f.span, n})
+}
+
+// firstCallParent is the caller of a goroutine's outermost recorded call: what the goroutine
+// that created it is running (the span that handed it the work), or the test when that's
+// unknown (a goroutine created by code that isn't recorded, such as an HTTP server's). A
+// goroutine of an earlier test's, still running, isn't recorded into this one.
+func (r *recorder) firstCallParent(s *scenarioState, thread uint64) int {
+	if seen, ok := r.seenIn[thread]; ok && seen != s {
+		return notRecorded
+	}
+	r.seenIn[thread] = s
+	creator, ok := goroutineCreator()
+	if !ok {
+		return rootSpan
+	}
+	if seen, ok := r.seenIn[creator]; ok && seen != s {
+		return notRecorded
+	}
+	if frames := s.stacks[creator]; len(frames) > 0 {
+		return frames[len(frames)-1].span
+	}
+	return rootSpan
 }
 
 func (r *recorder) admits(s *scenarioState, parent, fn int) bool {
@@ -393,6 +423,22 @@ func goroutineID() uint64 {
 	buffer = bytes.TrimPrefix(buffer, []byte("goroutine "))
 	id, _ := strconv.ParseUint(string(buffer[:bytes.IndexByte(buffer, ' ')]), 10, 64)
 	return id
+}
+
+// createdBy is the line a goroutine's stack ends with: "created by main.f in goroutine 7".
+var createdBy = regexp.MustCompile(`created by .* in goroutine (\d+)`)
+
+// goroutineCreator is the id of the goroutine that created the current one. Read on a
+// goroutine's first recorded call only, when its stack is short.
+func goroutineCreator() (uint64, bool) {
+	buffer := make([]byte, 16*1024)
+	buffer = buffer[:runtime.Stack(buffer, false)]
+	match := createdBy.FindSubmatch(buffer)
+	if match == nil {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(string(match[1]), 10, 64)
+	return id, err == nil
 }
 
 func write(directory string, scenario scenarioFile) {

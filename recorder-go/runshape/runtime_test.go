@@ -22,7 +22,8 @@ type service struct{ calls int }
 
 const table = `[
  {"file":"svc.go","symbol":{"namespace":["example.com","shop"],"container":["Service"],"name":"Place","kind":"method","ownerType":"Service"},"firstLine":10},
- {"file":"svc.go","symbol":{"namespace":["example.com","shop"],"container":[],"name":"check","kind":"function","ownerType":null},"firstLine":20}
+ {"file":"svc.go","symbol":{"namespace":["example.com","shop"],"container":[],"name":"check","kind":"function","ownerType":null},"firstLine":20},
+ {"file":"svc.go","symbol":{"namespace":["example.com","shop"],"container":[],"name":"work","kind":"function","ownerType":null},"firstLine":30}
 ]`
 
 // describe renders a scenario as a call tree with each span's lines, then its objects.
@@ -83,7 +84,7 @@ func TestRecordsTheCallTreeObjectsAndClosuresLines(t *testing.T) {
 		go func() { // another goroutine: its own stack, not this one's
 			defer wg.Done()
 			visit()
-			g := r.enter(ids[1], nil)
+			g := r.enter(ids[2], nil)
 			g.Exit()
 		}()
 		wg.Wait()
@@ -97,16 +98,16 @@ func TestRecordsTheCallTreeObjectsAndClosuresLines(t *testing.T) {
 		"  Service.Place on Service#1 [11 12] thread=false",
 		"    check [21] thread=false",
 		"    check [21] thread=false",
-		"  check [] thread=true",
+		// On the goroutine Place started: under Place, which was running when it was created.
+		"    work [] thread=true",
 		"  Service.Place on Service#1 [11 12] thread=false",
 		"    check [21] thread=false",
 		"    check [21] thread=false",
-		"  check [] thread=true",
+		"    work [] thread=true",
 	}
 	if lines := describe(got); !reflect.DeepEqual(lines, want) {
 		t.Errorf("tree:\n got %q\nwant %q", lines, want)
 	}
-	// A call on a goroutine the test started has no caller on its own stack: it hangs off the test.
 	if !reflect.DeepEqual(got.RecorderErrors, []string{
 		"1 more calls of check from Service.Place were not recorded (limit 2 per caller)",
 		"1 more calls of check from Service.Place were not recorded (limit 2 per caller)",
@@ -146,5 +147,34 @@ func TestOnlyTheOutermostHandlerReportsTheRequest(t *testing.T) {
 	}
 	if want := []string{"span 1: POST /orders"}; !reflect.DeepEqual(requests, want) {
 		t.Errorf("requests %q, want %q", requests, want)
+	}
+}
+
+func TestWorkATestLeftRunningIsNotRecordedInTheNextTest(t *testing.T) {
+	r := newRecorder(DefaultLimits)
+	ids := r.functions(table)
+	finishFirst := r.scenario(fakeT{}, "svc_test.go", "TestFirst")
+	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() { // left running by TestFirst
+		f := r.enter(ids[0], nil)
+		close(started)
+		<-release
+		g := r.enter(ids[1], nil) // called after TestFirst ended, while TestSecond runs
+		g.Exit()
+		f.Exit()
+		late := r.enter(ids[1], nil) // and a fresh call on it, with nothing on its stack
+		late.Exit()
+		close(done)
+	}()
+	<-started
+	finishFirst()
+
+	finishSecond := r.scenario(fakeT{}, "svc_test.go", "TestSecond")
+	close(release)
+	<-done
+	second := finishSecond()
+
+	if lines := describe(second); !reflect.DeepEqual(lines, []string{"TestSecond [] thread=false"}) {
+		t.Errorf("TestSecond recorded %q", lines)
 	}
 }
