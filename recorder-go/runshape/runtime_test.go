@@ -1,0 +1,126 @@
+package runshape
+
+import (
+	"fmt"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// The runtime is what instrumented code calls: Enter and Exit around each function, Line for
+// each statement, Scenario around each test. These tests call it as instrumented code would.
+
+type fakeT struct{ failed bool }
+
+func (f fakeT) Name() string   { return "TestSample" }
+func (f fakeT) Failed() bool   { return f.failed }
+func (f fakeT) Skipped() bool  { return false }
+
+type service struct{ calls int }
+
+const table = `[
+ {"file":"svc.go","symbol":{"namespace":["example.com","shop"],"container":["Service"],"name":"Place","kind":"method","ownerType":"Service"},"firstLine":10},
+ {"file":"svc.go","symbol":{"namespace":["example.com","shop"],"container":[],"name":"check","kind":"function","ownerType":null},"firstLine":20}
+]`
+
+// describe renders a scenario as a call tree with each span's lines, then its objects.
+func describe(s scenarioFile) []string {
+	depth := map[int]int{}
+	lines := map[int][]int{}
+	objects := map[int]string{}
+	for _, e := range s.Events {
+		if e[0] == "L" {
+			lines[num(e[1])] = append(lines[num(e[1])], num(e[2]))
+		}
+		if e[0] == "O" {
+			segments := e[3].([]string)
+			objects[num(e[2])] = fmt.Sprintf("%s#%d", segments[len(segments)-1], num(e[2]))
+		}
+	}
+	var out []string
+	for _, e := range s.Events {
+		if e[0] != "S" {
+			continue
+		}
+		span, fn := num(e[2]), num(e[3])
+		if e[4] == nil {
+			depth[span] = 0
+		} else {
+			depth[span] = depth[num(e[4])] + 1
+		}
+		on := ""
+		if e[6] != nil {
+			on = " on " + objects[num(e[6])]
+		}
+		name := strings.Join(append(append([]string{}, s.Functions[fn].Symbol.Container...), s.Functions[fn].Symbol.Name), ".")
+		out = append(out, fmt.Sprintf("%s%s%s %v thread=%v", strings.Repeat("  ", depth[span]), name, on, lines[span], e[5] != s.Events[1][5]))
+	}
+	return out
+}
+
+func num(v any) int { return int(reflect.ValueOf(v).Int()) }
+
+func TestRecordsTheCallTreeObjectsAndClosuresLines(t *testing.T) {
+	r := newRecorder(Limits{CallsPerCaller: 2, EventsPerScenario: 1000})
+	ids := r.functions(table)
+	finish := r.scenario(fakeT{}, "svc_test.go", "TestSample")
+	svc := &service{}
+
+	place := func() {
+		f := r.enter(ids[0], svc)
+		defer f.Exit()
+		f.Line(11)
+		visit := func() { f.Line(12) } // a closure: its line is Place's, whoever runs it
+		for i := 0; i < 3; i++ {
+			c := r.enter(ids[1], nil)
+			c.Line(21)
+			c.Exit()
+		}
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() { // another goroutine: its own stack, not this one's
+			defer wg.Done()
+			visit()
+			g := r.enter(ids[1], nil)
+			g.Exit()
+		}()
+		wg.Wait()
+	}
+	place()
+	place()
+
+	got := finish()
+	want := []string{
+		"TestSample [] thread=false",
+		"  Service.Place on Service#1 [11 12] thread=false",
+		"    check [21] thread=false",
+		"    check [21] thread=false",
+		"  check [] thread=true",
+		"  Service.Place on Service#1 [11 12] thread=false",
+		"    check [21] thread=false",
+		"    check [21] thread=false",
+		"  check [] thread=true",
+	}
+	if lines := describe(got); !reflect.DeepEqual(lines, want) {
+		t.Errorf("tree:\n got %q\nwant %q", lines, want)
+	}
+	// A call on a goroutine the test started has no caller on its own stack: it hangs off the test.
+	if !reflect.DeepEqual(got.RecorderErrors, []string{
+		"1 more calls of check from Service.Place were not recorded (limit 2 per caller)",
+		"1 more calls of check from Service.Place were not recorded (limit 2 per caller)",
+	}) {
+		t.Errorf("errors %q", got.RecorderErrors)
+	}
+	if got.Outcome != "passed" || got.Nodeid != "svc_test.go::TestSample" {
+		t.Errorf("outcome %q nodeid %q", got.Outcome, got.Nodeid)
+	}
+}
+
+func TestOutsideAScenarioNothingIsRecorded(t *testing.T) {
+	r := newRecorder(DefaultLimits)
+	ids := r.functions(table)
+	f := r.enter(ids[0], nil)
+	f.Line(11)
+	f.Exit()
+}

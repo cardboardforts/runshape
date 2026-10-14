@@ -13,11 +13,12 @@
   ],
   "scripts": {
     "build": "npm run build -w packages/webview && npm run build -w packages/extension && npm run build -w packages/cli",
-    "test": "vitest run",
-    "typecheck": "npm run typecheck --workspaces && tsc -p recorder-ts",
+    "test": "vitest run && go -C recorder-go test ./...",
+    "typecheck": "npm run typecheck --workspaces && tsc -p recorder-ts && go -C recorder-go vet ./...",
     "test:e2e": "npm run build && npm run test:e2e -w packages/extension",
     "view-diff": "sh tools/view-diff/view-diff.sh",
-    "self-review": "sh recorder-ts/self-review.sh"
+    "self-review": "sh recorder-ts/self-review.sh",
+    "record-go": "go -C recorder-go run ./cmd/runshape-go record"
   },
   "devDependencies": {
     "typescript": "5.9.3",

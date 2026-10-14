@@ -65,6 +65,20 @@ record without xdist (`-n0`). The recorder checks for both and tells you.
 
 Then in VS Code: **Runshape: Open Runtime View**. Re-running the tests updates the view.
 
+### Go
+
+```sh
+npm run record-go -- path/to/module            # needs Go 1.22+; writes <module>/.runshape/traces
+```
+
+Each top-level `TestXxx` becomes one scenario. The module is copied and the copy instrumented,
+so your source is untouched; each run becomes `latest`, the one before it `previous`.
+
+### TypeScript (vitest)
+
+`npm run self-review -- <base> [<head>]` records Runshape's own packages at two commits; see
+`recorder-ts/vitest.record.config.ts` to point it at another project.
+
 ## Example apps
 
 `examples/` records two RealWorld backends — FastAPI unchanged, Django ported to 5.2 with a

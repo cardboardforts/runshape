@@ -1,6 +1,6 @@
 # Fixtures
 
-Real recordings of the two example apps, used by the core tests and the webview demo.
+Real recordings of the example apps, used by the tests and the webview demo.
 
 - `<app>/run/` — a trace run exactly as `examples/record.sh <app>` wrote it (the FastAPI one
   is trimmed to five of its ninety scenarios to keep the repo small). Older
@@ -20,3 +20,6 @@ Django recording as a fixture without stripping `sources`: that upstream has no 
 
 Regenerate after changing the recorder: run the example, then copy `.hexvis/traces/<run>/`
 over `<app>/run/`. The inline snapshots in `test/*.test.ts` will show what changed.
+
+- `go-shop/` — examples/go-shop recorded by recorder-go (trace format version 2, with source):
+  `npm run record-go -- -out packages/trace/test/fixtures/go-shop -run run examples/go-shop`.

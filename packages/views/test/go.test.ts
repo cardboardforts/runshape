@@ -1,0 +1,62 @@
+/**
+ * A Go service, recorded by recorder-go (examples/go-shop, recorded into the go-shop fixture):
+ * the viewer has no Go-specific code, so this is the trace format and the views working for a
+ * language they weren't written against. Its e2e tests drive the real router in process, so a
+ * request's whole path is in the recording.
+ */
+import { describe, expect, test } from "vitest";
+
+import { Phase } from "@runshape/trace";
+import { buildReplay, buildSystemGraph, StepKind } from "../src";
+import { loadFixtureRun } from "../../trace/test/fixtures";
+
+describe("a Go service", () => {
+  test("its packages and types are the boxes, and the HTTP adapter calls the domain, which calls storage", async () => {
+    const run = await loadFixtureRun("go-shop");
+    const graph = buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
+    const label = new Map(graph.nodes.map((node) => [node.id, node.label]));
+
+    expect(`${run.language} ${run.scenarios.length} tests, problems ${JSON.stringify(run.problems)}`).toBe("go 5 tests, problems []");
+    expect(graph.edges.map((edge) => `${label.get(edge.from)} -> ${label.get(edge.to)}`).sort()).toEqual([
+      "Client (tests) -> Handler",
+      "Client (tests) -> Order",
+      "Client (tests) -> internal.app",
+      "Handler -> Order",
+      "Handler -> Service",
+      "Handler -> internal.web",
+      "Service -> MemoryRepository",
+      "Service -> Order",
+      "internal.app -> internal.orders",
+      "internal.app -> internal.storage",
+      "internal.app -> internal.web",
+      // writeJSON is a function of package web, not a Handler method: it sets the status.
+      "internal.web -> statusRecorder",
+    ]);
+    // Go module paths hold dots: example.com is one segment, written escaped in Runshape's names.
+    expect(graph.nodes.find((node) => node.label === "Service")?.qualifiedName).toBe("example\\.com.shop.internal.orders.Service");
+  });
+
+  test("placing an order, replayed: in through the handler, validated by the domain, saved by storage", async () => {
+    const run = await loadFixtureRun("go-shop");
+    const scenario = run.scenarios.find((candidate) => candidate.name === "TestPlaceThenFetchAnOrder")!;
+
+    const calls = buildReplay(scenario, [Phase.Call], { collapseMiddleware: true }).filter((step) => step.kind === StepKind.Call);
+
+    expect(calls.map((step) => step.label).slice(0, 12)).toMatchInlineSnapshot(`
+      [
+        "New",
+        "NewMemoryRepository",
+        "NewService",
+        "NewHandler",
+        "Handler.ServeHTTP",
+        "Service.Place",
+        "Order.Problems",
+        "MemoryRepository.Save",
+        "writeJSON",
+        "statusRecorder.WriteHeader",
+        "Handler.ServeHTTP",
+        "Service.Get",
+      ]
+    `);
+  });
+});
