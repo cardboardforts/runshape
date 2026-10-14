@@ -85,6 +85,10 @@ A `symbol` is `{namespace, container, name, kind, ownerType}`:
   `nested` (closures, lambdas, callbacks).
 - `ownerType`: the type whose box the code is drawn in (a method's class), or `null`.
 
+The manifest's `version` decides how every entry is read: a version 2 entry naming code by
+`module`/`qualname` is refused, as is a version 2 manifest without `language` and `runtime`.
+A malformed catalog entry or scenario is skipped and reported; a malformed manifest is fatal.
+
 Segments are sent already split, so no reader parses a language's separators. Two functions are
 the same function when all three name parts match, so they must be stable across commits: no
 line numbers or addresses in them.

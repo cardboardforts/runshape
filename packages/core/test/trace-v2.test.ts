@@ -76,6 +76,47 @@ describe("trace format version 2", () => {
     expect(JSON.stringify(diffRuns(v2Before!, v2))).toBe(JSON.stringify(diffRuns(v1Before!, v1)));
   });
 
+  test("version 2 input is checked like any other: the manifest is fatal, a bad entry is skipped and named", async () => {
+    // A recording is written by whatever recorder, or whoever, committed it (docs/design.md).
+    const tampered = (edit: (path: string, data: any) => void): TraceFiles => {
+      const v2 = asVersion2(fixtureFiles("fastapi"));
+      return {
+        async readText(path) {
+          const data = JSON.parse(await v2.readText(path));
+          edit(path, data);
+          return JSON.stringify(data);
+        },
+      };
+    };
+    const firstScenario = (path: string) => path.endsWith("/scenarios/0003.json");
+
+    await expect(loadLatestRun(tampered((path, data) => path.endsWith("manifest.json") && delete data.language))).rejects.toThrowError(
+      /version 2 says which language recorded it: "language" is missing/,
+    );
+    const badCatalog = await loadLatestRun(
+      tampered((path, data) => {
+        if (path.endsWith("manifest.json")) data.catalog[0].symbol.kind = "lambda";
+      }),
+    );
+    const badScenario = await loadLatestRun(
+      tampered((path, data) => {
+        if (path.includes("/scenarios/") && firstScenario(path)) data.functions[0].symbol.namespace = "app.main";
+      }),
+    );
+    const pythonNamesInV2 = await loadLatestRun(
+      tampered((path, data) => {
+        if (path.includes("/scenarios/") && firstScenario(path)) data.functions[0] = { ...data.functions[0], symbol: undefined, module: "app.main", qualname: "f" };
+      }),
+    );
+
+    expect([badCatalog, badScenario, pythonNamesInV2].map((run) => run.problems.map((problem) => problem.replace(/^.*\/scenarios\//, "scenarios/")))).toEqual([
+      [expect.stringMatching(/^catalog entry 0 \(app\/.*\) skipped: symbol kind "lambda" is not one of function, method, constructor, initializer, nested$/)],
+      ["scenarios/0003.json: skipped, function 0: symbol namespace is not a list of strings"],
+      ["scenarios/0003.json: skipped, function 0: version 2 names code by symbol, not module and qualname"],
+    ]);
+    expect(badCatalog.catalog.length).toBe((await loadLatestRun(fixtureFiles("fastapi"))).catalog.length - 1);
+  });
+
   test("the run says which language and runtime recorded it; v1 recordings are Python", async () => {
     const { v1, v2 } = await bothVersions("fastapi");
 
