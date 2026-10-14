@@ -3,6 +3,7 @@ import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, parseA
 import { Outcome, Run } from "./model";
 import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
+import { pythonSymbol } from "./trace/parse";
 import { RULES_FILE, ZoneRules } from "./zones";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
@@ -155,10 +156,11 @@ export class ViewerSession {
       case "component":
         return { type: "component", view: buildComponentView(this.run, request.id, request.grouping) };
       case "function": {
-        const catalogEntry = this.run.catalogFunction(request.module, request.qualname);
+        const symbol = pythonSymbol(request.module, request.qualname);
+        const catalogEntry = this.run.catalogFunction(symbol);
         const source = catalogEntry ? await this.sources.readLines(catalogEntry.file) : null;
         try {
-          return { type: "function", view: buildFunctionView(this.run, request.module, request.qualname, source) };
+          return { type: "function", view: buildFunctionView(this.run, symbol, source) };
         } catch (error) {
           if (error instanceof UnknownFunctionError) return { type: "error", message: error.message };
           throw error;
@@ -231,7 +233,7 @@ export class ViewerSession {
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
         return {
           type: "functionExecutionDiff",
-          diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, request.module, request.qualname, request.phases),
+          diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, pythonSymbol(request.module, request.qualname), request.phases),
         };
       case "openSource":
       case "reload":
@@ -340,7 +342,7 @@ export class ViewerSession {
     if (lines === null) return null;
     const ranges = own
       .filter((fn) => fn.file === file)
-      .map((fn) => this.run.catalogFunction(fn.module, fn.qualname))
+      .map((fn) => this.run.catalogFunction(pythonSymbol(fn.module, fn.qualname)))
       .filter((fn) => fn !== undefined);
     const first = Math.min(...ranges.map((fn) => fn.firstLine));
     const last = Math.max(...ranges.map((fn) => fn.lastLine));

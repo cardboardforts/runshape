@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 import { Phase } from "../src/model";
 import { buildComponentView } from "../src/views/component-view";
 import { buildFunctionView, FunctionView } from "../src/views/function-view";
+import { pythonSymbol } from "../src/trace/parse";
 import { buildReplay } from "../src/views/replay";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
@@ -248,7 +249,7 @@ describe("function view", () => {
     const run = await loadFixtureRun("fastapi");
     const source = await readFixtureSource("fastapi", "app/api/dependencies/authentication.py");
 
-    const view = buildFunctionView(run, "app.api.dependencies.authentication", "_get_current_user", source);
+    const view = buildFunctionView(run, pythonSymbol("app.api.dependencies.authentication", "_get_current_user"), source);
 
     // The fixture's scenarios all send a valid token for an existing user, so neither
     // failure branch (unknown user, bad token) is reached.
@@ -283,7 +284,7 @@ describe("function view", () => {
   test("groups tests that took exactly the same path through a function", async () => {
     const run = await loadFixtureRun("django");
 
-    const view = buildFunctionView(run, "conduit.apps.authentication.backends", "JWTAuthentication.authenticate", null);
+    const view = buildFunctionView(run, pythonSymbol("conduit.apps.authentication.backends", "JWTAuthentication.authenticate"), null);
 
     expect(view.samePathGroups.map((group) => group.map((id) => id.split("::")[1]))).toMatchInlineSnapshot(`
       [

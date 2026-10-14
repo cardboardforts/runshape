@@ -1,5 +1,5 @@
 import { align, Aligned, Op } from "../align";
-import { Phase, Role, Run, Scenario, Span } from "../model";
+import { CodeSymbol, Phase, Role, Run, Scenario, Span } from "../model";
 import { FINE_GROUPING, Grouping } from "./components";
 import { buildReplay, ReplayStep, StepKind } from "./replay";
 
@@ -99,10 +99,10 @@ function callsOf(scenario: Scenario, phases: Phase[]): Call[] {
     if (!included.has(span.phase) || !PROJECT_ROLES.has(span.fn.role)) continue;
     const parent = nearestProjectAncestor(span);
     const above = parent ? paths.get(parent) : undefined;
-    const path = above ? `${above.path} > ${span.fn.qualname}` : span.fn.qualname;
+    const path = above ? `${above.path} > ${span.fn.symbol.dottedPath}` : span.fn.symbol.dottedPath;
     const depth = above ? above.depth + 1 : 0;
     paths.set(span, { path, depth });
-    calls.push({ depth, module: span.fn.module, qualname: span.fn.qualname, path });
+    calls.push({ depth, module: span.fn.symbol.dottedNamespace, qualname: span.fn.symbol.dottedPath, path });
   }
   return calls;
 }
@@ -149,19 +149,18 @@ export function diffFunctionExecution(
   beforeRun: Run,
   afterRun: Run,
   scenarioId: string,
-  module: string,
-  qualname: string,
+  symbol: CodeSymbol,
   phases: Phase[] = [Phase.Call],
 ): FunctionExecutionDiff {
   const matchedBy = beforeRun.sources !== null && afterRun.sources !== null ? "text" : "line-number";
-  const before = statementsOf(beforeRun, scenarioId, module, qualname, phases, matchedBy);
-  const after = statementsOf(afterRun, scenarioId, module, qualname, phases, matchedBy);
+  const before = statementsOf(beforeRun, scenarioId, symbol, phases, matchedBy);
+  const after = statementsOf(afterRun, scenarioId, symbol, phases, matchedBy);
   const aligned = align(before.statements, after.statements, (statement) => statement.key);
   const statements = aligned.steps.map(toStep);
   return {
     scenarioId,
-    module,
-    qualname,
+    module: symbol.dottedNamespace,
+    qualname: symbol.dottedPath,
     matchedBy,
     complete: aligned.complete,
     callsBefore: before.calls,
@@ -181,8 +180,7 @@ function toStep(entry: Aligned<Statement>): StatementStep {
 function statementsOf(
   run: Run,
   scenarioId: string,
-  module: string,
-  qualname: string,
+  symbol: CodeSymbol,
   phases: Phase[],
   matchedBy: FunctionExecutionDiff["matchedBy"],
 ): { statements: Statement[]; calls: number; file: string | null } {
@@ -192,7 +190,7 @@ function statementsOf(
   let calls = 0;
   let file: string | null = null;
   for (const span of scenario?.spans ?? []) {
-    if (!included.has(span.phase) || span.fn.module !== module || span.fn.qualname !== qualname) continue;
+    if (!included.has(span.phase) || span.fn.symbol.key !== symbol.key) continue;
     calls += 1;
     file = span.fn.file;
     if (calls > 1) statements.push({ key: CALL_SEPARATOR, text: `${CALL_SEPARATOR} call ${calls} ${CALL_SEPARATOR}`, line: null });

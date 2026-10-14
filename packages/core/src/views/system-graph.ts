@@ -149,7 +149,7 @@ class GraphBuilder {
       if (parent !== null) {
         const parentRef = componentOf(parent, this.grouping);
         if (parentRef.id !== ref.id) {
-          this.edge(parentRef, ref, scenario.nodeid, span.fn.qualname.endsWith("__init__"));
+          this.edge(parentRef, ref, scenario.nodeid, span.fn.symbol.dottedPath.endsWith("__init__"));
           if (this.isFrameworkCallIntoInboundPackage(parentRef, ref)) {
             node.calledByFramework = true;
           }
@@ -265,7 +265,7 @@ class GraphBuilder {
   }
 
   private isRouteHandler(span: Span): boolean {
-    const qualified = `${span.fn.module}.${span.fn.qualname}`;
+    const qualified = `${span.fn.symbol.dottedNamespace}.${span.fn.symbol.dottedPath}`;
     if (this.routeHandlers.has(qualified)) return true;
     // Class-based views (Django/DRF) register the class; the span is one of its methods.
     const owner = qualified.slice(0, qualified.lastIndexOf("."));
@@ -309,7 +309,7 @@ function inferZone(tally: NodeTally, profile: ArchitectureProfile, inboundPackag
  * whether there is one route module or twenty. Null when handlers share no package.
  */
 function inboundPackageOf(run: Run): string | null {
-  const projectModules = new Set(run.catalog.map((f) => f.module));
+  const projectModules = new Set(run.catalog.map((f) => f.symbol.dottedNamespace));
   const handlerPackages: string[][] = [];
   for (const route of run.topology?.routes ?? []) {
     const module = longestModulePrefix(route.handler, projectModules);

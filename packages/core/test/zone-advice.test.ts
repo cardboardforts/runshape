@@ -10,6 +10,7 @@ import { parseZoneAdvice, ZoneAdvisor, zoneFacts } from "../src/zone-advice";
 import { HexagonalZone, HEXAGONAL } from "../src/profiles";
 import { ZoneRules } from "../src/zones";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
+import { pythonSymbol } from "../src/trace/parse";
 import { buildComponentView } from "../src/views/component-view";
 import { buildSystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
@@ -93,7 +94,7 @@ describe("the source the model is shown", () => {
     const advisor = new ScriptedAdvisor('{"zone": "outbound-adapter", "reason": "r"}');
     const lines = ["from x import y", "", "class UsersRepository(", "    BaseRepository,", "):", '    """Users."""', ""];
     // Pad so the first method sits where the recording says it does.
-    const firstMethod = run.catalogFunction("app.db.repositories.users", "UsersRepository.get_user_by_email")!.firstLine;
+    const firstMethod = run.catalogFunction(pythonSymbol("app.db.repositories.users", "UsersRepository.get_user_by_email"))!.firstLine;
     while (lines.length < firstMethod - 1) lines.push("");
     const sources = { readLines: async () => [...lines, ...Array(200).fill("    pass")] };
 

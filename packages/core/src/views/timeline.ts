@@ -56,11 +56,11 @@ export function buildTimeline(scenario: Scenario, phases: Phase[] = [Phase.Call]
       startUs: span.startUs,
       endUs: Math.max(span.endUs, span.startUs),
       runs: span.runs.length > 0 ? span.runs : [[span.startUs, span.endUs]],
-      label: span.request ? `${span.request.method} ${span.request.path}` : span.fn.qualname,
+      label: span.request ? `${span.request.method} ${span.request.path}` : span.fn.symbol.dottedPath,
       componentId: componentOf(span, grouping).id,
       role: span.fn.role,
-      module: span.fn.module,
-      qualname: span.fn.qualname,
+      module: span.fn.symbol.dottedNamespace,
+      qualname: span.fn.symbol.dottedPath,
     });
   }
   const externals: TimelineMark[] = [];

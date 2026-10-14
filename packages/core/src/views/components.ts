@@ -56,24 +56,24 @@ export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): Com
   }
   if (fn.role === Role.Landmark) {
     const kind = fn.landmarkKind === null ? ComponentKind.Middleware : LANDMARK_COMPONENT_KIND[fn.landmarkKind];
-    return { id: `landmark:${kind}:${fn.qualname}`, kind, label: fn.qualname, qualifiedName: null };
+    return { id: `landmark:${kind}:${fn.symbol.dottedPath}`, kind, label: fn.symbol.dottedPath, qualifiedName: null };
   }
   if (span.obj !== null) {
     return classComponent(span.obj.className);
   }
   const owner = ownerName(span);
-  if (owner !== span.fn.module) {
+  if (owner !== span.fn.symbol.dottedNamespace) {
     return classComponent(owner);
   }
-  return { id: `module:${fn.module}`, kind: ComponentKind.Module, label: moduleLabel(fn.module), qualifiedName: fn.module };
+  return { id: `module:${fn.symbol.dottedNamespace}`, kind: ComponentKind.Module, label: moduleLabel(fn.symbol.dottedNamespace), qualifiedName: fn.symbol.dottedNamespace };
 }
 
 /** "app.db.repositories.users.UsersRepository" for a method, else the module itself. */
 function ownerName(span: Span): string {
   if (span.obj !== null) return span.obj.className;
-  const segments = span.fn.qualname.split(".");
+  const segments = span.fn.symbol.dottedPath.split(".");
   const isMethodOfClass = segments.length > 1 && segments[1] !== "<locals>";
-  return isMethodOfClass ? `${span.fn.module}.${segments[0]}` : span.fn.module;
+  return isMethodOfClass ? `${span.fn.symbol.dottedNamespace}.${segments[0]}` : span.fn.symbol.dottedNamespace;
 }
 
 function calledFromTheApp(span: Span): boolean {

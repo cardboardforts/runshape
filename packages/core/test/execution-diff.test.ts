@@ -10,6 +10,7 @@ import { describe, expect, test } from "vitest";
 import { Op } from "../src/align";
 import { Run } from "../src/model";
 import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
+import { pythonSymbol } from "../src/trace/parse";
 import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src/views/execution-diff";
 import { diffRuns } from "../src/views/run-diff";
 import { fixtureFiles } from "./fixtures";
@@ -61,7 +62,7 @@ describe("diffFunctionExecution", () => {
   test("the route now delegates: its old check is gone and the new call takes its place", async () => {
     const { before, after } = await loadRefactor();
 
-    const diff = diffFunctionExecution(before, after, CREATE, "app.api.routes.articles.articles_resource", "create_new_article");
+    const diff = diffFunctionExecution(before, after, CREATE, pythonSymbol("app.api.routes.articles.articles_resource", "create_new_article"));
 
     expect(describeStatements(diff)).toMatchInlineSnapshot(`
       [
@@ -85,9 +86,9 @@ describe("diffFunctionExecution", () => {
   test("a function that only moved matches line for line by text, though every line number changed", async () => {
     const { before, after } = await loadRefactor();
 
-    const byText = diffFunctionExecution(before, after, CREATE, "app.services.articles", "check_article_exists");
+    const byText = diffFunctionExecution(before, after, CREATE, pythonSymbol("app.services.articles", "check_article_exists"));
     const withoutSources = Object.assign(Object.create(Object.getPrototypeOf(before)), before, { sources: null });
-    const byLineNumber = diffFunctionExecution(withoutSources, after, CREATE, "app.services.articles", "check_article_exists");
+    const byLineNumber = diffFunctionExecution(withoutSources, after, CREATE, pythonSymbol("app.services.articles", "check_article_exists"));
 
     expect(byText.matchedBy).toBe("text");
     expect(describeStatements(byText)).toMatchInlineSnapshot(`
@@ -151,14 +152,14 @@ describe("diffRuns: identical lines", () => {
     const file = "app/services/articles.py";
     const withTwins = (run: Run, reached: number): Run => {
       const lines = [...(run.sources!.get(file) ?? [])];
-      const fn = run.catalog.find((f) => f.file === file && f.qualname === "check_article_exists")!;
+      const fn = run.catalog.find((f) => f.file === file && f.symbol.dottedPath === "check_article_exists")!;
       lines[fn.firstLine] = "    return None";
       lines[fn.firstLine + 2] = "    return None";
       const sources = new Map(run.sources!);
       sources.set(file, lines);
       const copy = Object.assign(Object.create(Object.getPrototypeOf(run)), run, { sources });
       for (const span of copy.scenario(CREATE)!.spans) {
-        if (span.fn.qualname === "check_article_exists") span.lines.splice(0, span.lines.length, fn.firstLine + 1 + reached);
+        if (span.fn.symbol.dottedPath === "check_article_exists") span.lines.splice(0, span.lines.length, fn.firstLine + 1 + reached);
       }
       return copy;
     };

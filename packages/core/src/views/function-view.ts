@@ -1,4 +1,4 @@
-import { CatalogFunction, Outcome, Run, Span } from "../model";
+import { CatalogFunction, CodeSymbol, Outcome, Run, Span } from "../model";
 
 /**
  * One function's source with, for every line, the scenarios (tests) whose execution passed
@@ -41,13 +41,12 @@ export class UnknownFunctionError extends Error {}
 
 export function buildFunctionView(
   run: Run,
-  module: string,
-  qualname: string,
+  symbol: CodeSymbol,
   sourceLines: string[] | null,
 ): FunctionView {
-  const target = run.catalogFunction(module, qualname);
+  const target = run.catalogFunction(symbol);
   if (target === undefined) {
-    throw new UnknownFunctionError(`${module}.${qualname} is not in the recorded catalog`);
+    throw new UnknownFunctionError(`${symbol.dottedNamespace}.${symbol.dottedPath} is not in the recorded catalog`);
   }
   const executable = executableLines(run.catalog, target);
   const lineScenarios = new Map<number, Set<string>>();
@@ -94,8 +93,8 @@ export function buildFunctionView(
   }
 
   return {
-    title: qualname,
-    module,
+    title: symbol.dottedPath,
+    module: symbol.dottedNamespace,
     file: target.file,
     firstLine: target.firstLine,
     lastLine: target.lastLine,

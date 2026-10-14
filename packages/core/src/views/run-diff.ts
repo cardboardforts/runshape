@@ -1,4 +1,4 @@
-import { Outcome, Phase, Role, Run, Scenario } from "../model";
+import { CodeSymbol, Outcome, Phase, Role, Run, Scenario } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 import { buildReplay, StepKind } from "./replay";
 import { ArchitectureProfile } from "../profiles";
@@ -85,7 +85,7 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   const scenarios: ScenarioDiff[] = [];
   // Only catalogued functions: import-time module code that happened to run mid-request
   // isn't something a reviewer can act on.
-  const catalogued = new Set([...before.catalog, ...after.catalog].map((fn) => `${fn.module}:${fn.qualname}`));
+  const catalogued = new Set([...before.catalog, ...after.catalog].map((fn) => fn.symbol.key));
   for (const id of scenarioIds) {
     const [textBefore, textAfter] = lineTexts(before, after);
     scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter));
@@ -122,7 +122,8 @@ function diffScenario(
   const functionsChanged = diffReachedLines(
     reachedLines(before, phases, sourcesBefore),
     reachedLines(after, phases, sourcesAfter),
-  ).filter((fn) => catalogued.has(`${fn.module}:${fn.qualname}`));
+    catalogued,
+  );
   const outcomeBefore = before?.outcome ?? null;
   const outcomeAfter = after?.outcome ?? null;
 
@@ -209,33 +210,39 @@ function lineTexts(before: Run, after: Run): [LineText, LineText] {
  * Lines reached per project function, keyed by what the line says (see lineTexts), so a
  * function that moved, or had code inserted above it, isn't reported as changed.
  */
-function reachedLines(scenario: Scenario | null, phases: Phase[], identify: LineText): Map<string, Map<string, number>> {
-  const reached = new Map<string, Map<string, number>>();
+function reachedLines(scenario: Scenario | null, phases: Phase[], identify: LineText): Map<string, ReachedLines> {
+  const reached = new Map<string, ReachedLines>();
   if (scenario === null) return reached;
   const included = new Set(phases);
   for (const span of scenario.spans) {
     if (!included.has(span.phase) || span.fn.role !== Role.Source) continue;
-    const key = `${span.fn.module}:${span.fn.qualname}`;
-    let lines = reached.get(key);
-    if (lines === undefined) {
-      lines = new Map();
-      reached.set(key, lines);
+    let entry = reached.get(span.fn.symbol.key);
+    if (entry === undefined) {
+      entry = { symbol: span.fn.symbol, lines: new Map() };
+      reached.set(span.fn.symbol.key, entry);
     }
-    for (const line of span.lines) lines.set(identify(span.fn.file, line, span.fn.firstLine), line);
+    for (const line of span.lines) entry.lines.set(identify(span.fn.file, line, span.fn.firstLine), line);
   }
   return reached;
 }
 
-function diffReachedLines(before: Map<string, Map<string, number>>, after: Map<string, Map<string, number>>): FunctionChange[] {
+/** A function's reached lines in one scenario: line text -> line number. */
+interface ReachedLines {
+  symbol: CodeSymbol;
+  lines: Map<string, number>;
+}
+
+function diffReachedLines(before: Map<string, ReachedLines>, after: Map<string, ReachedLines>, catalogued: Set<string>): FunctionChange[] {
   const changes: FunctionChange[] = [];
   for (const key of new Set([...before.keys(), ...after.keys()])) {
-    const was = before.get(key) ?? new Map<string, number>();
-    const now = after.get(key) ?? new Map<string, number>();
+    if (!catalogued.has(key)) continue;
+    const symbol = (after.get(key) ?? before.get(key))!.symbol;
+    const was = before.get(key)?.lines ?? new Map<string, number>();
+    const now = after.get(key)?.lines ?? new Map<string, number>();
     const linesNowReached = [...now].filter(([text]) => !was.has(text)).map(([, line]) => line).sort((a, b) => a - b);
     const linesNoLongerReached = [...was].filter(([text]) => !now.has(text)).map(([, line]) => line).sort((a, b) => a - b);
     if (linesNowReached.length + linesNoLongerReached.length === 0) continue;
-    const [module = "", qualname = ""] = key.split(":");
-    changes.push({ module, qualname, linesNowReached, linesNoLongerReached });
+    changes.push({ module: symbol.dottedNamespace, qualname: symbol.dottedPath, linesNowReached, linesNoLongerReached });
   }
   return changes.sort((a, b) => `${a.module}.${a.qualname}`.localeCompare(`${b.module}.${b.qualname}`));
 }

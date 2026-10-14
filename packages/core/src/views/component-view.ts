@@ -1,4 +1,4 @@
-import { CatalogFunction, lastSegment, Run, Span } from "../model";
+import { CatalogFunction, CodeSymbol, lastSegment, Run, Span } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 
 /** One box from the system graph opened up: its functions and how much the tests reach. */
@@ -28,6 +28,7 @@ export interface FunctionSummary {
 }
 
 interface Tally {
+  symbol: CodeSymbol;
   calls: number;
   totalUs: number;
   selfUs: number;
@@ -46,11 +47,10 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
       if (ref.id !== componentId) continue;
       label = ref.label;
       qualifiedName = ref.qualifiedName;
-      const key = `${span.fn.module}:${span.fn.qualname}`;
-      let tally = tallies.get(key);
+      let tally = tallies.get(span.fn.symbol.key);
       if (tally === undefined) {
-        tally = { calls: 0, totalUs: 0, selfUs: 0, lines: new Set(), scenarioIds: new Set() };
-        tallies.set(key, tally);
+        tally = { symbol: span.fn.symbol, calls: 0, totalUs: 0, selfUs: 0, lines: new Set(), scenarioIds: new Set() };
+        tallies.set(span.fn.symbol.key, tally);
       }
       tally.calls += 1;
       if (!insideItself(span)) {
@@ -67,19 +67,19 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
   const functions: FunctionSummary[] = [];
   const listed = new Set<string>();
   for (const fn of ownFunctions(run, qualifiedName)) {
-    listed.add(`${fn.module}:${fn.qualname}`);
-    functions.push(summarize(fn, tallies.get(`${fn.module}:${fn.qualname}`), null));
+    listed.add(fn.symbol.key);
+    functions.push(summarize(fn, tallies.get(fn.symbol.key), null));
   }
   // Methods that ran on these objects but are defined elsewhere (a base class).
-  for (const [key, tally] of tallies) {
-    if (listed.has(key)) continue;
+  for (const tally of tallies.values()) {
+    const { symbol } = tally;
+    if (listed.has(symbol.key)) continue;
     // Comprehensions, lambdas and nested defs belong to the function that contains them
     // (its function view shows their lines); they aren't methods of their own.
-    if (key.includes("<locals>")) continue;
-    const [module = "", qualname = ""] = key.split(":");
-    const fn = run.catalogFunction(module, qualname);
+    if (symbol.container.includes("<locals>")) continue;
+    const fn = run.catalogFunction(symbol);
     if (fn === undefined) continue;
-    const owner = qualname.includes(".") ? qualname.slice(0, qualname.indexOf(".")) : module;
+    const owner = symbol.container[0] ?? symbol.dottedNamespace;
     functions.push(summarize(fn, tally, owner));
   }
   return { id: componentId, label, qualifiedName, functions };
@@ -95,16 +95,16 @@ function insideItself(span: Span): boolean {
 
 function ownFunctions(run: Run, qualifiedName: string | null): CatalogFunction[] {
   if (qualifiedName === null) return [];
-  const modules = run.catalog.filter((fn) => fn.module === qualifiedName);
+  const modules = run.catalog.filter((fn) => fn.symbol.dottedNamespace === qualifiedName);
   if (modules.length > 0) {
     // A module component: its top-level functions.
-    return modules.filter((fn) => !fn.qualname.includes("."));
+    return modules.filter((fn) => !fn.symbol.dottedPath.includes("."));
   }
   const module = qualifiedName.slice(0, qualifiedName.lastIndexOf("."));
   const className = lastSegment(qualifiedName);
   return run.catalog.filter((fn) => {
-    if (fn.module !== module) return false;
-    const segments = fn.qualname.split(".");
+    if (fn.symbol.dottedNamespace !== module) return false;
+    const segments = fn.symbol.dottedPath.split(".");
     return segments.length === 2 && segments[0] === className;
   });
 }
@@ -116,9 +116,9 @@ function summarize(fn: CatalogFunction, tally: Tally | undefined, inheritedFrom:
     if (executable.has(line)) covered += 1;
   }
   return {
-    module: fn.module,
-    qualname: fn.qualname,
-    name: lastSegment(fn.qualname),
+    module: fn.symbol.dottedNamespace,
+    qualname: fn.symbol.dottedPath,
+    name: lastSegment(fn.symbol.dottedPath),
     file: fn.file,
     firstLine: fn.firstLine,
     inheritedFrom,

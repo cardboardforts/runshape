@@ -29,11 +29,37 @@ export enum Outcome {
   Unknown = "unknown",
 }
 
+/**
+ * Where a function lives, as segments the trace parser split once, so no view parses a
+ * language's separators. `key` is the identity diffs pair functions by across runs.
+ */
+export class CodeSymbol {
+  /** JSON, not a joined string: no separator can collide with a segment in any language. */
+  readonly key: string;
+
+  constructor(
+    readonly namespace: readonly string[],
+    readonly container: readonly string[],
+    readonly name: string,
+  ) {
+    this.key = JSON.stringify([namespace, container, name]);
+  }
+
+  /** Python's module name. Goes once views work on segments. */
+  get dottedNamespace(): string {
+    return this.namespace.join(".");
+  }
+
+  /** Python's qualname. Goes once views work on segments. */
+  get dottedPath(): string {
+    return [...this.container, this.name].join(".");
+  }
+}
+
 export interface FunctionInfo {
   key: string;
   role: Role;
-  module: string;
-  qualname: string;
+  symbol: CodeSymbol;
   file: string | null;
   firstLine: number;
   landmarkKind: LandmarkKind | null;
@@ -41,8 +67,7 @@ export interface FunctionInfo {
 
 export interface CatalogFunction {
   file: string;
-  module: string;
-  qualname: string;
+  symbol: CodeSymbol;
   firstLine: number;
   lastLine: number;
   lines: number[];
@@ -206,8 +231,8 @@ export class Run {
     return this.scenarios.find((s) => s.nodeid === nodeid);
   }
 
-  catalogFunction(module: string, qualname: string): CatalogFunction | undefined {
-    return this.catalog.find((f) => f.module === module && f.qualname === qualname);
+  catalogFunction(symbol: CodeSymbol): CatalogFunction | undefined {
+    return this.catalog.find((f) => f.symbol.key === symbol.key);
   }
 }
 

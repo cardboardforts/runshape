@@ -46,7 +46,7 @@ export function buildObjectGraph(scenario: Scenario): ObjectGraph {
     id: obj.id,
     componentId: classComponentId(obj.className),
     className: obj.className,
-    builtBy: obj.createdIn?.parent?.fn.qualname ?? null,
+    builtBy: obj.createdIn?.parent?.fn.symbol.dottedPath ?? null,
     seenUs: obj.seenUs,
   }));
   const wires: ObjectWire[] = [];

@@ -1,5 +1,7 @@
 import {
   BoundaryCall,
+  CatalogFunction,
+  CodeSymbol,
   FunctionInfo,
   LandmarkKind,
   ObjectInstance,
@@ -10,7 +12,7 @@ import {
   Scenario,
   Span,
 } from "../model";
-import { ManifestDto, ScenarioDto, SUPPORTED_VERSION, TRACE_FORMAT } from "./wire";
+import { CatalogFunctionDto, ManifestDto, ScenarioDto, SUPPORTED_VERSION, TRACE_FORMAT } from "./wire";
 
 export class TraceFormatError extends Error {
   constructor(readonly problems: string[]) {
@@ -57,7 +59,7 @@ export function parseRun(manifest: ManifestDto, loaded: LoadedScenario[]): Run {
     manifest.python,
     manifest.backend,
     manifest.framework,
-    manifest.catalog ?? [],
+    (manifest.catalog ?? []).map(parseCatalogFunction),
     scenarios,
     problems,
     manifest.recorder ?? null,
@@ -161,12 +163,23 @@ function parseFunction(dto: ScenarioDto["functions"][number]): FunctionInfo {
   return {
     key: dto.key,
     role: parseEnum(Role, dto.role, "role"),
-    module: dto.module,
-    qualname: dto.qualname,
+    symbol: pythonSymbol(dto.module, dto.qualname),
     file: dto.file,
     firstLine: dto.firstLine,
     landmarkKind: dto.landmarkKind === null ? null : parseEnum(LandmarkKind, dto.landmarkKind, "landmarkKind"),
   };
+}
+
+function parseCatalogFunction(dto: CatalogFunctionDto): CatalogFunction {
+  const { module, qualname, ...rest } = dto;
+  return { ...rest, symbol: pythonSymbol(module, qualname) };
+}
+
+/** "pkg.mod" + "Class.method.<locals>.inner": the only place Python's dots are taken apart. */
+export function pythonSymbol(module: string, qualname: string): CodeSymbol {
+  const path = qualname.split(".");
+  const name = path.pop() ?? "";
+  return new CodeSymbol(module.split("."), path, name);
 }
 
 function parseEnum<T extends Record<string, string>>(enumObject: T, value: string, field: string): T[keyof T] {
