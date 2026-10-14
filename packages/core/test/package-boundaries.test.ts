@@ -9,8 +9,9 @@
  * reach the domain only through @runshape/core. The TypeScript recorder stands alone: it writes
  * the trace format, it doesn't share code with the viewer.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { builtinModules } from "node:module";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
@@ -28,7 +29,10 @@ const ALLOWED: Record<string, string[]> = {
 };
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
 const DOMAIN = new Set(["packages/trace", "packages/architecture", "packages/views", "packages/core"]);
-const PLATFORM = /^(node:|vscode$|react($|-dom|\/))/;
+const NODE_BUILTINS = new Set(builtinModules);
+function isPlatform(specifier: string): boolean {
+  return specifier.startsWith("node:") || NODE_BUILTINS.has(specifier.split("/")[0]!) || /^(vscode$|react($|-dom|\/))/.test(specifier);
+}
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((name) => {
@@ -38,25 +42,34 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
-function importsOf(file: string): string[] {
-  const text = readFileSync(file, "utf8");
-  return [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/g), ...text.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((match) => match[1]!);
+/** Every module a file names: `from "x"`, `import "x"`, `import("x")`, `require("x")`, in either quote. */
+function importsOf(text: string): string[] {
+  return [...text.matchAll(/(?:\bfrom|\bimport|\brequire)\s*\(?\s*(["'])([^"'\n]+)\1/g)].map((match) => match[2]!);
 }
 
 describe("package boundaries", () => {
   test("every import points down the layering, and every package declares what it imports", () => {
     const violations: string[] = [];
+    const packages = [...readdirSync(join(ROOT, "packages")).map((name) => `packages/${name}`), "recorder-ts"];
+    for (const pkg of packages) {
+      if (existsSync(join(ROOT, pkg, "package.json")) && !(pkg in ALLOWED)) violations.push(`${pkg} is not in the layering: add it to ALLOWED`);
+    }
     for (const [pkg, allowed] of Object.entries(ALLOWED)) {
       const declared = Object.keys(JSON.parse(readFileSync(join(ROOT, pkg, "package.json"), "utf8")).dependencies ?? {});
       const used = new Set<string>();
       for (const file of sourceFiles(join(ROOT, pkg, "src"))) {
         const where = relative(ROOT, file);
-        for (const specifier of importsOf(file)) {
+        const text = readFileSync(file, "utf8");
+        if (/\bimport\s*\(\s*`/.test(text)) violations.push(`${where} imports a computed path, which can't be checked`);
+        for (const specifier of importsOf(text)) {
+          if (specifier.startsWith(".") && !resolve(dirname(file), specifier).startsWith(join(ROOT, pkg, "src"))) {
+            violations.push(`${where} reaches outside its package: ${specifier}`);
+          }
           const runshape = specifier.match(/^@runshape\/([^/]+)/)?.[1];
           if (runshape !== undefined) {
             used.add(`@runshape/${runshape}`);
             if (!allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
-          } else if (DOMAIN.has(pkg) && PLATFORM.test(specifier)) {
+          } else if (DOMAIN.has(pkg) && isPlatform(specifier)) {
             violations.push(`${where} imports ${specifier}: domain packages run on any platform`);
           }
         }

@@ -191,7 +191,7 @@ export class ViewerSession {
         return {
           type: "diff",
           diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile, moves: this.moves() }),
-          review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
+          review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, moves: this.moves() }),
         };
       }
       case "setZone": {
@@ -238,7 +238,7 @@ export class ViewerSession {
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
         const symbol = this.symbolNamed(request.symbol);
         if (symbol === null) return { type: "error", message: "That function isn't in either recording." };
-        return { type: "functionExecutionDiff", diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, symbol, request.phases) };
+        return { type: "functionExecutionDiff", diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, symbol, request.phases, this.moves()) };
       }
       case "openSource":
       case "reload":

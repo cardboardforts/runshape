@@ -76,23 +76,43 @@ const NAMED_ID_PREFIXES: Partial<Record<ComponentKind, string>> = {
   [ComponentKind.TestDouble]: "double:",
 };
 
-/** The same box under the name `rename` gives it: how a comparison follows a module or class that moved. */
-export function renamedComponent(ref: ComponentRef, rename: (name: QualifiedName) => QualifiedName): ComponentRef {
+/**
+ * How a comparison renames boxes when code moved: a module box by its module's new name, a class
+ * box by its class's. Kept apart because a module moving says nothing about one beside it.
+ */
+export interface Renaming {
+  module(name: QualifiedName): QualifiedName;
+  type(name: QualifiedName): QualifiedName;
+}
+
+/** The same box under the name `renaming` gives it. */
+export function renamedComponent(ref: ComponentRef, renaming: Renaming): ComponentRef {
   if (ref.name === null) return ref;
-  const name = rename(ref.name);
-  if (name.equals(ref.name)) return ref;
-  if (ref.kind === ComponentKind.Class) return classComponent(name);
-  if (ref.kind === ComponentKind.Module) return moduleComponent(name);
-  if (ref.kind === ComponentKind.TestDouble) return doubleComponent(name);
+  if (ref.kind === ComponentKind.Class) return renamedIfMoved(ref, renaming.type(ref.name), classComponent);
+  if (ref.kind === ComponentKind.Module) return renamedIfMoved(ref, renaming.module(ref.name), moduleComponent);
+  if (ref.kind === ComponentKind.TestDouble) return renamedIfMoved(ref, doubleOwner(ref.name, renaming), doubleComponent);
   return ref;
 }
 
 /** As renamedComponent, for a box known only by its id (a graph node, a replay step). */
-export function renamedComponentId(id: string, rename: (name: QualifiedName) => QualifiedName): string {
-  for (const prefix of Object.values(NAMED_ID_PREFIXES)) {
-    if (id.startsWith(prefix)) return `${prefix}${rename(QualifiedName.parse(id.slice(prefix.length))).text}`;
+export function renamedComponentId(id: string, renaming: Renaming): string {
+  for (const [kind, prefix] of Object.entries(NAMED_ID_PREFIXES) as [ComponentKind, string][]) {
+    if (!id.startsWith(prefix)) continue;
+    const name = QualifiedName.parse(id.slice(prefix.length));
+    const renamed = kind === ComponentKind.Module ? renaming.module(name) : kind === ComponentKind.Class ? renaming.type(name) : doubleOwner(name, renaming);
+    return `${prefix}${renamed.text}`;
   }
   return id;
+}
+
+/** A test double is named after a module or a class, whichever owned the fake code. */
+function doubleOwner(name: QualifiedName, renaming: Renaming): QualifiedName {
+  const asModule = renaming.module(name);
+  return asModule.equals(name) ? renaming.type(name) : asModule;
+}
+
+function renamedIfMoved(ref: ComponentRef, name: QualifiedName, make: (name: QualifiedName) => ComponentRef): ComponentRef {
+  return name.equals(ref.name!) ? ref : make(name);
 }
 
 function moduleComponent(module: QualifiedName): ComponentRef {

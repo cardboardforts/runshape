@@ -80,11 +80,20 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   const graphAfter = buildSystemGraph(after, { phases, grouping, rules, profile: options.profile });
   const moves = options.moves ?? detectMoves(before, after);
   // The base's boxes under head's names: a moved module is the same box, not one gone and one new.
-  const headId = (id: string) => renamedComponentId(id, moves.headName);
-  const nodesBefore = graphBefore.nodes.map((node) => ({ ...node, id: headId(node.id) }));
-  const edgesBefore = graphBefore.edges.map((edge) => ({ ...edge, id: `${headId(edge.from)}->${headId(edge.to)}`, from: headId(edge.from), to: headId(edge.to) }));
+  const headId = (id: string) => renamedComponentId(id, moves);
+  // Code merged into a box that already existed: the base's boxes that now share an id are one.
+  const nodesBefore = combined(
+    graphBefore.nodes.map((node) => ({ ...node, id: headId(node.id) })),
+    (into, node) => ({ ...into, calls: into.calls + node.calls, instances: into.instances + node.instances, scenarioIds: union(into.scenarioIds, node.scenarioIds) }),
+  );
+  const edgesBefore = combined(
+    graphBefore.edges.map((edge) => ({ ...edge, id: `${headId(edge.from)}->${headId(edge.to)}`, from: headId(edge.from), to: headId(edge.to) })),
+    (into, edge) => ({ ...into, calls: into.calls + edge.calls, scenarioIds: union(into.scenarioIds, edge.scenarioIds) }),
+  );
+  const originalNodes = new Map(graphBefore.nodes.map((node) => [headId(node.id), node]));
 
-  const nodes = mergeById(nodesBefore, graphAfter.nodes, (node, change) => ({ ...node, change }));
+  // A box only the base has keeps its own id, matching its name and label.
+  const nodes = mergeById(nodesBefore, graphAfter.nodes, (node, change) => ({ ...(change === Change.Removed ? (originalNodes.get(node.id) ?? node) : node), change }));
   const edges = mergeById(edgesBefore, graphAfter.edges, (edge, change, previous) => ({
     ...edge,
     change,
@@ -169,13 +178,13 @@ function hopsOf(scenario: Scenario | null, phases: Phase[], grouping: Grouping, 
   if (scenario === null) return hops;
   const labels = new Map<string, string>();
   for (const span of scenario.spans) {
-    const ref = renamedComponent(componentOf(span, grouping), moves.headName);
+    const ref = renamedComponent(componentOf(span, grouping), moves);
     labels.set(ref.id, ref.label);
   }
   for (const step of buildReplay(scenario, phases, grouping)) {
     if (step.kind === StepKind.Return) continue;
-    const from = renamedComponentId(step.from, moves.headName);
-    const to = step.kind === StepKind.External ? step.to.replace(/^external:/, "") : renamedComponentId(step.to, moves.headName);
+    const from = renamedComponentId(step.from, moves);
+    const to = step.kind === StepKind.External ? step.to.replace(/^external:/, "") : renamedComponentId(step.to, moves);
     hops.add(`${labels.get(from) ?? from} -> ${labels.get(to) ?? to}`);
   }
   return hops;
@@ -278,6 +287,20 @@ function differenceOfCounts(before: Map<string, number>, after: Map<string, numb
     for (let i = 0; i < -delta; i += 1) removed.push(key);
   }
   return { added: added.sort(), removed: removed.sort() };
+}
+
+/** Items sharing an id, merged with `merge`, in first-seen order. */
+function combined<T extends { id: string }>(items: T[], merge: (into: T, item: T) => T): T[] {
+  const byId = new Map<string, T>();
+  for (const item of items) {
+    const existing = byId.get(item.id);
+    byId.set(item.id, existing === undefined ? item : merge(existing, item));
+  }
+  return [...byId.values()];
+}
+
+function union(a: string[], b: string[]): string[] {
+  return [...new Set([...a, ...b])].sort();
 }
 
 function mergeById<T extends { id: string; calls: number }, R>(

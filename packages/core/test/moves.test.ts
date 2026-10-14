@@ -13,39 +13,68 @@ import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, Run, TraceFiles } from "@runshape/trace";
 import { Phase } from "@runshape/trace";
-import { buildReview, Change, detectMoves, diffExecution, diffRuns, mergeReplays, Op } from "@runshape/views";
+import { buildReview, Change, detectMoves, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "@runshape/views";
 import { fixtureFiles } from "./fixtures";
 
 const FROM = "app.services.articles";
 const TO = "app.domain.articles";
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 
-/** The recording as if app/services/articles.py had been moved to app/domain/articles.py. */
-function movedModule(files: TraceFiles, options: { keepSources: boolean } = { keepSources: true }): TraceFiles {
-  const rename = (name: string) => (name === FROM || name.startsWith(`${FROM}.`) ? TO + name.slice(FROM.length) : name);
-  const file = (path: string) => path.replace("app/services/articles.py", "app/domain/articles.py");
+/** What to change in a recording, to stage a move from real data. */
+interface Rewrite {
+  /** Whole modules renamed (the module itself and the classes in it). */
+  modules?: Record<string, string>;
+  /** Single functions moved: "module:qualname" -> new module. */
+  functions?: Record<string, string>;
+  /** Object classes renamed, by full dotted name. */
+  classes?: Record<string, string>;
+  /** Source lines rewritten in the manifest's sources: file -> line number -> new text. */
+  lines?: Record<string, Record<number, string>>;
+  keepSources?: boolean;
+}
+
+function rewritten(files: TraceFiles, rewrite: Rewrite): TraceFiles {
+  const modules = rewrite.modules ?? {};
+  const renameModule = (name: string) => modules[name] ?? name;
+  const renameDotted = (name: string) => {
+    for (const [from, to] of Object.entries(modules)) if (name.startsWith(`${from}.`)) return to + name.slice(from.length);
+    return rewrite.classes?.[name] ?? name;
+  };
+  const moveFunction = (fn: { module: string; qualname: string }) => {
+    fn.module = rewrite.functions?.[`${fn.module}:${fn.qualname}`] ?? renameModule(fn.module);
+  };
   return {
     async readText(path) {
       const data = JSON.parse(await files.readText(path));
       if (path.endsWith("manifest.json")) {
-        for (const fn of data.catalog) Object.assign(fn, { module: rename(fn.module), file: file(fn.file) });
-        if (options.keepSources) data.sources = Object.fromEntries(Object.entries(data.sources ?? {}).map(([path, lines]) => [file(path), lines]));
-        else delete data.sources;
-        for (const route of data.framework?.routes ?? []) route.handler = rename(route.handler);
+        for (const fn of data.catalog) moveFunction(fn);
+        for (const route of data.framework?.routes ?? []) route.handler = renameDotted(route.handler);
+        for (const [file, edits] of Object.entries(rewrite.lines ?? {})) {
+          for (const [line, text] of Object.entries(edits)) data.sources[file][Number(line) - 1] = text;
+        }
+        if (rewrite.keepSources === false) delete data.sources;
       } else if (path.includes("/scenarios/")) {
-        for (const fn of data.functions) Object.assign(fn, { module: rename(fn.module), file: fn.file && file(fn.file) });
-        for (const event of data.events) if (event[0] === "O") event[3] = rename(event[3]);
+        for (const fn of data.functions) moveFunction(fn);
+        for (const event of data.events) if (event[0] === "O") event[3] = renameDotted(event[3]);
       }
       return JSON.stringify(data);
     },
   };
 }
 
+const SLUG = () => fixtureFiles("fastapi-slug-refactor");
+
+/** The base as recorded, head as if app/services/articles.py had moved to app/domain/articles.py. */
 async function baseAndMoved(options?: { keepSources: boolean }): Promise<{ base: Run; head: Run }> {
-  const files = fixtureFiles("fastapi-slug-refactor");
-  const base = await loadLatestRun(files);
+  const base = await loadLatestRun(SLUG());
   if (options?.keepSources === false) (base as { sources: unknown }).sources = null;
-  return { base, head: await loadLatestRun(movedModule(files, options)) };
+  return { base, head: await loadLatestRun(rewritten(SLUG(), { modules: { [FROM]: TO }, keepSources: options?.keepSources })) };
+}
+
+/** Boxes and edges that appear or disappear between the runs: none, for a pure move. */
+function churn(base: Run, head: Run): string[] {
+  const diff = diffRuns(base, head);
+  return [...diff.nodes, ...diff.edges].filter((item) => item.change === Change.Added || item.change === Change.Removed).map((item) => `${item.change} ${item.id}`);
 }
 
 describe("moved code", () => {
@@ -98,5 +127,74 @@ describe("moved code", () => {
 
     expect(detectMoves(base, head).functions).toEqual([]);
     expect(diffRuns(base, head).scenarios.some((scenario) => scenario.change !== Change.Unchanged)).toBe(true);
+  });
+});
+
+describe("moves the first version got wrong (second-model review)", () => {
+  test("a parent namespace moving into a submodule renames only itself, not the modules beside it", async () => {
+    // BaseRepository moves from app.db.repositories into app.db.repositories.base: the users,
+    // articles, profiles and tags repositories, also under app.db.repositories, stay put.
+    const base = await loadLatestRun(rewritten(SLUG(), { modules: { "app.db.repositories.base": "app.db.repositories" } }));
+    const head = await loadLatestRun(SLUG());
+
+    expect(detectMoves(base, head).describe()).toEqual(["app.db.repositories -> app.db.repositories.base (2 functions)"]);
+    expect(churn(base, head)).toEqual([]);
+  });
+
+  test("a module merged into one that already existed is one box, with the calls of both", async () => {
+    const base = await loadLatestRun(SLUG());
+    const head = await loadLatestRun(rewritten(SLUG(), { modules: { "app.services.authentication": "app.services.jwt" } }));
+
+    const jwt = diffRuns(base, head).nodes.find((node) => node.id === "module:app.services.jwt")!;
+    expect([jwt.change, churn(base, head)]).toEqual([Change.Unchanged, []]);
+  });
+
+  test("a class moved to another module that stays is the same box", async () => {
+    const authentication = "app.api.dependencies.authentication";
+    const base = await loadLatestRun(SLUG());
+    const head = await loadLatestRun(
+      rewritten(SLUG(), {
+        functions: { [`${authentication}:RWAPIKeyHeader.__call__`]: "app.api.dependencies.database" },
+        classes: { [`${authentication}.RWAPIKeyHeader`]: "app.api.dependencies.database.RWAPIKeyHeader" },
+      }),
+    );
+
+    expect(detectMoves(base, head).describe()).toEqual([`RWAPIKeyHeader.__call__: ${authentication} -> app.api.dependencies.database`]);
+    expect(churn(base, head)).toEqual([]);
+  });
+
+  test("a function moved and edited with its module is paired as edited, so its real change shows", async () => {
+    const base = await loadLatestRun(SLUG());
+    const head = await loadLatestRun(
+      rewritten(SLUG(), { modules: { [FROM]: TO }, lines: { "app/services/articles.py": { 15: "        await articles_repo.get_article_by_slug(slug)" } } }),
+    );
+
+    const moves = detectMoves(base, head);
+    const create = diffRuns(base, head).scenarios.find((scenario) => scenario.id === CREATE)!;
+    const reviewed = buildReview(base, head).items.find((item) => item.scenarioId === CREATE)!;
+
+    expect(moves.describe()).toEqual([`${FROM} -> ${TO} (5 functions, 1 edited)`]);
+    expect(create.functionsChanged.map((fn) => `${fn.symbol.namespace}:${fn.symbol.path} +${fn.linesNowReached} -${fn.linesNoLongerReached}`)).toEqual([
+      `${TO}:check_article_exists +15 -15`,
+    ]);
+    expect([reviewed.newCalls, reviewed.goneCalls]).toEqual([[], []]);
+  });
+
+  test("a moved function's statement diff reads its base calls too", async () => {
+    const { base, head } = await baseAndMoved();
+    const moves = detectMoves(base, head);
+    const moved = head.catalog.find((fn) => fn.symbol.name === "ensure_slug_available")!.symbol;
+
+    const diff = diffFunctionExecution(base, head, CREATE, moved, [Phase.Call], moves);
+
+    expect([diff.callsBefore, diff.callsAfter, diff.statements.filter((statement) => statement.op !== Op.Same)]).toEqual([1, 1, []]);
+  });
+
+  test("a one-line body pairs only inside a namespace that moved, never on its text alone", async () => {
+    // _get_db_pool is `return request.app.state.pool`: a namesake anywhere with that body isn't a move.
+    const base = await loadLatestRun(SLUG());
+    const head = await loadLatestRun(rewritten(SLUG(), { functions: { "app.api.dependencies.database:_get_db_pool": "app.services.jwt" } }));
+
+    expect(detectMoves(base, head).functions).toEqual([]);
   });
 });

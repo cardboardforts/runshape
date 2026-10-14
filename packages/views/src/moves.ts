@@ -1,51 +1,74 @@
+import { Renaming } from "@runshape/architecture";
 import { CatalogFunction, CodeSymbol, QualifiedName, Run } from "@runshape/trace";
 
-/** The same function under another name in head: moved, not changed. */
+/** The same function under another name in head: moved, and maybe edited on the way. */
 export interface FunctionMove {
   from: CodeSymbol;
   to: CodeSymbol;
+  /** Paired by name inside a moved namespace, its text differs: the comparison shows how. */
+  edited: boolean;
 }
 
-/** A namespace gone from head whose moved functions all went to one new namespace. */
+/** A namespace gone from head whose moved functions all went to one other namespace. */
 export interface NamespaceMove {
   from: QualifiedName;
   to: QualifiedName;
 }
 
-/** What moved between two recordings, and how to read the base's names as head's. */
-export class Moves {
+/** A class gone from head whose methods all moved to one class elsewhere. */
+export interface TypeMove {
+  from: QualifiedName;
+  to: QualifiedName;
+}
+
+/**
+ * What moved between two recordings, and how to read the base's names as head's. A name is
+ * renamed only when it is exactly a moved namespace or type: moving app.db.repositories says
+ * nothing about app.db.repositories.users beside it.
+ */
+export class Moves implements Renaming {
   private readonly headSymbols: Map<string, CodeSymbol>;
+  private readonly headNamespaces: Map<string, QualifiedName>;
+  private readonly headTypes: Map<string, QualifiedName>;
 
   constructor(
     readonly functions: FunctionMove[],
     readonly namespaces: NamespaceMove[],
+    readonly types: TypeMove[],
   ) {
     this.headSymbols = new Map(functions.map(({ from, to }) => [from.key, to]));
+    this.headNamespaces = new Map(namespaces.map(({ from, to }) => [from.key, to]));
+    this.headTypes = new Map(types.map(({ from, to }) => [from.key, to]));
   }
 
   static none(): Moves {
-    return new Moves([], []);
+    return new Moves([], [], []);
   }
 
   /** A base CodeSymbol.key as head names that function. */
   headKey = (baseKey: string): string => this.headSymbols.get(baseKey)?.key ?? baseKey;
 
-  /** A base module or class name as head names it. */
-  headName = (name: QualifiedName): QualifiedName => {
-    for (const { from, to } of this.namespaces) {
-      if (from.equals(name) || from.holds(name)) return new QualifiedName([...to.segments, ...name.segments.slice(from.segments.length)]);
-    }
-    return name;
+  /** A base module's name as head names it. */
+  module = (name: QualifiedName): QualifiedName => this.headNamespaces.get(name.key) ?? name;
+
+  /** A base class's name as head names it: its own move, or its module's. */
+  type = (name: QualifiedName): QualifiedName => {
+    const moved = this.headTypes.get(name.key);
+    if (moved !== undefined) return moved;
+    const namespace = name.parent();
+    const movedNamespace = namespace === null ? undefined : this.headNamespaces.get(namespace.key);
+    return movedNamespace === undefined ? name : new QualifiedName([...movedNamespace.segments, name.last]);
   };
 
   /** One line per namespace that moved, one per function that moved on its own. */
   describe(): string[] {
     const lines = this.namespaces.map(({ from, to }) => {
-      const count = this.functions.filter((move) => move.from.namespaceName.equals(from)).length;
-      return `${from.text} -> ${to.text} (${count} function${count === 1 ? "" : "s"})`;
+      const moved = this.functions.filter((move) => move.from.namespaceName.equals(from));
+      const edited = moved.filter((move) => move.edited).length;
+      return `${from.text} -> ${to.text} (${moved.length} function${moved.length === 1 ? "" : "s"}${edited > 0 ? `, ${edited} edited` : ""})`;
     });
     for (const { from, to } of this.functions) {
-      if (this.namespaces.some((move) => move.from.equals(from.namespaceName))) continue;
+      if (this.headNamespaces.has(from.namespaceName.key)) continue;
       lines.push(`${from.localName.text}: ${from.namespaceName.text} -> ${to.namespaceName.text}`);
     }
     return lines;
@@ -53,45 +76,91 @@ export class Moves {
 }
 
 /**
- * Pairs each function only the base has with one only head has, when they share a name within
- * their namespace, a kind and their source text, and no other function shares all three. Needs
- * both recordings' source: without it, a move and a rewrite look alike, and nothing is paired.
+ * Needs both recordings' source: without it a move and a rewrite look alike, and nothing pairs.
+ *
+ * 1. A function only the base has pairs with one only head has when they share their name within
+ *    the namespace, their kind and their source text, and nothing else shares all three. Bodies
+ *    of a line or two (`pass`, `return None`) are too common to pair on text alone.
+ * 2. A namespace moved when it's gone from head and those pairs all went to one namespace.
+ * 3. Inside a moved namespace, the functions left over pair by name and kind: moved and edited,
+ *    so the comparison shows their real change rather than a function gone and a namesake new.
+ * 4. A class moved when it's gone from head and its paired methods all went to one class.
  */
 export function detectMoves(base: Run, head: Run): Moves {
   if (base.sources === null || head.sources === null) return Moves.none();
   const baseKeys = new Set(base.catalog.map((fn) => fn.symbol.key));
   const headKeys = new Set(head.catalog.map((fn) => fn.symbol.key));
-  const gone = groupBy(base.catalog.filter((fn) => !headKeys.has(fn.symbol.key)), (fn) => signature(base, fn));
-  const added = groupBy(head.catalog.filter((fn) => !baseKeys.has(fn.symbol.key)), (fn) => signature(head, fn));
-
+  const gone = base.catalog.filter((fn) => !headKeys.has(fn.symbol.key));
+  const added = head.catalog.filter((fn) => !baseKeys.has(fn.symbol.key));
+  const paired = new Set<CatalogFunction>();
   const functions: FunctionMove[] = [];
-  for (const [key, candidates] of gone) {
-    const targets = added.get(key);
-    if (candidates.length === 1 && targets?.length === 1) functions.push({ from: candidates[0]!.symbol, to: targets[0]!.symbol });
+  const pair = (from: CatalogFunction, to: CatalogFunction, edited: boolean) => {
+    functions.push({ from: from.symbol, to: to.symbol, edited });
+    paired.add(from).add(to);
+  };
+
+  const byText = (run: Run, fns: CatalogFunction[]) => groupBy(fns.filter((fn) => !trivial(run, fn)), (fn) => JSON.stringify([fn.symbol.localName.key, fn.symbol.kind, text(run, fn)]));
+  const addedByText = byText(head, added);
+  for (const [key, candidates] of byText(base, gone)) {
+    const targets = addedByText.get(key);
+    if (candidates.length === 1 && targets?.length === 1) pair(candidates[0]!, targets[0]!, false);
   }
 
-  const headNamespaces = new Set(head.catalog.map((fn) => fn.symbol.namespaceName.key));
-  const destinations = new Map<string, { from: QualifiedName; to: Map<string, QualifiedName> }>();
-  for (const { from, to } of functions) {
-    const entry = destinations.get(from.namespaceName.key) ?? { from: from.namespaceName, to: new Map() };
-    entry.to.set(to.namespaceName.key, to.namespaceName);
-    destinations.set(from.namespaceName.key, entry);
+  const namespaces = soleDestinations(
+    functions.map(({ from, to }) => ({ from: from.namespaceName, to: to.namespaceName })),
+    new Set(head.catalog.map((fn) => fn.symbol.namespaceName.key)),
+  );
+
+  for (const { from, to } of namespaces) {
+    const left = gone.filter((fn) => !paired.has(fn) && fn.symbol.namespaceName.equals(from));
+    const targets = groupBy(added.filter((fn) => !paired.has(fn) && fn.symbol.namespaceName.equals(to)), (fn) => JSON.stringify([fn.symbol.localName.key, fn.symbol.kind]));
+    for (const [key, candidates] of groupBy(left, (fn) => JSON.stringify([fn.symbol.localName.key, fn.symbol.kind]))) {
+      const target = targets.get(key);
+      if (candidates.length === 1 && target?.length === 1) pair(candidates[0]!, target[0]!, text(base, candidates[0]!) !== text(head, target[0]!));
+    }
   }
-  const namespaces: NamespaceMove[] = [];
-  for (const { from, to } of destinations.values()) {
-    if (to.size === 1 && !headNamespaces.has(from.key)) namespaces.push({ from, to: [...to.values()][0]! });
-  }
-  return new Moves(functions, namespaces);
+
+  const headOwners = new Set(head.catalog.filter((fn) => fn.symbol.ownerType !== null).map((fn) => fn.symbol.owner.key));
+  const types = soleDestinations(
+    functions.filter(({ from, to }) => from.ownerType !== null && to.ownerType !== null).map(({ from, to }) => ({ from: from.owner, to: to.owner })),
+    headOwners,
+  );
+
+  const order = new Map(base.catalog.map((fn, index) => [fn.symbol.key, index]));
+  functions.sort((a, b) => order.get(a.from.key)! - order.get(b.from.key)!);
+  return new Moves(functions, namespaces, types);
 }
 
-/** What has to match for two functions to be the same code: name within the namespace, kind, text. */
-function signature(run: Run, fn: CatalogFunction): string {
+/** Names gone from head (not in `stillThere`) whose pairs all point to one other name. */
+function soleDestinations(pairs: { from: QualifiedName; to: QualifiedName }[], stillThere: Set<string>): { from: QualifiedName; to: QualifiedName }[] {
+  const destinations = new Map<string, { from: QualifiedName; to: Map<string, QualifiedName> }>();
+  for (const { from, to } of pairs) {
+    if (from.equals(to)) continue;
+    const entry = destinations.get(from.key) ?? { from, to: new Map() };
+    entry.to.set(to.key, to);
+    destinations.set(from.key, entry);
+  }
+  return [...destinations.values()].filter(({ from, to }) => to.size === 1 && !stillThere.has(from.key)).map(({ from, to }) => ({ from, to: [...to.values()][0]! }));
+}
+
+function lines(run: Run, fn: CatalogFunction): string[] {
   const text: string[] = [];
   for (let line = fn.firstLine; line <= fn.lastLine; line += 1) text.push(run.sourceLine(fn.file, line)?.trim() ?? "");
-  return JSON.stringify([fn.symbol.localName.key, fn.symbol.kind, text]);
+  return text;
 }
 
-/** Groups in first-seen order, so moves are listed in catalog order. */
+function text(run: Run, fn: CatalogFunction): string {
+  return lines(run, fn).join("\n");
+}
+
+/** Its declaration and at most one line besides: common enough that equal text proves nothing. */
+const TRIVIAL_LINE_COUNT = 2;
+
+function trivial(run: Run, fn: CatalogFunction): boolean {
+  return lines(run, fn).filter((line) => line !== "").length <= TRIVIAL_LINE_COUNT;
+}
+
+/** Groups in first-seen order. */
 function groupBy<T>(items: T[], keyOf: (item: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) groups.set(keyOf(item), [...(groups.get(keyOf(item)) ?? []), item]);

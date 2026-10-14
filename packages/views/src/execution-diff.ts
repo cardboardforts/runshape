@@ -76,7 +76,7 @@ export function mergeReplays(
 ): MergedReplayStep[] {
   const hopKey = (step: ReplayStep) => `${step.kind}|${step.from}|${step.to}|${step.kind === StepKind.External ? step.label : ""}`;
   // The base's boxes under head's names, so a moved module's hops are the same hops.
-  const headId = (id: string) => renamedComponentId(id, moves.headName);
+  const headId = (id: string) => renamedComponentId(id, moves);
   // A return step's edge keeps the call's direction, so each end of the edge id is renamed in place.
   const beforeSteps = buildReplay(before, phases, grouping).map((step) => ({
     ...step,
@@ -180,10 +180,12 @@ export function diffFunctionExecution(
   scenarioId: string,
   symbol: CodeSymbol,
   phases: Phase[] = [Phase.Call],
+  moves: Moves = Moves.none(),
 ): FunctionExecutionDiff {
   const matchedBy = beforeRun.sources !== null && afterRun.sources !== null ? "text" : "line-number";
-  const before = statementsOf(beforeRun, scenarioId, symbol, phases, matchedBy);
-  const after = statementsOf(afterRun, scenarioId, symbol, phases, matchedBy);
+  // `symbol` is head's name for the function; the base may have run it under its old one.
+  const before = statementsOf(beforeRun, scenarioId, symbol, phases, matchedBy, moves.headKey);
+  const after = statementsOf(afterRun, scenarioId, symbol, phases, matchedBy, (key) => key);
   const aligned = align(before.statements, after.statements, (statement) => statement.key);
   const statements = aligned.steps.map(toStep);
   return {
@@ -211,6 +213,7 @@ function statementsOf(
   symbol: CodeSymbol,
   phases: Phase[],
   matchedBy: FunctionExecutionDiff["matchedBy"],
+  keyOf: (key: string) => string,
 ): { statements: Statement[]; calls: number; file: string | null } {
   const scenario = run.scenario(scenarioId);
   const included = new Set(phases);
@@ -218,7 +221,7 @@ function statementsOf(
   let calls = 0;
   let file: string | null = null;
   for (const span of scenario?.spans ?? []) {
-    if (!included.has(span.phase) || span.fn.symbol.key !== symbol.key) continue;
+    if (!included.has(span.phase) || keyOf(span.fn.symbol.key) !== symbol.key) continue;
     calls += 1;
     file = span.fn.file;
     if (calls > 1) statements.push({ key: CALL_SEPARATOR, text: `${CALL_SEPARATOR} call ${calls} ${CALL_SEPARATOR}`, line: null });
