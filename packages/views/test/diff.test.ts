@@ -7,7 +7,7 @@
 import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
-import { Change, diffRuns } from "@runshape/views";
+import { Change, diffRuns } from "../src";
 import { fixtureFiles } from "../../trace/test/fixtures";
 
 async function loadFeedFix() {

@@ -12,8 +12,8 @@ import { Run } from "@runshape/trace";
 import { loadLatestRun, loadPreviousRun, TraceFiles } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
 import { ManifestDto, ScenarioDto } from "@runshape/trace";
-import { diffRuns } from "@runshape/views";
-import { buildSystemGraph } from "@runshape/views";
+import { diffRuns } from "../src";
+import { buildSystemGraph } from "../src";
 import { FixtureApp, fixtureFiles } from "../../trace/test/fixtures";
 
 /** A v1 trace directory, served as v2: what a recorder writing v2 would have produced. */

@@ -6,11 +6,11 @@
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/trace";
-import { buildComponentView } from "@runshape/views";
-import { buildFunctionView, FunctionView } from "@runshape/views";
+import { buildComponentView } from "../src";
+import { buildFunctionView, FunctionView } from "../src";
 import { pythonSymbol } from "@runshape/trace";
-import { buildReplay } from "@runshape/views";
-import { buildSystemGraph, SystemGraph } from "@runshape/views";
+import { buildReplay } from "../src";
+import { buildSystemGraph, SystemGraph } from "../src";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 function describeGraph(graph: SystemGraph): string {

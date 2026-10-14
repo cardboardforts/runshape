@@ -6,8 +6,8 @@ import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { Outcome } from "@runshape/trace";
-import { Change } from "@runshape/views";
-import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "@runshape/views";
+import { Change } from "../src";
+import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src";
 import { FixtureApp, fixtureFiles } from "../../trace/test/fixtures";
 
 async function review(app: FixtureApp) {

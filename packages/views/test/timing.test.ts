@@ -7,8 +7,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildComponentView } from "@runshape/views";
-import { formatMicros } from "@runshape/views";
+import { buildComponentView } from "../src";
+import { formatMicros } from "../src";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("time per function", () => {

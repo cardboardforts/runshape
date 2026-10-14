@@ -79,4 +79,26 @@ describe("package boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  test("a package's tests reach only its own source, the packages below it, and trace's fixtures", () => {
+    // So each package's tests run on their own: a views test importing core would tie them.
+    const violations: string[] = [];
+    const fixtures = join(ROOT, "packages", "trace", "test");
+    for (const [pkg, allowed] of Object.entries(ALLOWED)) {
+      const tests = join(ROOT, pkg, "test");
+      if (!existsSync(tests)) continue;
+      for (const file of sourceFiles(tests).filter((path) => !path.includes(`${join("test", "fixtures")}${"/"}`))) {
+        const where = relative(ROOT, file);
+        for (const specifier of importsOf(readFileSync(file, "utf8"))) {
+          const runshape = specifier.match(/^@runshape\/([^/]+)/)?.[1];
+          if (runshape !== undefined && !allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
+          if (!specifier.startsWith(".")) continue;
+          const target = resolve(dirname(file), specifier);
+          if (!target.startsWith(join(ROOT, pkg) + "/") && !target.startsWith(fixtures + "/")) violations.push(`${where} reaches outside its package: ${specifier}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
 });

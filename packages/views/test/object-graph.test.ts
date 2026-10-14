@@ -5,9 +5,9 @@
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/trace";
-import { aggregateWiring, buildObjectGraph } from "@runshape/views";
-import { buildReplay } from "@runshape/views";
-import { buildSystemGraph } from "@runshape/views";
+import { aggregateWiring, buildObjectGraph } from "../src";
+import { buildReplay } from "../src";
+import { buildSystemGraph } from "../src";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";

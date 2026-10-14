@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { align, MAX_EDIT_DISTANCE, Op } from "@runshape/views";
+import { align, MAX_EDIT_DISTANCE, Op } from "../src";
 
 const show = (before: string, after: string) =>
   align([...before], [...after], (c) => c)

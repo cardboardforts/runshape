@@ -7,13 +7,13 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Op } from "@runshape/views";
-import { Run } from "@runshape/trace";
+import { Op } from "../src";
+import { CodeSymbol, FunctionInfo, Phase, Role, Run, Span, SymbolKind } from "@runshape/trace";
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
-import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "@runshape/views";
-import { diffRuns } from "@runshape/views";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src";
+import { diffRuns } from "../src";
+import { fixtureFiles, loadFixtureRun } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 
@@ -167,5 +167,36 @@ describe("diffRuns: identical lines", () => {
     const changed = diffRuns(withTwins(before, 0), withTwins(after, 2)).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
 
     expect(changed.find((fn) => fn.symbol.path === "check_article_exists")).toBeDefined();
+  });
+});
+
+describe("functions are told apart by symbol", () => {
+  test("two functions with the same name in different modules stay apart", async () => {
+    // Real: the FastAPI example's tests define test_frw_validation_error_format in two modules.
+    const run = await loadFixtureRun("fastapi");
+    const modules = ["tests.test_api.test_errors.test_422_error", "tests.test_api.test_errors.test_error"];
+    expect(modules.map((module) => run.catalogFunction(pythonSymbol(module, "test_frw_validation_error_format").key)?.file)).toEqual([
+      "tests/test_api/test_errors/test_422_error.py",
+      "tests/test_api/test_errors/test_error.py",
+    ]);
+
+    // Neither runs in a recorded scenario, so for the execution diff, plant a namesake of
+    // check_article_exists from another module in the "after" recording.
+    const files = fixtureFiles("fastapi-slug-refactor");
+    const before = (await loadPreviousRun(files))!;
+    const after = await loadLatestRun(files);
+    const create = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
+    const calls = (symbol: CodeSymbol) => {
+      const diff = diffFunctionExecution(before, after, create, symbol);
+      return `${diff.callsBefore} -> ${diff.callsAfter}`;
+    };
+    const real = after.catalog.find((fn) => fn.symbol.localName.text === "check_article_exists")!.symbol;
+    const realCalls = calls(real);
+
+    const namesake = new CodeSymbol(["app", "legacy", "articles"], [], "check_article_exists", SymbolKind.Function, null);
+    const fn: FunctionInfo = { role: Role.Source, symbol: namesake, file: "app/legacy/articles.py", firstLine: 1, landmarkKind: null };
+    after.scenario(create)!.spans.push(new Span(1_000_000, fn, null, null, Phase.Call, 0, 1));
+
+    expect({ real: calls(real), namesake: calls(namesake) }).toEqual({ real: realCalls, namesake: "0 -> 1" });
   });
 });
