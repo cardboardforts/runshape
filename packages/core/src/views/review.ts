@@ -1,5 +1,5 @@
 import { Op } from "../align";
-import { Outcome, Phase, Run } from "../model";
+import { Outcome, Phase, Run, SymbolKind } from "../model";
 import { ZoneRules } from "../zones";
 import { FINE_GROUPING, Grouping } from "./components";
 import { diffExecution } from "./execution-diff";
@@ -65,7 +65,6 @@ export interface ReviewSummary {
   items: ReviewItem[];
 }
 
-const IMPORT_TIME = "<module>";
 const FAILING = new Set([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
 
 export function buildReview(
@@ -90,9 +89,9 @@ export function buildReview(
       aligned = execution.complete;
       // Module bodies run at import time, when whichever test happens to import first pays
       // for it: not something this test chose to do.
-      const meaningful = execution.calls.filter((c) => c.qualname !== IMPORT_TIME);
-      newCalls = unique(meaningful.filter((c) => c.op === Op.Added && !c.reparented).map((c) => c.qualname));
-      goneCalls = unique(meaningful.filter((c) => c.op === Op.Removed && !c.reparented).map((c) => c.qualname));
+      const meaningful = execution.calls.filter((c) => c.symbol.kind !== SymbolKind.Initializer);
+      newCalls = unique(meaningful.filter((c) => c.op === Op.Added && !c.reparented).map((c) => c.symbol.path));
+      goneCalls = unique(meaningful.filter((c) => c.op === Op.Removed && !c.reparented).map((c) => c.symbol.path));
       movedCalls = execution.calls.filter((c) => c.op === Op.Added && c.reparented).length;
     }
     const category = reviewCategoryOf(scenario.change, scenario.outcomeBefore, scenario.outcomeAfter);
@@ -108,7 +107,7 @@ export function buildReview(
       queriesAdded: scenario.statementsAdded,
       queriesRemoved: scenario.statementsRemoved,
       // A function that is new or gone already says its lines changed.
-      changedPaths: scenario.functionsChanged.map((fn) => fn.qualname).filter((name) => !newCalls.includes(name) && !goneCalls.includes(name)),
+      changedPaths: scenario.functionsChanged.map((fn) => fn.symbol.path).filter((name) => !newCalls.includes(name) && !goneCalls.includes(name)),
       weight:
         newCalls.length * 3 + goneCalls.length * 3 + scenario.statementsAdded.length * 2 + scenario.statementsRemoved.length * 2 +
         scenario.functionsChanged.length + movedCalls,

@@ -5,6 +5,7 @@ export * from "./trace/load";
 export * from "./views/components";
 export * from "./views/system-graph";
 export * from "./views/component-view";
+export * from "./views/function-ref";
 export * from "./views/function-view";
 export * from "./views/replay";
 export * from "./session";

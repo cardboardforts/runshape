@@ -94,7 +94,7 @@ describe("the source the model is shown", () => {
     const advisor = new ScriptedAdvisor('{"zone": "outbound-adapter", "reason": "r"}');
     const lines = ["from x import y", "", "class UsersRepository(", "    BaseRepository,", "):", '    """Users."""', ""];
     // Pad so the first method sits where the recording says it does.
-    const firstMethod = run.catalogFunction(pythonSymbol("app.db.repositories.users", "UsersRepository.get_user_by_email"))!.firstLine;
+    const firstMethod = run.catalogFunction(pythonSymbol("app.db.repositories.users", "UsersRepository.get_user_by_email").key)!.firstLine;
     while (lines.length < firstMethod - 1) lines.push("");
     const sources = { readLines: async () => [...lines, ...Array(200).fill("    pass")] };
 

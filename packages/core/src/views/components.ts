@@ -56,7 +56,8 @@ export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): Com
   }
   if (fn.role === Role.Landmark) {
     const kind = fn.landmarkKind === null ? ComponentKind.Middleware : LANDMARK_COMPONENT_KIND[fn.landmarkKind];
-    return { id: `landmark:${kind}:${fn.symbol.dottedPath}`, kind, label: fn.symbol.dottedPath, name: null };
+    const name = fn.symbol.localName.text;
+    return { id: `landmark:${kind}:${name}`, kind, label: name, name: null };
   }
   if (span.obj !== null) {
     return classComponent(span.obj.type);

@@ -25,14 +25,14 @@ export function FunctionPanel({ view, selectedScenario, onSelectScenario, onOpen
 
   return (
     <section className="panel function-panel">
-      <h2>{view.title}</h2>
+      <h2>{view.symbol.path}</h2>
       <p className="muted mono">
         {view.file}:{view.firstLine} · {reached}/{view.executableLineCount} lines reached by {view.scenarios.length} test
         {view.scenarios.length === 1 ? "" : "s"}
         {hidden > 0 ? ` (showing ${MAX_WIRES} wires)` : ""}
       </p>
 
-      <div className="code" role="table" aria-label={`Source of ${view.title}`}>
+      <div className="code" role="table" aria-label={`Source of ${view.symbol.path}`}>
         {view.lines.map((line, index) => (
           <div
             key={line.number}

@@ -1,4 +1,5 @@
 import { CatalogFunction, CodeSymbol, Outcome, Run, Span } from "../model";
+import { FunctionRef, functionRef } from "./function-ref";
 
 /**
  * One function's source with, for every line, the scenarios (tests) whose execution passed
@@ -6,8 +7,7 @@ import { CatalogFunction, CodeSymbol, Outcome, Run, Span } from "../model";
  * that took exactly the same path are candidates for consolidation.
  */
 export interface FunctionView {
-  title: string;
-  module: string;
+  symbol: FunctionRef;
   file: string;
   firstLine: number;
   lastLine: number;
@@ -44,9 +44,9 @@ export function buildFunctionView(
   symbol: CodeSymbol,
   sourceLines: string[] | null,
 ): FunctionView {
-  const target = run.catalogFunction(symbol);
+  const target = run.catalogFunction(symbol.key);
   if (target === undefined) {
-    throw new UnknownFunctionError(`${symbol.dottedNamespace}.${symbol.dottedPath} is not in the recorded catalog`);
+    throw new UnknownFunctionError(`${symbol.namespaceName.text}.${symbol.localName.text} is not in the recorded catalog`);
   }
   const executable = executableLines(run.catalog, target);
   const lineScenarios = new Map<number, Set<string>>();
@@ -93,8 +93,7 @@ export function buildFunctionView(
   }
 
   return {
-    title: symbol.dottedPath,
-    module: symbol.dottedNamespace,
+    symbol: functionRef(symbol),
     file: target.file,
     firstLine: target.firstLine,
     lastLine: target.lastLine,

@@ -17,7 +17,7 @@ import {
   ComponentView,
   ComponentWiring,
   ObjectGraph,
-  FunctionSummary,
+  FunctionRef,
   FunctionView,
   GraphNode,
   Grouping,
@@ -350,7 +350,7 @@ export function App({ host }: { host: Host }) {
   };
   const openCall = (call: CallStep) =>
     selected !== null &&
-    host.post({ type: "functionExecutionDiff", scenarioId: selected, module: call.module, qualname: call.qualname, phases });
+    host.post({ type: "functionExecutionDiff", scenarioId: selected, symbol: call.symbol.key, phases });
   const replayChange = () =>
     execution &&
     selected !== null &&
@@ -365,7 +365,7 @@ export function App({ host }: { host: Host }) {
   const componentNode = detail.component ? (displayed?.nodes.find((node) => node.id === detail.component?.id) ?? null) : null;
   const selectedDiff = compare && diff ? (diff.scenarios.find((scenario) => scenario.id === selected) ?? null) : null;
   const openComponent = (node: GraphNode) => host.post({ type: "component", id: node.id, grouping });
-  const openFunction = (fn: Pick<FunctionSummary, "module" | "qualname">) => host.post({ type: "function", module: fn.module, qualname: fn.qualname });
+  const openFunction = (fn: { symbol: FunctionRef }) => host.post({ type: "function", symbol: fn.symbol.key });
   const openSource = (file: string, line: number) => host.post({ type: "openSource", file, line });
   const startReplay = (scenarioId: string) => host.post({ type: "replay", scenarioId, phases, grouping });
   const openTimeline = (scenarioId: string) => {
@@ -600,7 +600,7 @@ export function App({ host }: { host: Host }) {
               timeline={shownTimeline}
               scenarioName={summary.scenarios.find((s) => s.id === shownTimeline.scenarioId)?.name ?? shownTimeline.scenarioId}
               colorOf={zoneColorOf}
-              onOpenFunction={(module, qualname) => openFunction({ module, qualname })}
+              onOpenFunction={(symbol) => openFunction({ symbol })}
             />
           ) : executionFn && selectedDiff ? (
             <>

@@ -1,5 +1,6 @@
 import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span, SymbolKind } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
+import { FunctionRef, functionRef } from "./function-ref";
 
 /** One box from the system graph opened up: its functions and how much the tests reach. */
 export interface ComponentView {
@@ -10,8 +11,7 @@ export interface ComponentView {
 }
 
 export interface FunctionSummary {
-  module: string;
-  qualname: string;
+  symbol: FunctionRef;
   name: string;
   file: string;
   firstLine: number;
@@ -77,9 +77,9 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
     // Comprehensions, lambdas and nested defs belong to the function that contains them
     // (its function view shows their lines); they aren't methods of their own.
     if (symbol.kind === SymbolKind.Nested) continue;
-    const fn = run.catalogFunction(symbol);
+    const fn = run.catalogFunction(symbol.key);
     if (fn === undefined) continue;
-    const owner = symbol.container[0] ?? symbol.dottedNamespace;
+    const owner = symbol.ownerType ?? symbol.namespaceName.text;
     functions.push(summarize(fn, tally, owner));
   }
   return { id: componentId, label, qualifiedName: name?.text ?? null, functions };
@@ -112,8 +112,7 @@ function summarize(fn: CatalogFunction, tally: Tally | undefined, inheritedFrom:
     if (executable.has(line)) covered += 1;
   }
   return {
-    module: fn.symbol.dottedNamespace,
-    qualname: fn.symbol.dottedPath,
+    symbol: functionRef(fn.symbol),
     name: fn.symbol.name,
     file: fn.file,
     firstLine: fn.firstLine,

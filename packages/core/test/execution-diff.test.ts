@@ -39,7 +39,7 @@ describe("diffExecution", () => {
     expect(
       diff.calls
         .filter((call) => call.op !== Op.Same)
-        .map((call) => `${mark[call.op]}${call.reparented ? "↪" : " "} ${"  ".repeat(call.depth)}${call.qualname}`),
+        .map((call) => `${mark[call.op]}${call.reparented ? "↪" : " "} ${"  ".repeat(call.depth)}${call.symbol.path}`),
     )
       .toMatchInlineSnapshot(`
         [
@@ -133,7 +133,7 @@ describe("diffRuns on the same refactor", () => {
 
     // check_article_exists moved down four lines and is absent; get_slug_for_article's one
     // statement really did change (it now normalises the title first).
-    expect(changed.map((fn) => `${fn.qualname}: +${fn.linesNowReached.length} −${fn.linesNoLongerReached.length}`)).toMatchInlineSnapshot(`
+    expect(changed.map((fn) => `${fn.symbol.path}: +${fn.linesNowReached.length} −${fn.linesNoLongerReached.length}`)).toMatchInlineSnapshot(`
       [
         "create_new_article: +2 −2",
         "_normalize_title: +1 −0",
@@ -152,20 +152,20 @@ describe("diffRuns: identical lines", () => {
     const file = "app/services/articles.py";
     const withTwins = (run: Run, reached: number): Run => {
       const lines = [...(run.sources!.get(file) ?? [])];
-      const fn = run.catalog.find((f) => f.file === file && f.symbol.dottedPath === "check_article_exists")!;
+      const fn = run.catalog.find((f) => f.file === file && f.symbol.localName.text === "check_article_exists")!;
       lines[fn.firstLine] = "    return None";
       lines[fn.firstLine + 2] = "    return None";
       const sources = new Map(run.sources!);
       sources.set(file, lines);
       const copy = Object.assign(Object.create(Object.getPrototypeOf(run)), run, { sources });
       for (const span of copy.scenario(CREATE)!.spans) {
-        if (span.fn.symbol.dottedPath === "check_article_exists") span.lines.splice(0, span.lines.length, fn.firstLine + 1 + reached);
+        if (span.fn.symbol.localName.text === "check_article_exists") span.lines.splice(0, span.lines.length, fn.firstLine + 1 + reached);
       }
       return copy;
     };
 
     const changed = diffRuns(withTwins(before, 0), withTwins(after, 2)).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
 
-    expect(changed.find((fn) => fn.qualname === "check_article_exists")).toBeDefined();
+    expect(changed.find((fn) => fn.symbol.path === "check_article_exists")).toBeDefined();
   });
 });

@@ -41,7 +41,7 @@ export function ComponentPanel({ view, zone, relations, onOpenFunction }: Props)
         </thead>
         <tbody>
           {view.functions.map((fn) => (
-            <tr key={`${fn.module}:${fn.qualname}`} className={fn.calls === 0 ? "untested" : undefined}>
+            <tr key={fn.symbol.key} className={fn.calls === 0 ? "untested" : undefined}>
               <td>
                 <button type="button" className="link" onClick={() => onOpenFunction(fn)}>
                   {fn.name}

@@ -1,6 +1,7 @@
 import { align, Aligned, Op } from "../align";
 import { CodeSymbol, Phase, Role, Run, Scenario, Span } from "../model";
 import { FINE_GROUPING, Grouping } from "./components";
+import { FunctionRef, functionRef } from "./function-ref";
 import { buildReplay, ReplayStep, StepKind } from "./replay";
 
 /**
@@ -12,9 +13,8 @@ import { buildReplay, ReplayStep, StepKind } from "./replay";
 export interface CallStep {
   op: Op;
   depth: number;
-  module: string;
-  qualname: string;
-  /** "test_x > create_new_article > get_slug_for_article": what identifies the call. */
+  symbol: FunctionRef;
+  /** "test_x > create_new_article > get_slug_for_article": where the call sits, to show. */
   path: string;
   /** Set on a removed/added pair of the same function: it still runs, under a new caller. */
   reparented: boolean;
@@ -38,10 +38,10 @@ export interface MergedReplayStep {
 const PROJECT_ROLES = new Set([Role.Source, Role.Test]);
 
 export function diffExecution(before: Scenario, after: Scenario, phases: Phase[] = [Phase.Call]): ExecutionDiff {
-  const aligned = align(callsOf(before, phases), callsOf(after, phases), (call) => call.path);
+  const aligned = align(callsOf(before, phases), callsOf(after, phases), (call) => call.identity);
   const calls = aligned.steps.map((entry): CallStep => {
     const call = (entry.after ?? entry.before)!;
-    return { op: entry.op, depth: call.depth, module: call.module, qualname: call.qualname, path: call.path, reparented: false };
+    return { op: entry.op, depth: call.depth, symbol: functionRef(call.symbol), path: call.path, reparented: false };
   });
   markReparented(calls);
   return {
@@ -72,12 +72,11 @@ function markReparented(calls: CallStep[]): void {
   const removed = new Map<string, CallStep[]>();
   for (const call of calls) {
     if (call.op !== Op.Removed) continue;
-    const key = `${call.module}:${call.qualname}`;
-    removed.set(key, [...(removed.get(key) ?? []), call]);
+    removed.set(call.symbol.key, [...(removed.get(call.symbol.key) ?? []), call]);
   }
   for (const call of calls) {
     if (call.op !== Op.Added) continue;
-    const partner = removed.get(`${call.module}:${call.qualname}`)?.shift();
+    const partner = removed.get(call.symbol.key)?.shift();
     if (partner === undefined) continue;
     partner.reparented = true;
     call.reparented = true;
@@ -86,23 +85,30 @@ function markReparented(calls: CallStep[]): void {
 
 interface Call {
   depth: number;
-  module: string;
-  qualname: string;
+  symbol: CodeSymbol;
+  /** The chain of callers by name, to show. */
   path: string;
+  /** The same chain by symbol key, to line calls up: two functions sharing a name stay apart. */
+  identity: string;
 }
 
 function callsOf(scenario: Scenario, phases: Phase[]): Call[] {
   const included = new Set(phases);
   const calls: Call[] = [];
-  const paths = new Map<Span, { path: string; depth: number }>();
+  const chains = new Map<Span, Call>();
   for (const span of scenario.spans) {
     if (!included.has(span.phase) || !PROJECT_ROLES.has(span.fn.role)) continue;
     const parent = nearestProjectAncestor(span);
-    const above = parent ? paths.get(parent) : undefined;
-    const path = above ? `${above.path} > ${span.fn.symbol.dottedPath}` : span.fn.symbol.dottedPath;
-    const depth = above ? above.depth + 1 : 0;
-    paths.set(span, { path, depth });
-    calls.push({ depth, module: span.fn.symbol.dottedNamespace, qualname: span.fn.symbol.dottedPath, path });
+    const above = parent ? chains.get(parent) : undefined;
+    const { symbol } = span.fn;
+    const call: Call = {
+      depth: above ? above.depth + 1 : 0,
+      symbol,
+      path: above ? `${above.path} > ${symbol.localName.text}` : symbol.localName.text,
+      identity: above ? `${above.identity} > ${symbol.key}` : symbol.key,
+    };
+    chains.set(span, call);
+    calls.push(call);
   }
   return calls;
 }
@@ -124,8 +130,7 @@ export interface StatementStep {
 
 export interface FunctionExecutionDiff {
   scenarioId: string;
-  module: string;
-  qualname: string;
+  symbol: FunctionRef;
   /** "text" when both recordings carry their source; otherwise line numbers stand in, and moves show as changes. */
   matchedBy: "text" | "line-number";
   /** False when the two were too different to align (see align.ts). */
@@ -159,8 +164,7 @@ export function diffFunctionExecution(
   const statements = aligned.steps.map(toStep);
   return {
     scenarioId,
-    module: symbol.dottedNamespace,
-    qualname: symbol.dottedPath,
+    symbol: functionRef(symbol),
     matchedBy,
     complete: aligned.complete,
     callsBefore: before.calls,

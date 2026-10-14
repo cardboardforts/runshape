@@ -16,9 +16,11 @@ const APPS = ["django", "fastapi", "django-feed-fix", "fastapi-slug-refactor"];
 const PHASE_SETS = { call: ["call"], all: ["setup", "call", "teardown"] };
 const GROUPINGS = { fine: { collapseMiddleware: false }, coarse: { collapseMiddleware: true } };
 
-// Catalog entries named both ways (before and after CodeSymbol), so older revisions dump too.
-const moduleOf = (fn: any): string => fn.symbol?.dottedNamespace ?? fn.module;
-const qualnameOf = (fn: any): string => fn.symbol?.dottedPath ?? fn.qualname;
+// Catalog entries named every way core has named them, so older revisions dump too.
+const moduleOf = (fn: any): string => fn.symbol?.namespaceName?.text ?? fn.symbol?.dottedNamespace ?? fn.module;
+const qualnameOf = (fn: any): string => fn.symbol?.localName?.text ?? fn.symbol?.dottedPath ?? fn.qualname;
+/** Function requests in both shapes: Python names (before the protocol carried keys) and the key. */
+const naming = (fn: any) => ({ module: moduleOf(fn), qualname: qualnameOf(fn), symbol: fn.symbol?.key });
 
 /**
  * Answers in the shape both advice parsers accept, with the prompt it was given as the reason,
@@ -73,13 +75,13 @@ test("dump every view", async () => {
     }
     for (const fn of run.catalog) {
       const [module, qualname] = [moduleOf(fn), qualnameOf(fn)];
-      await ask(`function ${module}:${qualname}`, { type: "function", module, qualname });
+      await ask(`function ${module}:${qualname}`, { type: "function", ...naming(fn) });
       if (!baseline) continue;
       for (const { nodeid } of run.scenarios) {
-        await ask(`functionExecutionDiff ${nodeid} ${module}:${qualname}`, { type: "functionExecutionDiff", scenarioId: nodeid, module, qualname, phases });
+        await ask(`functionExecutionDiff ${nodeid} ${module}:${qualname}`, { type: "functionExecutionDiff", scenarioId: nodeid, ...naming(fn), phases });
       }
     }
-    await ask("function not in the catalog", { type: "function", module: "nowhere", qualname: "nothing" });
+    await ask("function not in the catalog", { type: "function", module: "nowhere", qualname: "nothing", symbol: JSON.stringify([["nowhere"], [], "nothing"]) });
     for (const { nodeid } of run.scenarios) await ask(`objects ${nodeid}`, { type: "objects", scenarioId: nodeid });
     await ask("detectArchitecture", { type: "detectArchitecture" });
     await ask("adviseArchitecture", { type: "adviseArchitecture" });

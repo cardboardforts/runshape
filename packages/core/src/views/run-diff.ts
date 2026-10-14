@@ -1,4 +1,5 @@
 import { CodeSymbol, Outcome, Phase, Role, Run, Scenario } from "../model";
+import { FunctionRef, functionRef } from "./function-ref";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 import { buildReplay, StepKind } from "./replay";
 import { ArchitectureProfile } from "../profiles";
@@ -28,8 +29,7 @@ export interface DiffEdge extends GraphEdge {
 }
 
 export interface FunctionChange {
-  module: string;
-  qualname: string;
+  symbol: FunctionRef;
   /** Lines (in the new code) whose statement didn't run before. */
   linesNowReached: number[];
   /** Lines (in the old code) whose statement no longer runs. */
@@ -242,9 +242,9 @@ function diffReachedLines(before: Map<string, ReachedLines>, after: Map<string, 
     const linesNowReached = [...now].filter(([text]) => !was.has(text)).map(([, line]) => line).sort((a, b) => a - b);
     const linesNoLongerReached = [...was].filter(([text]) => !now.has(text)).map(([, line]) => line).sort((a, b) => a - b);
     if (linesNowReached.length + linesNoLongerReached.length === 0) continue;
-    changes.push({ module: symbol.dottedNamespace, qualname: symbol.dottedPath, linesNowReached, linesNoLongerReached });
+    changes.push({ symbol: functionRef(symbol), linesNowReached, linesNoLongerReached });
   }
-  return changes.sort((a, b) => `${a.module}.${a.qualname}`.localeCompare(`${b.module}.${b.qualname}`));
+  return changes.sort((a, b) => `${a.symbol.namespace}.${a.symbol.path}`.localeCompare(`${b.symbol.namespace}.${b.symbol.path}`));
 }
 
 function differenceOfSets(before: Set<string>, after: Set<string>): { added: string[]; removed: string[] } {

@@ -50,9 +50,9 @@ export function ScenarioDiffPanel({ diff, execution, onOpenFunction, onOpenCall,
           <h3>Lines reached</h3>
           <ul className="diff-list">
             {diff.functionsChanged.map((fn) => (
-              <li key={`${fn.module}:${fn.qualname}`}>
+              <li key={fn.symbol.key}>
                 <button type="button" className="link" onClick={() => onOpenFunction(fn)}>
-                  {fn.qualname}
+                  {fn.symbol.path}
                 </button>{" "}
                 {fn.linesNowReached.length > 0 && <span className="added">+{fn.linesNowReached.length} now run</span>}{" "}
                 {fn.linesNoLongerReached.length > 0 && <span className="removed">−{fn.linesNoLongerReached.length} no longer run</span>}

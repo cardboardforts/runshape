@@ -239,7 +239,7 @@ describe("component view: nested code", () => {
 
     const view = buildComponentView(run, "class:app.db.repositories.articles.ArticlesRepository");
 
-    expect(view.functions.filter((fn) => fn.qualname.includes("<locals>"))).toEqual([]);
+    expect(view.functions.filter((fn) => fn.symbol.path.includes("<locals>"))).toEqual([]);
     expect(view.functions.map((fn) => fn.name)).toContain("get_tags_for_article_by_slug");
   });
 });

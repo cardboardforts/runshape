@@ -1,5 +1,6 @@
 import { Phase, Role, Scenario, Span } from "../model";
 import { componentOf, externalComponent, FINE_GROUPING, Grouping } from "./components";
+import { FunctionRef, functionRef } from "./function-ref";
 
 /** One call on the timeline: when it started and ended, and when it was actually running. */
 export interface TimelineBar {
@@ -16,8 +17,7 @@ export interface TimelineBar {
   label: string;
   componentId: string;
   role: Role;
-  module: string;
-  qualname: string;
+  symbol: FunctionRef;
 }
 
 /** An external call (database, HTTP): an instant, under the call that made it. */
@@ -56,11 +56,10 @@ export function buildTimeline(scenario: Scenario, phases: Phase[] = [Phase.Call]
       startUs: span.startUs,
       endUs: Math.max(span.endUs, span.startUs),
       runs: span.runs.length > 0 ? span.runs : [[span.startUs, span.endUs]],
-      label: span.request ? `${span.request.method} ${span.request.path}` : span.fn.symbol.dottedPath,
+      label: span.request ? `${span.request.method} ${span.request.path}` : span.fn.symbol.localName.text,
       componentId: componentOf(span, grouping).id,
       role: span.fn.role,
-      module: span.fn.symbol.dottedNamespace,
-      qualname: span.fn.symbol.dottedPath,
+      symbol: functionRef(span.fn.symbol),
     });
   }
   const externals: TimelineMark[] = [];

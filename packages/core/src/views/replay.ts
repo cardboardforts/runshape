@@ -39,7 +39,7 @@ export function buildReplay(
     const from = componentOf(span.parent, grouping).id;
     const to = componentOf(span, grouping).id;
     if (from === to) continue;
-    const label = span.request ? `${span.request.method} ${span.request.path}` : span.fn.symbol.dottedPath;
+    const label = span.request ? `${span.request.method} ${span.request.path}` : span.fn.symbol.localName.text;
     steps.push(step(span.startUs, StepKind.Call, from, to, label, span));
     steps.push({ ...step(span.endUs, StepKind.Return, to, from, label, span), edgeId: `${from}->${to}` });
   }

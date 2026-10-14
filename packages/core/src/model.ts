@@ -110,6 +110,8 @@ export class CodeSymbol {
   /** JSON, not a joined string: no separator can collide with a segment in any language. */
   readonly key: string;
   readonly namespaceName: QualifiedName;
+  /** Container and name: what the function is called within its namespace. */
+  readonly localName: QualifiedName;
   /** Namespace, container and name: what a route registers as its handler. */
   readonly path: QualifiedName;
 
@@ -124,17 +126,8 @@ export class CodeSymbol {
     this.key = JSON.stringify([namespace, container, name]);
     // Built once: componentOf asks for them on every span, several times per view.
     this.namespaceName = new QualifiedName(namespace);
+    this.localName = new QualifiedName([...container, name]);
     this.path = new QualifiedName([...namespace, ...container, name]);
-  }
-
-  /** Python's module name. Goes once views work on segments. */
-  get dottedNamespace(): string {
-    return this.namespace.join(".");
-  }
-
-  /** Python's qualname. Goes once views work on segments. */
-  get dottedPath(): string {
-    return [...this.container, this.name].join(".");
   }
 }
 
@@ -311,8 +304,9 @@ export class Run {
     return this.scenarios.find((s) => s.nodeid === nodeid);
   }
 
-  catalogFunction(symbol: CodeSymbol): CatalogFunction | undefined {
-    return this.catalog.find((f) => f.symbol.key === symbol.key);
+  /** By CodeSymbol.key. */
+  catalogFunction(key: string): CatalogFunction | undefined {
+    return this.catalog.find((f) => f.symbol.key === key);
   }
 }
 

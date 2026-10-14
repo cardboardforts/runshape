@@ -36,8 +36,12 @@ describe("diffRuns", () => {
                 218,
                 219,
               ],
-              "module": "conduit.apps.articles.views",
-              "qualname": "ArticlesFeedAPIView.get_queryset",
+              "symbol": {
+                "key": "[["conduit","apps","articles","views"],["ArticlesFeedAPIView"],"get_queryset"]",
+                "kind": "method",
+                "namespace": "conduit.apps.articles.views",
+                "path": "ArticlesFeedAPIView.get_queryset",
+              },
             },
             {
               "linesNoLongerReached": [],
@@ -49,8 +53,12 @@ describe("diffRuns", () => {
                 228,
                 231,
               ],
-              "module": "conduit.apps.articles.views",
-              "qualname": "ArticlesFeedAPIView.list",
+              "symbol": {
+                "key": "[["conduit","apps","articles","views"],["ArticlesFeedAPIView"],"list"]",
+                "kind": "method",
+                "namespace": "conduit.apps.articles.views",
+                "path": "ArticlesFeedAPIView.list",
+              },
             },
             {
               "linesNoLongerReached": [
@@ -61,8 +69,12 @@ describe("diffRuns", () => {
                 77,
               ],
               "linesNowReached": [],
-              "module": "conduit.apps.articles.views",
-              "qualname": "ArticleViewSet.retrieve",
+              "symbol": {
+                "key": "[["conduit","apps","articles","views"],["ArticleViewSet"],"retrieve"]",
+                "kind": "method",
+                "namespace": "conduit.apps.articles.views",
+                "path": "ArticleViewSet.retrieve",
+              },
             },
             {
               "linesNoLongerReached": [
@@ -75,8 +87,12 @@ describe("diffRuns", () => {
                 50,
               ],
               "linesNowReached": [],
-              "module": "conduit.apps.core.exceptions",
-              "qualname": "_handle_not_found_error",
+              "symbol": {
+                "key": "[["conduit","apps","core","exceptions"],[],"_handle_not_found_error"]",
+                "kind": "function",
+                "namespace": "conduit.apps.core.exceptions",
+                "path": "_handle_not_found_error",
+              },
             },
             {
               "linesNoLongerReached": [
@@ -89,8 +105,12 @@ describe("diffRuns", () => {
                 22,
               ],
               "linesNowReached": [],
-              "module": "conduit.apps.core.exceptions",
-              "qualname": "core_exception_handler",
+              "symbol": {
+                "key": "[["conduit","apps","core","exceptions"],[],"core_exception_handler"]",
+                "kind": "function",
+                "namespace": "conduit.apps.core.exceptions",
+                "path": "core_exception_handler",
+              },
             },
             {
               "linesNoLongerReached": [
@@ -101,8 +121,12 @@ describe("diffRuns", () => {
                 15,
                 16,
               ],
-              "module": "conduit.apps.core.renderers",
-              "qualname": "ConduitJSONRenderer.render",
+              "symbol": {
+                "key": "[["conduit","apps","core","renderers"],["ConduitJSONRenderer"],"render"]",
+                "kind": "method",
+                "namespace": "conduit.apps.core.renderers",
+                "path": "ConduitJSONRenderer.render",
+              },
             },
           ],
           "hopsAdded": [

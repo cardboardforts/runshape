@@ -22,7 +22,8 @@ export type UiRequest =
   /** `style` draws the graph in another style than runshape.json declares, without saving it. */
   | { type: "graph"; phases: Phase[]; grouping: Grouping; style?: string }
   | { type: "component"; id: string; grouping: Grouping }
-  | { type: "function"; module: string; qualname: string }
+  /** `symbol` is the FunctionRef.key a view gave. */
+  | { type: "function"; symbol: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "timeline"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
@@ -39,7 +40,7 @@ export type UiRequest =
   | { type: "adviseZone"; componentId: string; grouping: Grouping }
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "objects"; scenarioId: string }
-  | { type: "functionExecutionDiff"; scenarioId: string; module: string; qualname: string; phases: Phase[] }
+  | { type: "functionExecutionDiff"; scenarioId: string; symbol: string; phases: Phase[] }
   | { type: "openSource"; file: string; line: number };
 
 export type UiResponse =

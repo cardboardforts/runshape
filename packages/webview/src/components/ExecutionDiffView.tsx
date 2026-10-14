@@ -53,7 +53,7 @@ export function ExecutionCalls({ diff, onOpenFunction }: { diff: ExecutionDiff; 
               <span className="indent" style={{ width: `${row.step.depth * 12}px` }} />
               {row.step.reparented && <span title="Still runs, under a new caller">↪ </span>}
               <button type="button" className="link" onClick={() => onOpenFunction(row.step)}>
-                {row.step.qualname}
+                {row.step.symbol.path}
               </button>
             </li>
           ),
@@ -67,9 +67,9 @@ export function ExecutionCalls({ diff, onOpenFunction }: { diff: ExecutionDiff; 
 export function FunctionExecutionPanel({ diff }: { diff: FunctionExecutionDiff }) {
   return (
     <section className="panel">
-      <h2>{diff.qualname}</h2>
+      <h2>{diff.symbol.path}</h2>
       <p className="muted mono">
-        {diff.module} · called {diff.callsBefore}× before, {diff.callsAfter}× after
+        {diff.symbol.namespace} · called {diff.callsBefore}× before, {diff.callsAfter}× after
       </p>
       <p className="muted">
         {diff.matchedBy === "text"

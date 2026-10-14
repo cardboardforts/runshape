@@ -16,7 +16,7 @@ import { fixtureFiles, loadFixtureRun } from "./fixtures";
 describe("CodeSymbol", () => {
   test("Python names split into namespace, container and name, whatever the nesting", async () => {
     const run = await loadFixtureRun("fastapi");
-    const named = (dotted: string) => run.catalog.find((fn) => `${fn.symbol.dottedNamespace}:${fn.symbol.dottedPath}` === dotted)!.symbol;
+    const named = (dotted: string) => run.catalog.find((fn) => `${fn.symbol.namespaceName.text}:${fn.symbol.localName.text}` === dotted)!.symbol;
 
     const shapes = [
       named("app.db.repositories.users:UsersRepository.get_user_by_email"),
@@ -116,19 +116,19 @@ describe("CodeSymbol", () => {
     const after = await loadLatestRun(files);
 
     const keysBefore = new Set(before.catalog.map((fn) => fn.symbol.key));
-    const unmatched = after.catalog.filter((fn) => !keysBefore.has(fn.symbol.key)).map((fn) => fn.symbol.dottedPath);
+    const unmatched = after.catalog.filter((fn) => !keysBefore.has(fn.symbol.key)).map((fn) => fn.symbol.localName.text);
     expect(unmatched, "the routing fix moved a URL pattern; it added and removed no functions").toEqual([]);
 
     // A span's symbol and the catalog's are built separately but find each other by key.
-    const span = after.scenarios.flatMap((s) => s.spans).find((s) => s.fn.symbol.dottedPath === "ArticlesFeedAPIView.get_queryset")!;
-    expect(after.catalogFunction(span.fn.symbol)?.file).toBe("conduit/apps/articles/views.py");
+    const span = after.scenarios.flatMap((s) => s.spans).find((s) => s.fn.symbol.localName.text === "ArticlesFeedAPIView.get_queryset")!;
+    expect(after.catalogFunction(span.fn.symbol.key)?.file).toBe("conduit/apps/articles/views.py");
   });
 
   test("two functions with the same name in different modules stay apart", async () => {
     // Real: the FastAPI example's tests define test_frw_validation_error_format in two modules.
     const run = await loadFixtureRun("fastapi");
     const modules = ["tests.test_api.test_errors.test_422_error", "tests.test_api.test_errors.test_error"];
-    expect(modules.map((module) => run.catalogFunction(pythonSymbol(module, "test_frw_validation_error_format"))?.file)).toEqual([
+    expect(modules.map((module) => run.catalogFunction(pythonSymbol(module, "test_frw_validation_error_format").key)?.file)).toEqual([
       "tests/test_api/test_errors/test_422_error.py",
       "tests/test_api/test_errors/test_error.py",
     ]);
@@ -143,7 +143,7 @@ describe("CodeSymbol", () => {
       const diff = diffFunctionExecution(before, after, create, symbol);
       return `${diff.callsBefore} -> ${diff.callsAfter}`;
     };
-    const real = after.catalog.find((fn) => fn.symbol.dottedPath === "check_article_exists")!.symbol;
+    const real = after.catalog.find((fn) => fn.symbol.localName.text === "check_article_exists")!.symbol;
     const realCalls = calls(real);
 
     const namesake = new CodeSymbol(["app", "legacy", "articles"], [], "check_article_exists", SymbolKind.Function, null);

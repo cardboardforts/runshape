@@ -1,9 +1,8 @@
 import { detectArchitecture, projectPackages, proposedRules } from "./architecture";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, parseArchitectureAdvice } from "./architecture-advice";
-import { Outcome, Run } from "./model";
+import { CodeSymbol, Outcome, Run } from "./model";
 import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
-import { pythonSymbol } from "./trace/parse";
 import { RULES_FILE, ZoneRules } from "./zones";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
@@ -158,11 +157,12 @@ export class ViewerSession {
       case "component":
         return { type: "component", view: buildComponentView(this.run, request.id, request.grouping) };
       case "function": {
-        const symbol = pythonSymbol(request.module, request.qualname);
-        const catalogEntry = this.run.catalogFunction(symbol);
-        const source = catalogEntry ? await this.sources.readLines(catalogEntry.file) : null;
+        if (typeof request.symbol !== "string") return { type: "error", message: FUNCTION_BY_KEY };
+        const catalogEntry = this.run.catalogFunction(request.symbol);
+        if (catalogEntry === undefined) return { type: "error", message: "That function isn't in this recording's catalog." };
+        const source = await this.sources.readLines(catalogEntry.file);
         try {
-          return { type: "function", view: buildFunctionView(this.run, symbol, source) };
+          return { type: "function", view: buildFunctionView(this.run, catalogEntry.symbol, source) };
         } catch (error) {
           if (error instanceof UnknownFunctionError) return { type: "error", message: error.message };
           throw error;
@@ -231,12 +231,13 @@ export class ViewerSession {
           replay: mergeReplays(before, after, request.phases, request.grouping),
         };
       }
-      case "functionExecutionDiff":
+      case "functionExecutionDiff": {
+        if (typeof request.symbol !== "string") return { type: "error", message: FUNCTION_BY_KEY };
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
-        return {
-          type: "functionExecutionDiff",
-          diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, pythonSymbol(request.module, request.qualname), request.phases),
-        };
+        const symbol = this.symbolNamed(request.symbol);
+        if (symbol === null) return { type: "error", message: "That function isn't in either recording." };
+        return { type: "functionExecutionDiff", diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, symbol, request.phases) };
+      }
       case "openSource":
       case "reload":
         return null; // host concerns: the extension handles these itself
@@ -335,6 +336,22 @@ export class ViewerSession {
     }
   }
 
+  /** The function a view named by key, in either recording: catalogued, or else seen running. */
+  private symbolNamed(key: string): CodeSymbol | null {
+    const runs = this.baseline === null ? [this.run] : [this.run, this.baseline];
+    for (const run of runs) {
+      const catalogued = run.catalogFunction(key);
+      if (catalogued !== undefined) return catalogued.symbol;
+    }
+    for (const run of runs) {
+      for (const scenario of run.scenarios) {
+        const span = scenario.spans.find((candidate) => candidate.fn.symbol.key === key);
+        if (span !== undefined) return span.fn.symbol;
+      }
+    }
+    return null;
+  }
+
   /** The component's own functions, from the first to the last line, in their file. */
   private async componentSource(view: ReturnType<typeof buildComponentView>): Promise<string[] | null> {
     const own = view.functions.filter((fn) => fn.inheritedFrom === null);
@@ -344,13 +361,16 @@ export class ViewerSession {
     if (lines === null) return null;
     const ranges = own
       .filter((fn) => fn.file === file)
-      .map((fn) => this.run.catalogFunction(pythonSymbol(fn.module, fn.qualname)))
+      .map((fn) => this.run.catalogFunction(fn.symbol.key))
       .filter((fn) => fn !== undefined);
     const first = Math.min(...ranges.map((fn) => fn.firstLine));
     const last = Math.max(...ranges.map((fn) => fn.lastLine));
     return lines.slice(classStatementLine(lines, first, view.label) - 1, last);
   }
 }
+
+/** Function requests name a function only by the key a view gave: never a language's spelling of it. */
+const FUNCTION_BY_KEY = "a function is asked for by the symbol key a view gave it";
 
 /** setZone arrives from the webview: check it like any input crossing into the session. */
 function invalidZoneRequest(request: Extract<UiRequest, { type: "setZone" }>, rules: ZoneRules): string | null {

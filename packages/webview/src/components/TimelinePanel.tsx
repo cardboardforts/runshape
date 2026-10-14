@@ -1,13 +1,13 @@
 import { useState } from "react";
 
-import { formatMicros, Timeline, TimelineBar } from "@runshape/core";
+import { formatMicros, FunctionRef, Timeline, TimelineBar } from "@runshape/core";
 
 interface Props {
   timeline: Timeline;
   scenarioName: string;
   /** The bar's colour: its component's zone. */
   colorOf: (componentId: string) => string;
-  onOpenFunction: (module: string, qualname: string) => void;
+  onOpenFunction: (symbol: FunctionRef) => void;
 }
 
 const WIDTH = 560;
@@ -95,7 +95,7 @@ export function TimelinePanel({ timeline, scenarioName, colorOf, onOpenFunction 
         <p>
           <strong>{selected.label.split("\n")[0]}</strong> {formatMicros(selected.endUs - selected.startUs)}
           {selected.runs.length > 1 ? `, of which running ${formatMicros(selected.runs.reduce((sum, [s, e]) => sum + (e - s), 0))}` : ""}{" "}
-          <button type="button" className="link" onClick={() => onOpenFunction(selected.module, selected.qualname)}>
+          <button type="button" className="link" onClick={() => onOpenFunction(selected.symbol)}>
             Open function
           </button>
         </p>
