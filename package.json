@@ -12,7 +12,8 @@
     "build": "npm run build -w packages/webview && npm run build -w packages/extension && npm run build -w packages/cli",
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces",
-    "test:e2e": "npm run build && npm run test:e2e -w packages/extension"
+    "test:e2e": "npm run build && npm run test:e2e -w packages/extension",
+    "view-diff": "sh tools/view-diff/view-diff.sh"
   },
   "devDependencies": {
     "typescript": "5.9.3",
