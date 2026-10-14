@@ -30,9 +30,12 @@ mkdir -p "$OUT"
 record() { # <target directory> <run name> <ref, for messages>
   echo "self-review: recording $3"
   RUNSHAPE_TARGET="$1" RUNSHAPE_OUT="$OUT" RUNSHAPE_RUN="$2" \
-    npx --prefix "$REPO" vitest run --config "$CONFIG" >"$OUT/$2.log" 2>&1 || true
+    npx --prefix "$REPO" vitest run --config "$CONFIG" --reporter=default --reporter=json --outputFile.json="$OUT/$2.vitest.json" \
+    >"$OUT/$2.log" 2>&1 || true
   # Failing tests are recorded like passing ones; a recording with no manifest is not.
   [ -f "$OUT/$2/manifest.json" ] || { echo "self-review: recording $3 failed:"; tail -30 "$OUT/$2.log"; exit 2; }
+  [ -f "$OUT/$2.vitest.json" ] || { echo "self-review: vitest wrote no report for $3:"; tail -30 "$OUT/$2.log"; exit 2; }
+  node "$REPO/recorder-ts/vitest-problems.mjs" "$OUT/$2/manifest.json" "$OUT/$2.vitest.json"
 }
 
 git -C "$REPO" worktree add --detach --quiet "$WORKTREES/base" "$BASE_REF"

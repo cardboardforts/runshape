@@ -49,7 +49,11 @@ export function* ids() {
 
 /** Instruments the sample, transpiles it as TypeScript would, and loads it against `recorder`. */
 function load(recorder: Recorder): Record<string, any> {
-  const { code } = instrument("app/sample.ts", SAMPLE);
+  return loadSource(recorder, SAMPLE);
+}
+
+function loadSource(recorder: Recorder, source: string): Record<string, any> {
+  const { code } = instrument("app/sample.ts", source);
   const js = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports: Record<string, any> = {};
   (globalThis as any).__runshape = recorder;
@@ -183,6 +187,139 @@ export function double(value: number): number {
       "    double [9]",
     ]);
     expect(scenario.recorderErrors).toEqual(["2 more calls of double from total were not recorded (limit 3 per caller)"]);
+  });
+
+  test("a callback's lines belong to the function that wrote it, even when another function runs it", () => {
+    // Second-model review: `user` passes a callback to `each`; the callback's line was recorded
+    // on `each`, so user's view showed it unreached and each's showed a line from elsewhere.
+    const recorder = new Recorder();
+    const { user } = loadSource(
+      recorder,
+      `export function each(values: number[], visit: (value: number) => void): void {
+  for (const value of values) visit(value);
+}
+export function user(): number {
+  let total = 0;
+  each([1, 2], (value) => {
+    total += value;
+  });
+  return total;
+}
+`,
+    );
+    recorder.startScenario("app/s.test.ts::sums", "app/s.test.ts", ["sums"]);
+    expect(user()).toBe(3);
+    expect(describeScenario(recorder.finishScenario("passed"))).toEqual(["sums []", "  user [5,6,7,9]", "    each [2]"]);
+  });
+
+  test("work a test left running is not recorded in the next test", async () => {
+    const recorder = new Recorder();
+    const { later } = loadSource(
+      recorder,
+      `export async function later(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  inner();
+}
+export function inner(): void {
+  return;
+}
+`,
+    );
+    recorder.startScenario("app/s.test.ts::first", "app/s.test.ts", ["first"]);
+    const unawaited = later();
+    const first = recorder.finishScenario("passed");
+    recorder.startScenario("app/s.test.ts::second", "app/s.test.ts", ["second"]);
+    await unawaited;
+
+    expect([describeScenario(first), describeScenario(recorder.finishScenario("passed"))]).toEqual([["first []", "  later [2]"], ["second []"]]);
+  });
+
+  test("names stay distinct: static and instance members, and functions in different namespaces", () => {
+    const { functions } = instrument(
+      "app/names.ts",
+      `export class Factory {
+  static make(): Factory {
+    return new Factory();
+  }
+  make(): string {
+    return "made";
+  }
+}
+namespace A {
+  export function f(): number {
+    return 1;
+  }
+}
+namespace B {
+  export function f(): number {
+    return 2;
+  }
+}
+`,
+    );
+
+    expect(functions.map(({ symbol }) => [...symbol.container, symbol.name].join("."))).toEqual(["Factory.static make", "Factory.make", "A.f", "B.f"]);
+  });
+
+  test("a constructor that throws builds nothing; an object's getters are not run to read its wiring", () => {
+    const recorder = new Recorder();
+    const { Strict, Lazy } = loadSource(
+      recorder,
+      `export class Strict {
+  constructor(value: number) {
+    if (value < 0) throw new Error("negative");
+  }
+}
+export class Lazy {
+  reads = 0;
+  constructor() {
+    Object.defineProperty(this, "costly", { enumerable: true, get: () => ++this.reads });
+  }
+}
+`,
+    );
+    recorder.startScenario("app/s.test.ts::builds", "app/s.test.ts", ["builds"]);
+    expect(() => new Strict(-1)).toThrow("negative");
+    const lazy = new Lazy();
+
+    expect(describeScenario(recorder.finishScenario("passed"))).toEqual(["builds []", "  Strict.constructor [3]", "  Lazy.constructor [9]", "built Lazy#1 (app.sample.Lazy)"]);
+    expect(lazy.reads).toBe(0);
+  });
+
+  test("files a plain loader can't run instrumented still load: a hashbang, an ambient class, no recorder at all", () => {
+    const source = `#!/usr/bin/env node
+declare class Ambient {}
+export function answer(): number {
+  return 42;
+}
+`;
+    const { code } = instrument("app/cli.ts", source);
+    expect(code.startsWith("#!/usr/bin/env node\n")).toBe(true);
+    expect(code.split("\n").length).toBe(source.split("\n").length);
+
+    delete (globalThis as any).__runshape;
+    const exports: Record<string, any> = {};
+    const js = ts.transpileModule(code.replace(/^#!.*\n/, "\n"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    new Function("exports", js)(exports);
+    expect(exports.answer()).toBe(42);
+  });
+
+  test("a full scenario says so, rather than blaming the per-caller limit", () => {
+    const recorder = new Recorder({ callsPerCaller: 50, eventsPerScenario: 6 });
+    const { many } = loadSource(
+      recorder,
+      `export function many(): void {
+  for (let i = 0; i < 5; i += 1) one();
+}
+export function one(): void {
+  return;
+}
+`,
+    );
+    recorder.startScenario("app/s.test.ts::fills", "app/s.test.ts", ["fills"]);
+    many();
+
+    expect(recorder.finishScenario("passed").recorderErrors).toEqual(["stopped recording after 6 events: 4 later calls were not recorded"]);
   });
 
   test("outside a scenario the instrumented code just runs", () => {

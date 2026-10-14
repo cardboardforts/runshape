@@ -35,6 +35,8 @@ interface Insertion {
 interface Scope {
   /** The catalog entry whose span is running here, or null at module level. */
   current: CatalogEntry | null;
+  /** Its index in the module's function table: line marks name the function they belong to. */
+  currentIndex: number;
   className: string | null;
   /** Names between the file and the next function: classes, enclosing functions. */
   container: string[];
@@ -60,9 +62,14 @@ export function instrument(file: string, text: string): Instrumented {
   const lineOf = (position: number) => source.getLineAndCharacterOfPosition(position).line + 1;
 
   const visit = (node: ts.Node, scope: Scope): void => {
+    if (ts.isModuleDeclaration(node) && ts.isIdentifier(node.name)) {
+      ts.forEachChild(node, (child) => visit(child, { ...scope, container: [...scope.container, (node.name as ts.Identifier).text] }));
+      return;
+    }
     if (ts.isClassDeclaration(node) && node.name !== undefined) {
       const className = node.name.text;
-      if (node.parent === source) {
+      const ambient = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword) ?? false;
+      if (node.parent === source && !ambient) {
         insertions.push({ at: node.end, text: `;__rs.cls(${className}, ${JSON.stringify([...namespace, className])});`, order: 0 });
       }
       ts.forEachChild(node, (child) => visit(child, { ...scope, className, container: [...scope.container, className] }));
@@ -76,7 +83,7 @@ export function instrument(file: string, text: string): Instrumented {
         const expressionLine = ts.isBlock(node.body) ? null : lineOf(node.body.getStart());
         if (expressionLine !== null) entry.lines.push(expressionLine);
         wrap(node, index, ++visits, insertions, expressionLine);
-        const inner: Scope = { current: entry, className: scope.className, container: [...symbol.container, symbol.name] };
+        const inner: Scope = { current: entry, currentIndex: index, className: scope.className, container: [...symbol.container, symbol.name] };
         ts.forEachChild(node, (child) => visit(child, inner));
         return;
       }
@@ -86,16 +93,23 @@ export function instrument(file: string, text: string): Instrumented {
         if (NOT_EXECUTED.has(statement.kind)) continue;
         const line = lineOf(statement.getStart());
         if (!scope.current.lines.includes(line)) scope.current.lines.push(line);
-        insertions.push({ at: statement.getStart(), text: `;__rs.l(${line});`, order: LINE_MARK_ORDER });
+        // Naming the function lets a callback's line count for the function that wrote it,
+        // whichever function happens to be running the callback.
+        insertions.push({ at: statement.getStart(), text: `;__rs.l(${line}, __rsF[${scope.currentIndex}]);`, order: LINE_MARK_ORDER });
       }
     }
     ts.forEachChild(node, (child) => visit(child, scope));
   };
-  visit(source, { current: null, className: null, container: [] });
+  visit(source, { current: null, currentIndex: -1, className: null, container: [] });
 
   for (const entry of functions) entry.lines.sort((a, b) => a - b);
-  const prologue = `const __rs = globalThis.__runshape; const __rsF = __rs.functions(${JSON.stringify(functions.map(({ symbol, file, firstLine }) => ({ symbol, file, firstLine })))});`;
-  return { functions, code: prologue + apply(text, insertions) };
+  const table = JSON.stringify(functions.map(({ symbol, file, firstLine }) => ({ symbol, file, firstLine })));
+  // Without a recorder (a module a config file imports, say) the code runs as written.
+  const prologue = `const __rs = globalThis.__runshape ?? { functions: () => [], run: (f, r, body) => body(), runAsync: (f, r, body) => body(), l() {}, cls() {} }; const __rsF = __rs.functions(${table});`;
+  // A hashbang must stay the first thing in the file: the prologue goes at the start of line 2.
+  const at = text.startsWith("#!") ? text.indexOf("\n") + 1 : 0;
+  insertions.push({ at, text: prologue, order: Number.MIN_SAFE_INTEGER });
+  return { functions, code: apply(text, insertions) };
 }
 
 type FunctionWithBody = ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
@@ -122,8 +136,8 @@ function trackedSymbol(node: FunctionWithBody, scope: Scope, namespace: string[]
   }
   if ((ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)) && inClass && scope.className !== null) {
     const name = node.name.getText();
-    const prefix = ts.isGetAccessorDeclaration(node) ? "get " : ts.isSetAccessorDeclaration(node) ? "set " : "";
-    return symbol(`${prefix}${name}`, "method", scope.className);
+    const accessor = ts.isGetAccessorDeclaration(node) ? "get " : ts.isSetAccessorDeclaration(node) ? "set " : "";
+    return symbol(`${isStatic(node) ? "static " : ""}${accessor}${name}`, "method", scope.className);
   }
   if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
     return symbol(node.name.text, scope.current === null ? "function" : "nested", scope.className);
@@ -134,14 +148,20 @@ function trackedSymbol(node: FunctionWithBody, scope: Scope, namespace: string[]
       return symbol(holder.name.text, "function", null);
     }
     if (ts.isPropertyDeclaration(holder) && ts.isIdentifier(holder.name) && scope.className !== null) {
-      return symbol(holder.name.text, "method", scope.className);
+      return symbol(`${isStatic(holder) ? "static " : ""}${holder.name.text}`, "method", scope.className);
     }
   }
   return null;
 }
 
+/** A static and an instance member may share a name; their symbols must not. */
+function isStatic(node: ts.Node): boolean {
+  return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Static) !== 0;
+}
+
 /** Runs the body inside __rs.run, which opens and closes the span around it. */
 function wrap(node: FunctionWithBody, index: number, visit: number, insertions: Insertion[], expressionLine: number | null): void {
+  const fn = `__rsF[${index}]`;
   const isAsync = ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Async;
   const run = isAsync ? "runAsync" : "run";
   const arrow = isAsync ? "async () =>" : "() =>";
@@ -161,7 +181,7 @@ function wrap(node: FunctionWithBody, index: number, visit: number, insertions: 
     insertions.push({ at: body.getStart() + 1, text: open, order: visit });
     insertions.push({ at: body.end - 1, text: close, order: -visit });
   } else {
-    insertions.push({ at: body.getStart(), text: `__rs.${run}(__rsF[${index}], ${receiver}, ${arrow} (__rs.l(${expressionLine}), `, order: visit });
+    insertions.push({ at: body.getStart(), text: `__rs.${run}(${fn}, ${receiver}, ${arrow} (__rs.l(${expressionLine}, ${fn}), `, order: visit });
     insertions.push({ at: body.end, text: `))`, order: -visit });
   }
 }

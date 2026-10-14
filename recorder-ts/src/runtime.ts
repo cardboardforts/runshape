@@ -38,8 +38,19 @@ export interface ScenarioDto {
 
 /** Everything runs on one thread here; the format still has the field. */
 const MAIN_THREAD = 0;
-/** The current-span store for a call that isn't recorded: nothing under it is either. */
+/** The span of a call that isn't recorded: nothing under it is either. */
 const NOT_RECORDED = -1;
+
+/**
+ * What AsyncLocalStorage holds while a function runs: its call, and the calls it runs inside.
+ * A line mark walks up to its own function's frame; a frame from a finished scenario is ignored.
+ */
+interface Frame {
+  scenario: Scenario;
+  span: number;
+  fn: number;
+  parent: Frame | null;
+}
 
 export interface Limits {
   /** Calls of one function from one calling span that are recorded; later ones are counted. */
@@ -64,6 +75,7 @@ class Scenario {
   private readonly callsByCaller = new Map<string, number>();
   private readonly skipped = new Map<string, { calls: number; caller: number; fn: number }>();
   private full = false;
+  private droppedWhenFull = 0;
   private nextSpan = 1;
   private nextObject = 1;
   private readonly startedAt = performance.now();
@@ -77,10 +89,14 @@ class Scenario {
 
   /** Whether a call of `fn` from `parent` is recorded; counts the ones that aren't. */
   admits(parent: number, fn: number): boolean {
+    if (this.isFull()) {
+      this.droppedWhenFull += 1;
+      return false;
+    }
     const key = `${parent}:${fn}`;
     const calls = (this.callsByCaller.get(key) ?? 0) + 1;
     this.callsByCaller.set(key, calls);
-    if (calls <= this.limits.callsPerCaller && !this.isFull()) return true;
+    if (calls <= this.limits.callsPerCaller) return true;
     const skipped = this.skipped.get(key) ?? { calls: 0, caller: parent, fn };
     skipped.calls += 1;
     this.skipped.set(key, skipped);
@@ -108,7 +124,7 @@ class Scenario {
       ({ calls, caller, fn }) =>
         `${calls} more calls of ${nameOf(this.registry[fn]!.symbol)} from ${nameOfSpan(caller)} were not recorded (limit ${this.limits.callsPerCaller} per caller)`,
     );
-    if (this.full) notes.push(`stopped recording after ${this.limits.eventsPerScenario} events`);
+    if (this.full) notes.push(`stopped recording after ${this.limits.eventsPerScenario} events: ${this.droppedWhenFull} later calls were not recorded`);
     return notes;
   }
 
@@ -140,7 +156,7 @@ class Scenario {
     const known = this.objectIds.get(value);
     if (known !== undefined) return known;
     const type = this.classes.get(value.constructor);
-    if (type === undefined) return null;
+    if (type === undefined || this.isFull()) return null;
     const id = this.nextObject++;
     this.objectIds.set(value, id);
     this.events.push(["O", this.now(), id, type, builtBy]);
@@ -151,9 +167,11 @@ class Scenario {
   built(value: object, span: number): void {
     const id = this.objectId(value, span);
     if (id === null) return;
-    for (const [attribute, field] of Object.entries(value)) {
-      const target = this.objectId(field);
-      if (target === null || this.wired.has(`${id}.${attribute}`)) continue;
+    // Data fields only: reading an accessor would run the app's code, outside any span.
+    for (const [attribute, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+      if (!descriptor.enumerable || !("value" in descriptor)) continue;
+      const target = this.objectId(descriptor.value);
+      if (target === null || this.wired.has(`${id}.${attribute}`) || this.isFull()) continue;
       this.wired.add(`${id}.${attribute}`);
       this.events.push(["W", this.now(), id, attribute, target]);
     }
@@ -167,7 +185,7 @@ function nameOf(symbol: SymbolDto): string {
 export class Recorder {
   private readonly registry: FunctionDto[] = [];
   private readonly classes = new WeakMap<Function, string[]>();
-  private readonly current = new AsyncLocalStorage<number>();
+  private readonly current = new AsyncLocalStorage<Frame>();
   private scenario: Scenario | null = null;
 
   constructor(private readonly limits: Limits = DEFAULT_LIMITS) {}
@@ -185,12 +203,16 @@ export class Recorder {
   run<T>(fn: number, receiver: unknown, body: () => T, built?: () => object): T {
     const scenario = this.scenario;
     if (scenario === null) return body();
-    const span = this.open(scenario, fn, receiver);
-    if (span === NOT_RECORDED) return this.current.run(NOT_RECORDED, body);
+    const frame = this.open(scenario, fn, receiver);
+    if (frame.span === NOT_RECORDED) return this.current.run(frame, body);
+    let completed = false;
     try {
-      return this.current.run(span, body);
+      const result = this.current.run(frame, body);
+      completed = true;
+      return result;
     } finally {
-      this.close(scenario, span, built);
+      // A constructor that threw built nothing, though `this` existed.
+      this.close(scenario, frame.span, completed ? built : undefined);
     }
   }
 
@@ -198,14 +220,18 @@ export class Recorder {
   runAsync<T>(fn: number, receiver: unknown, body: () => Promise<T>): Promise<T> {
     const scenario = this.scenario;
     if (scenario === null) return body();
-    const span = this.open(scenario, fn, receiver);
-    if (span === NOT_RECORDED) return this.current.run(NOT_RECORDED, body);
-    return this.current.run(span, body).finally(() => this.close(scenario, span));
+    const frame = this.open(scenario, fn, receiver);
+    if (frame.span === NOT_RECORDED) return this.current.run(frame, body);
+    return this.current.run(frame, body).finally(() => this.close(scenario, frame.span));
   }
 
-  l(line: number): void {
-    const span = this.current.getStore();
-    if (this.scenario !== null && span !== undefined && span !== NOT_RECORDED) this.scenario.line(span, line);
+  /** Line `line` of function `fn` ran: recorded on fn's innermost call in progress, if any. */
+  l(line: number, fn: number): void {
+    const scenario = this.scenario;
+    let frame = this.current.getStore() ?? null;
+    if (scenario === null || frame === null || frame.scenario !== scenario) return;
+    while (frame !== null && frame.fn !== fn) frame = frame.parent;
+    if (frame !== null && frame.span !== NOT_RECORDED) scenario.line(frame.span, line);
   }
 
   /** `path` is the test's describe blocks and name. */
@@ -243,12 +269,17 @@ export class Recorder {
     };
   }
 
-  private open(scenario: Scenario, fn: number, receiver: unknown): number {
-    const parent = this.current.getStore() ?? scenario.rootSpan;
-    if (parent === NOT_RECORDED || !scenario.admits(parent, fn)) return NOT_RECORDED;
+  private open(scenario: Scenario, fn: number, receiver: unknown): Frame {
+    const parent = this.current.getStore() ?? null;
+    // Work a finished test left running (an un-awaited promise) belongs to no scenario.
+    const leftOver = parent !== null && parent.scenario !== scenario;
+    const parentSpan = parent === null ? scenario.rootSpan : parent.span;
+    if (leftOver || parentSpan === NOT_RECORDED || !scenario.admits(parentSpan, fn)) {
+      return { scenario, span: NOT_RECORDED, fn, parent };
+    }
     const span = scenario.newSpan();
-    scenario.events.push(["S", scenario.now(), span, scenario.local(fn), parent, MAIN_THREAD, scenario.objectId(receiver)]);
-    return span;
+    scenario.events.push(["S", scenario.now(), span, scenario.local(fn), parentSpan, MAIN_THREAD, scenario.objectId(receiver)]);
+    return { scenario, span, fn, parent };
   }
 
   private close(scenario: Scenario, span: number, built?: () => object): void {

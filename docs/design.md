@@ -163,6 +163,12 @@ Accepted risks:
   `**.` in a rule needs at least one segment (`**.models` doesn't match `models`); a
   trailing or inner `.**` may match none. A dot inside a segment is written `\.` (a Go
   module path: `example\.com.shop.**`), and a backslash `\\`; Python names never need it.
+- The TypeScript recorder (recorder-ts/): a test's own beforeEach/afterEach run inside its
+  scenario, recorded as the call phase; constructors of derived classes aren't spans, so a
+  derived object is credited to its base class's constructor and its own fields' wiring is
+  missed; a statement that isn't in a block (`if (a) f(); else g();`) has no line of its own;
+  each line is recorded once per call, and a caller's first 50 calls of a function are kept
+  (recorderErrors says what was left out).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before
