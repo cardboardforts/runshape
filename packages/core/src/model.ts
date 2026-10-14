@@ -37,6 +37,8 @@ export enum Outcome {
 export class QualifiedName {
   /** JSON, like CodeSymbol.key: "example.com" + "shop" and "example" + "com.shop" stay apart. */
   readonly key: string;
+  /** Escaping is a regex per segment, and component ids ask for the text on every span. */
+  private cachedText: string | null = null;
 
   constructor(readonly segments: readonly string[]) {
     this.key = JSON.stringify(segments);
@@ -48,7 +50,8 @@ export class QualifiedName {
   }
 
   get text(): string {
-    return this.segments.map((segment) => segment.replace(/[\\.]/g, "\\$&")).join(".");
+    this.cachedText ??= this.segments.map((segment) => segment.replace(/[\\.]/g, "\\$&")).join(".");
+    return this.cachedText;
   }
 
   get last(): string {
@@ -114,6 +117,8 @@ export class CodeSymbol {
   readonly localName: QualifiedName;
   /** Namespace, container and name: what a route registers as its handler. */
   readonly path: QualifiedName;
+  /** The box the code is drawn in when no object received the call: its owning type, else its namespace. */
+  readonly owner: QualifiedName;
 
   constructor(
     readonly namespace: readonly string[],
@@ -128,6 +133,7 @@ export class CodeSymbol {
     this.namespaceName = new QualifiedName(namespace);
     this.localName = new QualifiedName([...container, name]);
     this.path = new QualifiedName([...namespace, ...container, name]);
+    this.owner = ownerType === null ? this.namespaceName : new QualifiedName([...namespace, ownerType]);
   }
 }
 

@@ -72,9 +72,7 @@ export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): Com
 
 /** app.db.repositories.users.UsersRepository for a method, else the module itself. */
 function ownerName(span: Span): QualifiedName {
-  if (span.obj !== null) return span.obj.type;
-  const { namespace, ownerType } = span.fn.symbol;
-  return new QualifiedName(ownerType === null ? namespace : [...namespace, ownerType]);
+  return span.obj !== null ? span.obj.type : span.fn.symbol.owner;
 }
 
 function calledFromTheApp(span: Span): boolean {
