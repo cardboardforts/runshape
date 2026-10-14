@@ -65,6 +65,29 @@ func TestRecordsTheExampleShop(t *testing.T) {
 	if len(manifest.Catalog) < 15 || len(manifest.Sources["internal/orders/service.go"]) == 0 {
 		t.Errorf("catalog of %d, sources %d files", len(manifest.Catalog), len(manifest.Sources))
 	}
+	var framework struct {
+		Framework struct {
+			Framework string `json:"framework"`
+			Routes    []struct {
+				Methods []string `json:"methods"`
+				Path    string   `json:"path"`
+				Handler []string `json:"handler"`
+			} `json:"routes"`
+		} `json:"framework"`
+	}
+	read(t, filepath.Join(out, "run", "manifest.json"), &framework)
+	var routes []string
+	for _, route := range framework.Framework.Routes {
+		routes = append(routes, fmt.Sprintf("%v %s -> %s", route.Methods, route.Path, strings.Join(route.Handler, ".")))
+	}
+	// Read from the source: web.NewHandler's HandleFunc calls.
+	if want := []string{
+		"[POST] /orders -> example.com.shop.internal.web.Handler.placeOrder",
+		"[GET] /orders/{id} -> example.com.shop.internal.web.Handler.getOrder",
+	}; framework.Framework.Framework != "net/http" || !reflect.DeepEqual(routes, want) {
+		t.Errorf("framework %q, routes %q", framework.Framework.Framework, routes)
+	}
+
 	var latest map[string]string
 	read(t, filepath.Join(out, "latest.json"), &latest)
 	if latest["run"] != "run" {
@@ -78,6 +101,16 @@ func TestRecordsTheExampleShop(t *testing.T) {
 			placed = &scenario{}
 			read(t, filepath.Join(out, "run", s.File), placed)
 		}
+	}
+	// Each request once, on the handler that received it.
+	var requests []string
+	for _, e := range placed.Events {
+		if e[0] == "Q" {
+			requests = append(requests, fmt.Sprintf("%v %v", e[3], e[4]))
+		}
+	}
+	if want := []string{"POST /orders", "GET /orders/ord-1"}; !reflect.DeepEqual(requests, want) {
+		t.Errorf("requests %q, want %q", requests, want)
 	}
 	tree := placed.tree()
 	for _, want := range []string{

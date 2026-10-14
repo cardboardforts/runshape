@@ -64,10 +64,12 @@ func Record(options Options) error {
 	}
 	defer os.RemoveAll(work)
 
-	catalog, sources, catalogProblems, err := instrumentCopy(options.Module, work, modulePath)
+	catalog, sources, http, catalogProblems, err := instrumentCopy(options.Module, work, modulePath)
 	if err != nil {
 		return err
 	}
+	routes, routeProblems := http.resolve()
+	catalogProblems = append(catalogProblems, routeProblems...)
 	if err := goCommand(work, "mod", "edit", "-require="+RecorderModulePath+"@v0.0.0", "-replace="+RecorderModulePath+"="+options.RecorderModule).Run(); err != nil {
 		return fmt.Errorf("pointing the copy at the recorder: %w", err)
 	}
@@ -108,7 +110,7 @@ func Record(options Options) error {
 	manifest := map[string]any{
 		"format": "runshape-trace", "version": 2, "createdAt": createdAt,
 		"language": "go", "runtime": strings.TrimSpace(string(goVersion)), "recorder": Version, "backend": "instrument",
-		"root": options.Module, "framework": nil, "catalog": catalog, "sources": sources,
+		"root": options.Module, "framework": frameworkOf(routes), "catalog": catalog, "sources": sources,
 		"catalogProblems": catalogProblems, "sessionProblems": sessionProblems, "scenarios": scenarios,
 	}
 	if err := writeJSON(filepath.Join(runDirectory, "manifest.json"), manifest); err != nil {
@@ -120,9 +122,10 @@ func Record(options Options) error {
 // instrumentCopy copies the module into work, instrumenting the .go files its build compiles.
 // Copied as they are: testdata (test inputs, often Go source compared byte for byte), vendor,
 // modules nested inside (they're other modules), and files this build excludes.
-func instrumentCopy(module, work, modulePath string) ([]catalogEntry, map[string][]string, []problem, error) {
+func instrumentCopy(module, work, modulePath string) ([]catalogEntry, map[string][]string, httpShape, []problem, error) {
 	catalog := []catalogEntry{}
 	sources := map[string][]string{}
+	http := httpShape{}
 	problems := []problem{}
 	verbatim := []string{}
 	err := filepath.WalkDir(module, func(path string, entry fs.DirEntry, err error) error {
@@ -183,10 +186,83 @@ func instrumentCopy(module, work, modulePath string) ([]catalogEntry, map[string
 			}
 			code = result.Code
 			catalog = append(catalog, result.Functions...)
+			http.add(pkgPath, file, result)
 		}
 		return os.WriteFile(target, code, info.Mode().Perm())
 	})
-	return catalog, sources, problems, err
+	return catalog, sources, http, problems, err
+}
+
+type route struct {
+	Methods []string `json:"methods"`
+	Path    string   `json:"path"`
+	Handler []string `json:"handler"`
+}
+
+type registration struct {
+	file  string
+	route instrument.Route
+}
+
+// httpShape is what the source says about HTTP, by package: its handlers and its routes.
+type httpShape map[string]*packageHTTP
+
+type packageHTTP struct {
+	handlers      []instrument.Symbol
+	registrations []registration
+}
+
+func (h httpShape) add(pkgPath, file string, result instrument.Result) {
+	if h[pkgPath] == nil {
+		h[pkgPath] = &packageHTTP{}
+	}
+	h[pkgPath].handlers = append(h[pkgPath].handlers, result.Handlers...)
+	for _, r := range result.Routes {
+		h[pkgPath].registrations = append(h[pkgPath].registrations, registration{file, r})
+	}
+}
+
+// resolve names each route's handler among its package's handlers: a method value by method name,
+// a function by function name. One it can't find (another package's, ambiguous) is a problem.
+func (h httpShape) resolve() ([]route, []problem) {
+	routes := []route{}
+	problems := []problem{}
+	packages := make([]string, 0, len(h))
+	for pkg := range h {
+		packages = append(packages, pkg)
+	}
+	sort.Strings(packages)
+	for _, pkg := range packages {
+		shape := h[pkg]
+		for _, reg := range shape.registrations {
+			var matches []instrument.Symbol
+			for _, handler := range shape.handlers {
+				if handler.Name == reg.route.Handler && (len(handler.Container) == 1) == reg.route.Method {
+					matches = append(matches, handler)
+				}
+			}
+			if len(matches) != 1 {
+				problems = append(problems, problem{reg.file, fmt.Sprintf("route %q: found %d handlers named %s in %s", reg.route.Pattern, len(matches), reg.route.Handler, pkg)})
+				continue
+			}
+			methods, path := []string{}, reg.route.Pattern
+			if fields := strings.Fields(reg.route.Pattern); len(fields) == 2 && strings.ToUpper(fields[0]) == fields[0] {
+				methods, path = []string{fields[0]}, fields[1]
+			}
+			symbol := matches[0]
+			handler := append(append(append([]string{}, symbol.Namespace...), symbol.Container...), symbol.Name)
+			routes = append(routes, route{Methods: methods, Path: path, Handler: handler})
+		}
+	}
+	return routes, problems
+}
+
+// frameworkOf is the manifest's framework: net/http's routes, when the source registers any.
+func frameworkOf(routes []route) any {
+	if len(routes) == 0 {
+		return nil
+	}
+	return map[string]any{"framework": "net/http", "entry": "net/http", "middleware": []string{}, "router": nil, "routes": routes, "externals": []any{}}
 }
 
 // copySymlink recreates a link in the copy, pointing where the original points.

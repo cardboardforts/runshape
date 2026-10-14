@@ -21,5 +21,6 @@ Django recording as a fixture without stripping `sources`: that upstream has no 
 Regenerate after changing the recorder: run the example, then copy `.hexvis/traces/<run>/`
 over `<app>/run/`. The inline snapshots in `test/*.test.ts` will show what changed.
 
-- `go-shop/` — examples/go-shop recorded by recorder-go (trace format version 2, with source):
+- `go-shop/` — examples/go-shop recorded by recorder-go (trace format version 2, with source,
+  the routes it read from the source, and each request):
   `npm run record-go -- -out packages/trace/test/fixtures/go-shop -run run examples/go-shop`.

@@ -46,6 +46,19 @@ type Function struct {
 type Result struct {
 	Code      []byte
 	Functions []Function
+	// Handlers are the functions taking (http.ResponseWriter, *http.Request).
+	Handlers []Symbol
+	// Routes are the file's HandleFunc and Handle registrations.
+	Routes []Route
+}
+
+// Route is a registration such as mux.HandleFunc("POST /orders", h.placeOrder). The handler is
+// named as written; the recorder resolves it among the package's handlers.
+type Route struct {
+	Pattern string
+	Handler string
+	// Method is set when the handler was a method value (h.placeOrder), not a function.
+	Method bool
 }
 
 type insertion struct {
@@ -70,6 +83,7 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 	table := tableName(file)
 
 	var functions []Function
+	var handlers []Symbol
 	var insertions []insertion
 	for _, decl := range parsed.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -79,10 +93,14 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 		symbol, receiver := symbolOf(fn, namespace, path.Base(file))
 		entry := Function{File: file, Symbol: symbol, FirstLine: line(fn.Pos()), LastLine: line(fn.End()), Lines: []int{}}
 		index := len(functions)
-		insertions = append(insertions, insertion{
-			at:   offset(fn.Body.Lbrace) + 1,
-			text: fmt.Sprintf(" __rsF := __rs.Enter(&%s, %d, %s); defer __rsF.Exit();", table, index, receiver),
-		})
+		open := fmt.Sprintf(" __rsF := __rs.Enter(&%s, %d, %s); defer __rsF.Exit();", table, index, receiver)
+		if request, ok := handlerRequest(fn.Type); ok {
+			handlers = append(handlers, symbol)
+			if request != "" {
+				open += fmt.Sprintf(" __rsF.Request(%s.Method, %s.URL.Path);", request, request)
+			}
+		}
+		insertions = append(insertions, insertion{at: offset(fn.Body.Lbrace) + 1, text: open})
 		seen := map[int]bool{}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
 			for _, statement := range statementsOf(node) {
@@ -101,8 +119,9 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 		sort.Ints(entry.Lines)
 		functions = append(functions, entry)
 	}
+	routes := routesIn(parsed)
 	if len(functions) == 0 {
-		return Result{Code: src, Functions: nil}, nil
+		return Result{Code: src, Routes: routes}, nil
 	}
 
 	// On the package clause's line, so no line below it moves.
@@ -117,7 +136,78 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 	// another file's var reaches during init, through an interface, can already use it); the
 	// runtime registers it on first use.
 	code = append(code, []byte(fmt.Sprintf("\nvar %s = __rs.Table{Entries: %s}\n", table, strconv.Quote(string(entries))))...)
-	return Result{Code: code, Functions: functions}, nil
+	return Result{Code: code, Functions: functions, Handlers: handlers, Routes: routes}, nil
+}
+
+// handlerRequest reports whether a function is an HTTP handler, (http.ResponseWriter,
+// *http.Request), and the request parameter's name ("" when it's blank or unnamed).
+func handlerRequest(typ *ast.FuncType) (string, bool) {
+	var params []*ast.Field
+	var names []string
+	for _, field := range typ.Params.List {
+		if len(field.Names) == 0 {
+			params, names = append(params, field), append(names, "")
+		}
+		for _, name := range field.Names {
+			params, names = append(params, field), append(names, name.Name)
+		}
+	}
+	if len(params) != 2 || !isSelector(params[0].Type, "http", "ResponseWriter") {
+		return "", false
+	}
+	star, ok := params[1].Type.(*ast.StarExpr)
+	if !ok || !isSelector(star.X, "http", "Request") {
+		return "", false
+	}
+	if names[1] == "_" {
+		return "", true
+	}
+	return names[1], true
+}
+
+func isSelector(expr ast.Expr, pkg, name string) bool {
+	selector, ok := expr.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != name {
+		return false
+	}
+	ident, ok := selector.X.(*ast.Ident)
+	return ok && ident.Name == pkg
+}
+
+// routesIn finds x.HandleFunc("pattern", handler) and x.Handle("pattern", handler) calls,
+// looking through a conversion such as http.HandlerFunc(health).
+func routesIn(file *ast.File) []Route {
+	var routes []Route
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) != 2 {
+			return true
+		}
+		fun, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || (fun.Sel.Name != "HandleFunc" && fun.Sel.Name != "Handle") {
+			return true
+		}
+		literal, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING {
+			return true
+		}
+		pattern, err := strconv.Unquote(literal.Value)
+		if err != nil {
+			return true
+		}
+		handler := call.Args[1]
+		if conversion, ok := handler.(*ast.CallExpr); ok && len(conversion.Args) == 1 {
+			handler = conversion.Args[0]
+		}
+		switch h := handler.(type) {
+		case *ast.SelectorExpr:
+			routes = append(routes, Route{Pattern: pattern, Handler: h.Sel.Name, Method: true})
+		case *ast.Ident:
+			routes = append(routes, Route{Pattern: pattern, Handler: h.Name})
+		}
+		return true
+	})
+	return routes
 }
 
 // InstrumentTest makes each top-level TestXxx(t *testing.T) in a _test.go file a scenario.

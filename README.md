@@ -71,7 +71,8 @@ Then in VS Code: **Runshape: Open Runtime View**. Re-running the tests updates t
 npm run record-go -- path/to/module            # needs the go command; writes <module>/.runshape/traces
 ```
 
-Each top-level `TestXxx` becomes one scenario. The module is copied and the copy instrumented,
+Each top-level `TestXxx` becomes one scenario. Routes registered with `HandleFunc`/`Handle` are
+read from the source, and each request is recorded on the handler that received it. The module is copied and the copy instrumented,
 so your source is untouched; each run becomes `latest`, the one before it `previous`. Tests
 that couldn't be recorded (a package that doesn't build, a panic that stops a test binary) are
 listed as problems; a run that records nothing fails and leaves the last good run in place.

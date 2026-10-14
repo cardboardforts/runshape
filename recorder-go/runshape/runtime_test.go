@@ -125,3 +125,26 @@ func TestOutsideAScenarioNothingIsRecorded(t *testing.T) {
 	f.Line(11)
 	f.Exit()
 }
+
+func TestOnlyTheOutermostHandlerReportsTheRequest(t *testing.T) {
+	r := newRecorder(DefaultLimits)
+	ids := r.functions(table)
+	finish := r.scenario(fakeT{}, "svc_test.go", "TestSample")
+
+	serve := r.enter(ids[0], nil)
+	serve.Request("POST", "/orders")
+	route := r.enter(ids[1], nil) // the route's handler, called by the mux inside serve
+	route.Request("POST", "/orders")
+	route.Exit()
+	serve.Exit()
+
+	var requests []string
+	for _, e := range finish().Events {
+		if e[0] == "Q" {
+			requests = append(requests, fmt.Sprintf("span %v: %v %v", e[2], e[3], e[4]))
+		}
+	}
+	if want := []string{"span 1: POST /orders"}; !reflect.DeepEqual(requests, want) {
+		t.Errorf("requests %q, want %q", requests, want)
+	}
+}

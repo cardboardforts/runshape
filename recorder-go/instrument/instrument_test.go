@@ -111,3 +111,51 @@ func TestATestFunctionBecomesAScenario(t *testing.T) {
 		t.Fatalf("doesn't parse: %v", err)
 	}
 }
+
+const sampleHTTP = `package web
+
+import "net/http"
+
+type Handler struct{ mux *http.ServeMux }
+
+func NewHandler() *Handler {
+	h := &Handler{mux: http.NewServeMux()}
+	h.mux.HandleFunc("POST /orders", h.placeOrder)
+	h.mux.Handle("/health", http.HandlerFunc(health))
+	return h
+}
+
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mux.ServeHTTP(w, r)
+}
+
+func (h *Handler) placeOrder(w http.ResponseWriter, r *http.Request) {}
+
+func health(w http.ResponseWriter, _ *http.Request) {}
+`
+
+// Go's standard library has no framework to ask for routes, but its shape is in the source:
+// handlers take (http.ResponseWriter, *http.Request), and routes are registered with HandleFunc
+// or Handle and a pattern. A handler reports the request it serves; the runtime keeps only the
+// outermost one on a call stack.
+func TestFindsHandlersRoutesAndReportsRequests(t *testing.T) {
+	result, err := Instrument("internal/web/handler.go", "example.com/shop/internal/web", []byte(sampleHTTP))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var handlers []string
+	for _, h := range result.Handlers {
+		handlers = append(handlers, strings.Join(append(append([]string{}, h.Container...), h.Name), "."))
+	}
+	if want := []string{"Handler.ServeHTTP", "Handler.placeOrder", "health"}; !reflect.DeepEqual(handlers, want) {
+		t.Errorf("handlers %q, want %q", handlers, want)
+	}
+	if want := []Route{{Pattern: "POST /orders", Handler: "placeOrder", Method: true}, {Pattern: "/health", Handler: "health"}}; !reflect.DeepEqual(result.Routes, want) {
+		t.Errorf("routes %+v, want %+v", result.Routes, want)
+	}
+	code := string(result.Code)
+	if strings.Count(code, "__rsF.Request(r.Method, r.URL.Path);") != 2 {
+		t.Errorf("want the two handlers with a named request to report it:\n%s", code)
+	}
+}

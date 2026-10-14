@@ -212,6 +212,8 @@ type Frame struct {
 	fn     int
 	thread uint64
 	closed bool
+	// serving is set on the frame that reported a request (see Request).
+	serving bool
 }
 
 func (r *recorder) enter(id int, recv any) *Frame {
@@ -260,6 +262,29 @@ func (f *Frame) Exit() {
 		f.s.events = append(f.s.events, []any{"X", f.s.now(), f.span})
 		delete(f.s.lines, f.span)
 	}
+}
+
+// Request records the HTTP request a handler serves, on the outermost handler of its call
+// stack only: a mux's route handler serves the same request as the ServeHTTP that called it.
+func (f *Frame) Request(method, path string) {
+	if f.s == nil {
+		return
+	}
+	f.r.mu.Lock()
+	defer f.r.mu.Unlock()
+	if f.closed || f.span == notRecorded || f.r.current != f.s || f.r.isFull(f.s) {
+		return
+	}
+	for _, outer := range f.s.stacks[f.thread] {
+		if outer == f {
+			break
+		}
+		if outer.serving {
+			return
+		}
+	}
+	f.serving = true
+	f.s.events = append(f.s.events, []any{"Q", f.s.now(), f.span, method, path})
 }
 
 // Line records that the function ran line n: once per call. A closure marks its lines through

@@ -34,9 +34,13 @@ describe("a Go service", () => {
     ]);
     // Go module paths hold dots: example.com is one segment, written escaped in Runshape's names.
     expect(graph.nodes.find((node) => node.label === "Service")?.qualifiedName).toBe("example\\.com.shop.internal.orders.Service");
+    // The recorder read the routes from web.NewHandler's HandleFunc calls: their handlers' box
+    // receives requests, as a FastAPI route's does.
+    const handler = graph.nodes.find((node) => node.label === "Handler")!;
+    expect(`${handler.zone}: ${handler.zoneReason}`).toBe("inbound-adapter: handles a route");
   });
 
-  test("placing an order, replayed: in through the handler, validated by the domain, saved by storage", async () => {
+  test("placing an order, replayed: the request, then the domain validating it and storage saving it", async () => {
     const run = await loadFixtureRun("go-shop");
     const scenario = run.scenarios.find((candidate) => candidate.name === "TestPlaceThenFetchAnOrder")!;
 
@@ -48,13 +52,13 @@ describe("a Go service", () => {
         "NewMemoryRepository",
         "NewService",
         "NewHandler",
-        "Handler.ServeHTTP",
+        "POST /orders",
         "Service.Place",
         "Order.Problems",
         "MemoryRepository.Save",
         "writeJSON",
         "statusRecorder.WriteHeader",
-        "Handler.ServeHTTP",
+        "GET /orders/ord-1",
         "Service.Get",
       ]
     `);
