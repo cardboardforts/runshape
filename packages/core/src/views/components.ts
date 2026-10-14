@@ -1,4 +1,4 @@
-import { lastSegment, LandmarkKind, Role, Span } from "../model";
+import { LandmarkKind, QualifiedName, Role, Span } from "../model";
 
 export const CLIENT_ID = "client";
 export const MIDDLEWARE_CHAIN_ID = "landmark:middleware-chain";
@@ -26,8 +26,8 @@ export interface ComponentRef {
   id: string;
   kind: ComponentKind;
   label: string;
-  /** Fully qualified class or module name, for source components. */
-  qualifiedName: string | null;
+  /** The class or module, for source components. */
+  name: QualifiedName | null;
 }
 
 const LANDMARK_COMPONENT_KIND: Record<LandmarkKind, ComponentKind> = {
@@ -44,36 +44,37 @@ const LANDMARK_COMPONENT_KIND: Record<LandmarkKind, ComponentKind> = {
 export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): ComponentRef {
   const fn = span.fn;
   if (grouping.collapseMiddleware && fn.landmarkKind === LandmarkKind.Middleware) {
-    return { id: MIDDLEWARE_CHAIN_ID, kind: ComponentKind.Middleware, label: "Middleware", qualifiedName: null };
+    return { id: MIDDLEWARE_CHAIN_ID, kind: ComponentKind.Middleware, label: "Middleware", name: null };
   }
   if (fn.role === Role.Test) {
     if (!calledFromTheApp(span)) {
-      return { id: CLIENT_ID, kind: ComponentKind.Client, label: "Client (tests)", qualifiedName: null };
+      return { id: CLIENT_ID, kind: ComponentKind.Client, label: "Client (tests)", name: null };
     }
     // Test code the app calls into is a fake standing in for a real adapter.
     const owner = ownerName(span);
-    return { id: `double:${owner}`, kind: ComponentKind.TestDouble, label: lastSegment(owner), qualifiedName: owner };
+    return { id: `double:${owner.text}`, kind: ComponentKind.TestDouble, label: owner.last, name: owner };
   }
   if (fn.role === Role.Landmark) {
     const kind = fn.landmarkKind === null ? ComponentKind.Middleware : LANDMARK_COMPONENT_KIND[fn.landmarkKind];
-    return { id: `landmark:${kind}:${fn.symbol.dottedPath}`, kind, label: fn.symbol.dottedPath, qualifiedName: null };
+    return { id: `landmark:${kind}:${fn.symbol.dottedPath}`, kind, label: fn.symbol.dottedPath, name: null };
   }
   if (span.obj !== null) {
-    return classComponent(span.obj.className);
+    return classComponent(span.obj.type);
   }
   const owner = ownerName(span);
-  if (owner !== span.fn.symbol.dottedNamespace) {
+  const module = fn.symbol.namespaceName;
+  if (!owner.equals(module)) {
     return classComponent(owner);
   }
-  return { id: `module:${fn.symbol.dottedNamespace}`, kind: ComponentKind.Module, label: moduleLabel(fn.symbol.dottedNamespace), qualifiedName: fn.symbol.dottedNamespace };
+  return { id: `module:${module.text}`, kind: ComponentKind.Module, label: moduleLabel(module), name: module };
 }
 
-/** "app.db.repositories.users.UsersRepository" for a method, else the module itself. */
-function ownerName(span: Span): string {
-  if (span.obj !== null) return span.obj.className;
-  const segments = span.fn.symbol.dottedPath.split(".");
-  const isMethodOfClass = segments.length > 1 && segments[1] !== "<locals>";
-  return isMethodOfClass ? `${span.fn.symbol.dottedNamespace}.${segments[0]}` : span.fn.symbol.dottedNamespace;
+/** app.db.repositories.users.UsersRepository for a method, else the module itself. */
+function ownerName(span: Span): QualifiedName {
+  if (span.obj !== null) return span.obj.type;
+  const { namespace, container } = span.fn.symbol;
+  const isMethodOfClass = container.length > 0 && container[1] !== "<locals>";
+  return new QualifiedName(isMethodOfClass ? [...namespace, container[0]!] : namespace);
 }
 
 function calledFromTheApp(span: Span): boolean {
@@ -84,19 +85,19 @@ function calledFromTheApp(span: Span): boolean {
 }
 
 /** Two segments: app.api.routes.authentication and app.services.authentication must differ. */
-function moduleLabel(module: string): string {
-  return module.split(".").slice(-2).join(".");
+function moduleLabel(module: QualifiedName): string {
+  return module.segments.slice(-2).join(".");
 }
 
 export function externalComponent(system: string): ComponentRef {
-  return { id: `external:${system}`, kind: ComponentKind.External, label: system, qualifiedName: null };
+  return { id: `external:${system}`, kind: ComponentKind.External, label: system, name: null };
 }
 
 /** The graph id of a project class's box; objects and the calls made on them share it. */
-export function classComponentId(qualifiedName: string): string {
-  return `class:${qualifiedName}`;
+export function classComponentId(type: QualifiedName): string {
+  return `class:${type.text}`;
 }
 
-function classComponent(qualifiedName: string): ComponentRef {
-  return { id: classComponentId(qualifiedName), kind: ComponentKind.Class, label: lastSegment(qualifiedName), qualifiedName };
+function classComponent(type: QualifiedName): ComponentRef {
+  return { id: classComponentId(type), kind: ComponentKind.Class, label: type.last, name: type };
 }

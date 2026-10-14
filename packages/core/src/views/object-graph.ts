@@ -44,8 +44,8 @@ export interface ComponentWiring {
 export function buildObjectGraph(scenario: Scenario): ObjectGraph {
   const objects: ObjectNode[] = scenario.objects.map((obj) => ({
     id: obj.id,
-    componentId: classComponentId(obj.className),
-    className: obj.className,
+    componentId: classComponentId(obj.type),
+    className: obj.type.text,
     builtBy: obj.createdIn?.parent?.fn.symbol.dottedPath ?? null,
     seenUs: obj.seenUs,
   }));
@@ -61,8 +61,8 @@ export function aggregateWiring(run: Run): ComponentWiring[] {
   for (const scenario of run.scenarios) {
     for (const obj of scenario.objects) {
       for (const wire of obj.wires) {
-        const from = classComponentId(obj.className);
-        const to = classComponentId(wire.target.className);
+        const from = classComponentId(obj.type);
+        const to = classComponentId(wire.target.type);
         const key = `${from}->${to}`;
         const entry = byPair.get(key) ?? { from, to, attributes: new Set<string>(), references: 0, scenarioIds: new Set<string>() };
         entry.attributes.add(wire.attribute);

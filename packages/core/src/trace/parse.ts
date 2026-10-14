@@ -7,6 +7,7 @@ import {
   ObjectInstance,
   Outcome,
   Phase,
+  QualifiedName,
   Role,
   Run,
   Scenario,
@@ -58,7 +59,10 @@ export function parseRun(manifest: ManifestDto, loaded: LoadedScenario[]): Run {
     manifest.createdAt,
     manifest.python,
     manifest.backend,
-    manifest.framework,
+    manifest.framework && {
+      ...manifest.framework,
+      routes: manifest.framework.routes.map((route) => ({ ...route, handler: pythonName(route.handler) })),
+    },
     (manifest.catalog ?? []).map(parseCatalogFunction),
     scenarios,
     problems,
@@ -75,7 +79,7 @@ export function parseScenario(dto: ScenarioDto): Scenario {
   const createdIn = new Map<number, number>();
   for (const event of dto.events) {
     if (event[0] === "O") {
-      objects.set(event[2], new ObjectInstance(event[2], event[3], event[1]));
+      objects.set(event[2], new ObjectInstance(event[2], pythonName(event[3]), event[1]));
       if (event[4] !== null) createdIn.set(event[2], event[4]);
     }
   }
@@ -175,7 +179,12 @@ function parseCatalogFunction(dto: CatalogFunctionDto): CatalogFunction {
   return { ...rest, symbol: pythonSymbol(module, qualname) };
 }
 
-/** "pkg.mod" + "Class.method.<locals>.inner": the only place Python's dots are taken apart. */
+/** "pkg.mod.Class": an object's class or a route's handler. */
+function pythonName(dotted: string): QualifiedName {
+  return new QualifiedName(dotted.split("."));
+}
+
+/** "pkg.mod" + "Class.method.<locals>.inner": with pythonName, the only places Python's dots are taken apart. */
 export function pythonSymbol(module: string, qualname: string): CodeSymbol {
   const path = qualname.split(".");
   const name = path.pop() ?? "";

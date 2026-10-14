@@ -6,6 +6,7 @@
 import { describe, expect, test } from "vitest";
 
 import { ArchitectureCandidate, detectArchitecture, proposedRules } from "../src/architecture";
+import { QualifiedName } from "../src/model";
 import { ArchitectureStyle } from "../src/profiles";
 import { loadFixtureRun } from "./fixtures";
 
@@ -198,7 +199,7 @@ describe("proposedRules", () => {
         "app.services.**            business      detected: business: the package is named "services"",
       ]
     `);
-    expect(rules.matchFor("app.models.domain.users.UserInDB")?.rule.zone).toBe("business");
-    expect(rules.matchFor("app.models.common.DateTimeModelMixin")?.rule.zone).toBe("data");
+    expect(rules.matchFor(new QualifiedName("app.models.domain.users.UserInDB".split(".")))?.rule.zone).toBe("business");
+    expect(rules.matchFor(new QualifiedName("app.models.common.DateTimeModelMixin".split(".")))?.rule.zone).toBe("data");
   });
 });

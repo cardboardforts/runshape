@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, lastSegment, Run, Span } from "../model";
+import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 
 /** One box from the system graph opened up: its functions and how much the tests reach. */
@@ -39,14 +39,14 @@ interface Tally {
 export function buildComponentView(run: Run, componentId: string, grouping: Grouping = FINE_GROUPING): ComponentView {
   const tallies = new Map<string, Tally>();
   let label = componentId;
-  let qualifiedName: string | null = null;
+  let name: QualifiedName | null = null;
 
   for (const scenario of run.scenarios) {
     for (const span of scenario.spans) {
       const ref = componentOf(span, grouping);
       if (ref.id !== componentId) continue;
       label = ref.label;
-      qualifiedName = ref.qualifiedName;
+      name = ref.name;
       let tally = tallies.get(span.fn.symbol.key);
       if (tally === undefined) {
         tally = { symbol: span.fn.symbol, calls: 0, totalUs: 0, selfUs: 0, lines: new Set(), scenarioIds: new Set() };
@@ -66,7 +66,7 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
 
   const functions: FunctionSummary[] = [];
   const listed = new Set<string>();
-  for (const fn of ownFunctions(run, qualifiedName)) {
+  for (const fn of ownFunctions(run, name)) {
     listed.add(fn.symbol.key);
     functions.push(summarize(fn, tallies.get(fn.symbol.key), null));
   }
@@ -82,7 +82,7 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
     const owner = symbol.container[0] ?? symbol.dottedNamespace;
     functions.push(summarize(fn, tally, owner));
   }
-  return { id: componentId, label, qualifiedName, functions };
+  return { id: componentId, label, qualifiedName: name?.text ?? null, functions };
 }
 
 /** A call nested in a call of the same function: its time is already in the outer one's. */
@@ -93,20 +93,16 @@ function insideItself(span: Span): boolean {
   return false;
 }
 
-function ownFunctions(run: Run, qualifiedName: string | null): CatalogFunction[] {
-  if (qualifiedName === null) return [];
-  const modules = run.catalog.filter((fn) => fn.symbol.dottedNamespace === qualifiedName);
+function ownFunctions(run: Run, name: QualifiedName | null): CatalogFunction[] {
+  if (name === null) return [];
+  const modules = run.catalog.filter((fn) => fn.symbol.namespaceName.equals(name));
   if (modules.length > 0) {
     // A module component: its top-level functions.
-    return modules.filter((fn) => !fn.symbol.dottedPath.includes("."));
+    return modules.filter((fn) => fn.symbol.container.length === 0);
   }
-  const module = qualifiedName.slice(0, qualifiedName.lastIndexOf("."));
-  const className = lastSegment(qualifiedName);
-  return run.catalog.filter((fn) => {
-    if (fn.symbol.dottedNamespace !== module) return false;
-    const segments = fn.symbol.dottedPath.split(".");
-    return segments.length === 2 && segments[0] === className;
-  });
+  const module = name.parent();
+  if (module === null) return [];
+  return run.catalog.filter(({ symbol }) => symbol.namespaceName.equals(module) && symbol.container.length === 1 && symbol.container[0] === name.last);
 }
 
 function summarize(fn: CatalogFunction, tally: Tally | undefined, inheritedFrom: string | null): FunctionSummary {
@@ -118,7 +114,7 @@ function summarize(fn: CatalogFunction, tally: Tally | undefined, inheritedFrom:
   return {
     module: fn.symbol.dottedNamespace,
     qualname: fn.symbol.dottedPath,
-    name: lastSegment(fn.symbol.dottedPath),
+    name: fn.symbol.name,
     file: fn.file,
     firstLine: fn.firstLine,
     inheritedFrom,

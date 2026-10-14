@@ -178,7 +178,7 @@ describe("system graph", () => {
 
   test("an app with a single route module still treats its dependencies as inbound adapters", async () => {
     const run = await loadFixtureRun("fastapi");
-    const onlyUserRoutes = (run.topology?.routes ?? []).filter((route) => route.handler.startsWith("app.api.routes.users."));
+    const onlyUserRoutes = (run.topology?.routes ?? []).filter((route) => route.handler.text.startsWith("app.api.routes.users."));
     const singleModuleRun = Object.assign(Object.create(Object.getPrototypeOf(run)), run, {
       topology: { ...run.topology, routes: onlyUserRoutes },
     });

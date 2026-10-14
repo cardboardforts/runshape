@@ -3,6 +3,8 @@
 // system graph, the rules file and the violations all take their vocabulary from the active
 // profile; hexagonal is the default and reproduces the viewer's original behaviour exactly.
 
+import type { QualifiedName } from "./model";
+
 export enum ArchitectureStyle {
   Hexagonal = "hexagonal",
   Layered = "layered",
@@ -211,8 +213,8 @@ export function forbiddenCall(profile: ArchitectureProfile, from: string, to: st
 }
 
 /** The zone a component's own name suggests: the innermost name segment the style recognises. */
-export function zoneFromName(profile: ArchitectureProfile, qualifiedName: string): { zone: string; word: string } | null {
-  const segments = qualifiedName.toLowerCase().split(".");
+export function zoneFromName(profile: ArchitectureProfile, name: QualifiedName): { zone: string; word: string } | null {
+  const segments = name.segments.map((segment) => segment.toLowerCase());
   for (let i = segments.length - 1; i >= 0; i -= 1) {
     for (const zone of profile.zones) {
       if ((profile.vocabulary[zone.id] ?? []).includes(segments[i]!)) return { zone: zone.id, word: segments[i]! };

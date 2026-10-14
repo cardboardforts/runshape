@@ -1,4 +1,4 @@
-import { Phase, Run, Scenario, Span } from "../model";
+import { Phase, QualifiedName, Run, Scenario, Span } from "../model";
 import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName } from "../profiles";
 import { ZoneRules } from "../zones";
 import {
@@ -120,8 +120,9 @@ class EdgeTally {
 class GraphBuilder {
   private readonly nodes = new Map<string, NodeTally>();
   private readonly edges = new Map<string, EdgeTally>();
+  /** QualifiedName keys. */
   private readonly routeHandlers: Set<string>;
-  private readonly inboundPackage: string | null;
+  private readonly inboundPackage: QualifiedName | null;
   private readonly middlewareCount: number;
 
   constructor(
@@ -131,7 +132,7 @@ class GraphBuilder {
     private readonly rules: ZoneRules,
   ) {
     this.middlewareCount = run.topology?.middleware.length ?? 0;
-    this.routeHandlers = new Set((run.topology?.routes ?? []).map((route) => route.handler));
+    this.routeHandlers = new Set((run.topology?.routes ?? []).map((route) => route.handler.key));
     this.inboundPackage = inboundPackageOf(run);
   }
 
@@ -182,7 +183,7 @@ class GraphBuilder {
         id: tally.ref.id,
         kind: tally.ref.kind,
         label: tally.ref.id === MIDDLEWARE_CHAIN_ID ? `Middleware ×${this.middlewareCount}` : tally.ref.label,
-        qualifiedName: tally.ref.qualifiedName,
+        qualifiedName: tally.ref.name?.text ?? null,
         zone: placement.zone,
         zoneSource: placement.source,
         zoneReason: placement.reason,
@@ -217,8 +218,8 @@ class GraphBuilder {
     const fixed = fixedZoneOf(tally.ref);
     if (fixed !== null) return { zone: fixed, source: ZoneSource.Fixed, reason: "framework, test or external code" };
     // Rules name zones of the style they were written for; drawing another style ignores them.
-    if (tally.ref.qualifiedName !== null && this.rules.profile.style === this.profile.style) {
-      const match = this.rules.matchFor(tally.ref.qualifiedName);
+    if (tally.ref.name !== null && this.rules.profile.style === this.profile.style) {
+      const match = this.rules.matchFor(tally.ref.name);
       if (match !== null) {
         const decidedBy = match.rule.by === "llm" ? "proposed by a model, accepted" : "declared";
         return {
@@ -260,16 +261,16 @@ class GraphBuilder {
    */
   private isFrameworkCallIntoInboundPackage(caller: ComponentRef, callee: ComponentRef): boolean {
     if (caller.kind !== ComponentKind.Router && caller.kind !== ComponentKind.Middleware) return false;
-    if (this.inboundPackage === null || callee.qualifiedName === null) return true;
-    return callee.qualifiedName.startsWith(`${this.inboundPackage}.`);
+    if (this.inboundPackage === null || callee.name === null) return true;
+    return this.inboundPackage.holds(callee.name);
   }
 
   private isRouteHandler(span: Span): boolean {
-    const qualified = `${span.fn.symbol.dottedNamespace}.${span.fn.symbol.dottedPath}`;
-    if (this.routeHandlers.has(qualified)) return true;
+    const path = span.fn.symbol.path;
+    if (this.routeHandlers.has(path.key)) return true;
     // Class-based views (Django/DRF) register the class; the span is one of its methods.
-    const owner = qualified.slice(0, qualified.lastIndexOf("."));
-    return this.routeHandlers.has(owner);
+    const owner = path.parent();
+    return owner !== null && this.routeHandlers.has(owner.key);
   }
 }
 
@@ -284,9 +285,9 @@ function fixedZoneOf(ref: ComponentRef): FixedZone | null {
  * A component no rule places: by its name first if the style says names are telling
  * (layered, MVC), then by what it was seen doing.
  */
-function inferZone(tally: NodeTally, profile: ArchitectureProfile, inboundPackage: string | null): { zone: ZoneId; reason: string } {
-  if (profile.namesFirst && tally.ref.qualifiedName !== null) {
-    const byName = zoneFromName(profile, tally.ref.qualifiedName);
+function inferZone(tally: NodeTally, profile: ArchitectureProfile, inboundPackage: QualifiedName | null): { zone: ZoneId; reason: string } {
+  if (profile.namesFirst && tally.ref.name !== null) {
+    const byName = zoneFromName(profile, tally.ref.name);
     if (byName !== null) {
       const zoneName = profile.zones.find((zone) => zone.id === byName.zone)?.name ?? byName.zone;
       return { zone: byName.zone, reason: `named like ${zoneName.toLowerCase()} code ("${byName.word}")` };
@@ -295,7 +296,7 @@ function inferZone(tally: NodeTally, profile: ArchitectureProfile, inboundPackag
   const { handlesRequests, callsExternal, otherwise } = profile.behaviour;
   if (tally.isRouteHandler) return { zone: handlesRequests, reason: "handles a route" };
   if (tally.calledByFramework) {
-    return { zone: handlesRequests, reason: `the framework calls it while serving requests${inboundPackage ? ` (in ${inboundPackage})` : ""}` };
+    return { zone: handlesRequests, reason: `the framework calls it while serving requests${inboundPackage ? ` (in ${inboundPackage.text})` : ""}` };
   }
   if (tally.externalSystems.size > 0) {
     return { zone: callsExternal, reason: `calls ${[...tally.externalSystems].sort().join(", ")} directly` };
@@ -308,12 +309,12 @@ function inferZone(tally: NodeTally, profile: ArchitectureProfile, inboundPackag
  * (dependencies, error handlers) count too: app.api for handlers in app.api.routes.*,
  * whether there is one route module or twenty. Null when handlers share no package.
  */
-function inboundPackageOf(run: Run): string | null {
-  const projectModules = new Set(run.catalog.map((f) => f.symbol.dottedNamespace));
-  const handlerPackages: string[][] = [];
+function inboundPackageOf(run: Run): QualifiedName | null {
+  const projectModules = new Set(run.catalog.map((f) => f.symbol.namespaceName.key));
+  const handlerPackages: (readonly string[])[] = [];
   for (const route of run.topology?.routes ?? []) {
     const module = longestModulePrefix(route.handler, projectModules);
-    if (module !== null) handlerPackages.push(module.split(".").slice(0, -1));
+    if (module !== null) handlerPackages.push(module.segments.slice(0, -1));
   }
   const first = handlerPackages[0];
   if (first === undefined) return null;
@@ -324,14 +325,14 @@ function inboundPackageOf(run: Run): string | null {
     common = shared;
   }
   if (common === 0) return null;
-  return first.slice(0, Math.max(common - 1, 1)).join(".");
+  return new QualifiedName(first.slice(0, Math.max(common - 1, 1)));
 }
 
-function longestModulePrefix(qualified: string, modules: Set<string>): string | null {
-  const segments = qualified.split(".");
-  for (let length = segments.length - 1; length > 0; length -= 1) {
-    const candidate = segments.slice(0, length).join(".");
-    if (modules.has(candidate)) return candidate;
+/** The module a handler is defined in: the longest proper prefix that is a project module (by key). */
+function longestModulePrefix(handler: QualifiedName, moduleKeys: Set<string>): QualifiedName | null {
+  for (let length = handler.segments.length - 1; length > 0; length -= 1) {
+    const candidate = new QualifiedName(handler.segments.slice(0, length));
+    if (moduleKeys.has(candidate.key)) return candidate;
   }
   return null;
 }

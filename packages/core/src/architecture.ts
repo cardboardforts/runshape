@@ -126,7 +126,7 @@ export function projectPackages(run: Run): string[] {
   const packages = new Set<string>();
   for (const fn of run.catalog) {
     if (testFiles.test(fn.file)) continue;
-    const segments = fn.symbol.dottedNamespace.split(".");
+    const segments = fn.symbol.namespace;
     for (let length = 1; length <= segments.length; length += 1) packages.add(segments.slice(0, length).join("."));
   }
   return [...packages].sort();

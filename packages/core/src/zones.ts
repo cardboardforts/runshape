@@ -2,6 +2,7 @@
 // Inference says what a component *does*; a rule says what it *is supposed to be*. Where the
 // two disagree is the architecture finding.
 
+import { QualifiedName } from "./model";
 import { ArchitectureProfile, HEXAGONAL, PROFILES, profileFor } from "./profiles";
 
 export const RULES_FILE = "runshape.json";
@@ -100,10 +101,10 @@ export class ZoneRules {
     return `${JSON.stringify(file, null, 2)}\n`;
   }
 
-  matchFor(qualifiedName: string): RuleMatch | null {
+  matchFor(name: QualifiedName): RuleMatch | null {
     for (let index = 0; index < this.compiled.length; index += 1) {
       const entry = this.compiled[index]!;
-      if (entry.glob.matches(qualifiedName)) return { rule: entry.rule, index };
+      if (entry.glob.matches(name.segments)) return { rule: entry.rule, index };
     }
     return null;
   }
@@ -132,8 +133,7 @@ class Glob {
     this.segments = pattern.split(".");
   }
 
-  matches(name: string): boolean {
-    const parts = name.split(".");
+  matches(parts: readonly string[]): boolean {
     const memo = new Map<number, boolean>();
     const from = (p: number, n: number): boolean => {
       const key = p * (parts.length + 1) + n;

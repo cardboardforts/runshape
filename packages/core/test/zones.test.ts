@@ -4,10 +4,14 @@
  */
 import { describe, expect, test } from "vitest";
 
+import { QualifiedName } from "../src/model";
 import { HexagonalZone, HEXAGONAL } from "../src/profiles";
 import { ZoneRules, ZoneRulesError } from "../src/zones";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
+
+/** Names written the way runshape.json writes them. */
+const named = (dotted: string) => new QualifiedName(dotted.split("."));
 
 function describeZones(graph: SystemGraph, labels: string[]): string[] {
   return graph.nodes
@@ -72,7 +76,7 @@ describe("ZoneRules", () => {
 
     expect(
       ["app.db.repositories.base.BaseRepository", "app.db.repositories.users.UsersRepository", "app.main", "app.services.jwt"].map(
-        (name) => `${name} -> ${rules.matchFor(name)?.rule.reason ?? "no rule"}`,
+        (name) => `${name} -> ${rules.matchFor(named(name))?.rule.reason ?? "no rule"}`,
       ),
     ).toEqual([
       "app.db.repositories.base.BaseRepository -> shared base",
@@ -82,11 +86,11 @@ describe("ZoneRules", () => {
     ]);
     // `**` also stands for no segments, so a package's own module matches its subtree rule.
     const subtree = new ZoneRules([{ match: "app.db.**", zone: HexagonalZone.OutboundAdapter, reason: "persistence", by: "user" }]);
-    expect(["app.db", "app.db.users", "app.dbx"].map((name) => subtree.matchFor(name) !== null)).toEqual([true, true, false]);
+    expect(["app.db", "app.db.users", "app.dbx"].map((name) => subtree.matchFor(named(name)) !== null)).toEqual([true, true, false]);
     const middle = new ZoneRules([{ match: "a.**.b", zone: HexagonalZone.Core, reason: "r", by: "user" }]);
-    expect(["a.b", "a.x.b", "a.x.y.b", "ab"].map((name) => middle.matchFor(name) !== null)).toEqual([true, true, true, false]);
+    expect(["a.b", "a.x.b", "a.x.y.b", "ab"].map((name) => middle.matchFor(named(name)) !== null)).toEqual([true, true, true, false]);
     const leading = new ZoneRules([{ match: "**.models", zone: HexagonalZone.Core, reason: "r", by: "user" }]);
-    expect(["models", "app.models", "app.x.models", "app.modelsx"].map((name) => leading.matchFor(name) !== null)).toEqual([true, true, true, false]);
+    expect(["models", "app.models", "app.x.models", "app.modelsx"].map((name) => leading.matchFor(named(name)) !== null)).toEqual([true, true, true, false]);
   });
 
   test("a hostile glob in a cloned repo's runshape.json can't hang the viewer", () => {
@@ -97,7 +101,7 @@ describe("ZoneRules", () => {
     const name = `a${".b".repeat(200)}`;
 
     const started = performance.now();
-    const matched = [hostile.matchFor(name), wildcards.matchFor(`a.${"a".repeat(200)}`), hostile.matchFor(`${name}.zzz`)];
+    const matched = [hostile.matchFor(named(name)), wildcards.matchFor(named(`a.${"a".repeat(200)}`)), hostile.matchFor(named(`${name}.zzz`))];
     const elapsedMs = performance.now() - started;
 
     expect(matched.map((match) => match !== null)).toEqual([false, false, true]);

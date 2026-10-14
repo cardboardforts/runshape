@@ -30,12 +30,50 @@ export enum Outcome {
 }
 
 /**
+ * A name in Runshape's own dotted syntax, the one runshape.json globs and component names on
+ * the wire use: segments joined by ".", whatever language they came from. Compare and match
+ * by segments; `text` is for the edges.
+ */
+export class QualifiedName {
+  /** JSON, like CodeSymbol.key: "example.com" + "shop" and "example" + "com.shop" stay apart. */
+  readonly key: string;
+
+  constructor(readonly segments: readonly string[]) {
+    this.key = JSON.stringify(segments);
+  }
+
+  get text(): string {
+    return this.segments.join(".");
+  }
+
+  get last(): string {
+    return this.segments[this.segments.length - 1] ?? "";
+  }
+
+  parent(): QualifiedName | null {
+    return this.segments.length > 1 ? new QualifiedName(this.segments.slice(0, -1)) : null;
+  }
+
+  equals(other: QualifiedName): boolean {
+    return this.key === other.key;
+  }
+
+  /** Strictly inside: app.api holds app.api.routes, not app.api itself or app.apix. */
+  holds(other: QualifiedName): boolean {
+    return other.segments.length > this.segments.length && this.segments.every((segment, i) => other.segments[i] === segment);
+  }
+}
+
+/**
  * Where a function lives, as segments the trace parser split once, so no view parses a
  * language's separators. `key` is the identity diffs pair functions by across runs.
  */
 export class CodeSymbol {
   /** JSON, not a joined string: no separator can collide with a segment in any language. */
   readonly key: string;
+  readonly namespaceName: QualifiedName;
+  /** Namespace, container and name: what a route registers as its handler. */
+  readonly path: QualifiedName;
 
   constructor(
     readonly namespace: readonly string[],
@@ -43,6 +81,9 @@ export class CodeSymbol {
     readonly name: string,
   ) {
     this.key = JSON.stringify([namespace, container, name]);
+    // Built once: componentOf asks for them on every span, several times per view.
+    this.namespaceName = new QualifiedName(namespace);
+    this.path = new QualifiedName([...namespace, ...container, name]);
   }
 
   /** Python's module name. Goes once views work on segments. */
@@ -76,7 +117,7 @@ export interface CatalogFunction {
 export interface Route {
   methods: string[];
   path: string;
-  handler: string;
+  handler: QualifiedName;
 }
 
 export interface Topology {
@@ -116,14 +157,10 @@ export class ObjectInstance {
 
   constructor(
     readonly id: number,
-    readonly className: string,
+    readonly type: QualifiedName,
     /** When the recorder first saw it: its construction, or its first use if built earlier. */
     readonly seenUs: number,
   ) {}
-
-  get shortClassName(): string {
-    return lastSegment(this.className);
-  }
 }
 
 export class Span {
