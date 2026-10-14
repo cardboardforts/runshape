@@ -51,8 +51,7 @@ export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): Com
       return { id: CLIENT_ID, kind: ComponentKind.Client, label: "Client (tests)", name: null };
     }
     // Test code the app calls into is a fake standing in for a real adapter.
-    const owner = ownerName(span);
-    return { id: `double:${owner.text}`, kind: ComponentKind.TestDouble, label: owner.last, name: owner };
+    return doubleComponent(ownerName(span));
   }
   if (fn.role === Role.Landmark) {
     const kind = fn.landmarkKind === null ? ComponentKind.Middleware : LANDMARK_COMPONENT_KIND[fn.landmarkKind];
@@ -67,7 +66,41 @@ export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): Com
   if (!owner.equals(module)) {
     return classComponent(owner);
   }
-  return { id: `module:${module.text}`, kind: ComponentKind.Module, label: moduleLabel(module), name: module };
+  return moduleComponent(module);
+}
+
+/** The prefixes of the ids of boxes named after code; the rest of such an id is the name's text. */
+const NAMED_ID_PREFIXES: Partial<Record<ComponentKind, string>> = {
+  [ComponentKind.Class]: "class:",
+  [ComponentKind.Module]: "module:",
+  [ComponentKind.TestDouble]: "double:",
+};
+
+/** The same box under the name `rename` gives it: how a comparison follows a module or class that moved. */
+export function renamedComponent(ref: ComponentRef, rename: (name: QualifiedName) => QualifiedName): ComponentRef {
+  if (ref.name === null) return ref;
+  const name = rename(ref.name);
+  if (name.equals(ref.name)) return ref;
+  if (ref.kind === ComponentKind.Class) return classComponent(name);
+  if (ref.kind === ComponentKind.Module) return moduleComponent(name);
+  if (ref.kind === ComponentKind.TestDouble) return doubleComponent(name);
+  return ref;
+}
+
+/** As renamedComponent, for a box known only by its id (a graph node, a replay step). */
+export function renamedComponentId(id: string, rename: (name: QualifiedName) => QualifiedName): string {
+  for (const prefix of Object.values(NAMED_ID_PREFIXES)) {
+    if (id.startsWith(prefix)) return `${prefix}${rename(QualifiedName.parse(id.slice(prefix.length))).text}`;
+  }
+  return id;
+}
+
+function moduleComponent(module: QualifiedName): ComponentRef {
+  return { id: `${NAMED_ID_PREFIXES[ComponentKind.Module]}${module.text}`, kind: ComponentKind.Module, label: moduleLabel(module), name: module };
+}
+
+function doubleComponent(owner: QualifiedName): ComponentRef {
+  return { id: `${NAMED_ID_PREFIXES[ComponentKind.TestDouble]}${owner.text}`, kind: ComponentKind.TestDouble, label: owner.last, name: owner };
 }
 
 /** app.db.repositories.users.UsersRepository for a method, else the module itself. */
@@ -93,7 +126,7 @@ export function externalComponent(system: string): ComponentRef {
 
 /** The graph id of a project class's box; objects and the calls made on them share it. */
 export function classComponentId(type: QualifiedName): string {
-  return `class:${type.text}`;
+  return `${NAMED_ID_PREFIXES[ComponentKind.Class]}${type.text}`;
 }
 
 function classComponent(type: QualifiedName): ComponentRef {

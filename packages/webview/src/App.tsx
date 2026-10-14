@@ -679,6 +679,7 @@ function DiffSummary({ diff, review }: { diff: RunDiff; review: ReviewSummary })
     <p className="diff-summary">
       {parts.length === 0 ? "No test behaves differently." : parts.join(" · ")}
       {added + removed > 0 && ` · components +${added} −${removed}`}
+      {diff.moved.length > 0 && <span className="moved-note">Moved, not changed: {diff.moved.join("; ")}</span>}
       {diff.caveats.map((caveat) => (
         <span key={caveat} className="caveat">
           {caveat}

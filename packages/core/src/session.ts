@@ -10,7 +10,7 @@ import { Grouping } from "@runshape/architecture";
 import { buildFunctionView, UnknownFunctionError } from "@runshape/views";
 import { buildReplay } from "@runshape/views";
 import { buildTimeline } from "@runshape/views";
-import { diffExecution, diffFunctionExecution, mergeReplays } from "@runshape/views";
+import { detectMoves, diffExecution, diffFunctionExecution, mergeReplays, Moves } from "@runshape/views";
 import { aggregateWiring, buildObjectGraph } from "@runshape/views";
 import { buildReview } from "@runshape/views";
 import { diffRuns } from "@runshape/views";
@@ -85,6 +85,8 @@ export class ViewerSession {
   private rulesProblem: string | null;
   /** The model's last architecture proposal, adoptable by reference. */
   private architectureAdvice: ArchitectureAdvice | null = null;
+  /** What moved since the baseline: the recordings never change, so it's worked out once. */
+  private movesSinceBaseline: Moves | null = null;
 
   constructor(
     private readonly run: Run,
@@ -188,7 +190,7 @@ export class ViewerSession {
         if (profile === null) return { type: "error", message: unknownStyle(request.style) };
         return {
           type: "diff",
-          diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile }),
+          diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile, moves: this.moves() }),
           review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules }),
         };
       }
@@ -227,8 +229,8 @@ export class ViewerSession {
         }
         return {
           type: "executionDiff",
-          diff: diffExecution(before, after, request.phases),
-          replay: mergeReplays(before, after, request.phases, request.grouping),
+          diff: diffExecution(before, after, request.phases, this.moves()),
+          replay: mergeReplays(before, after, request.phases, request.grouping, this.moves()),
         };
       }
       case "functionExecutionDiff": {
@@ -334,6 +336,11 @@ export class ViewerSession {
       if (error instanceof ZoneAdviceError) return { type: "zoneAdviceFailed", componentId, message: error.message };
       throw error;
     }
+  }
+
+  private moves(): Moves {
+    this.movesSinceBaseline ??= this.baseline === null ? Moves.none() : detectMoves(this.baseline, this.run);
+    return this.movesSinceBaseline;
   }
 
   /** The function a view named by key, in either recording: catalogued, or else seen running. */

@@ -1,7 +1,8 @@
 import { align, Aligned, Op } from "./align";
 import { CodeSymbol, Phase, Role, Run, Scenario, Span } from "@runshape/trace";
-import { FINE_GROUPING, Grouping } from "@runshape/architecture";
+import { FINE_GROUPING, Grouping, renamedComponentId } from "@runshape/architecture";
 import { FunctionRef, functionRef } from "./function-ref";
+import { Moves } from "./moves";
 import { buildReplay, ReplayStep, StepKind } from "./replay";
 
 /**
@@ -18,6 +19,8 @@ export interface CallStep {
   path: string;
   /** Set on a removed/added pair of the same function: it still runs, under a new caller. */
   reparented: boolean;
+  /** The namespace the function had in the base, when it moved (see moves.ts); null otherwise. */
+  movedFrom: string | null;
 }
 
 export interface ExecutionDiff {
@@ -37,13 +40,23 @@ export interface MergedReplayStep {
 /** Project code only: framework landmarks rarely change and would bury the calls that did. */
 const PROJECT_ROLES = new Set([Role.Source, Role.Test]);
 
-export function diffExecution(before: Scenario, after: Scenario, phases: Phase[] = [Phase.Call]): ExecutionDiff {
-  const aligned = align(callsOf(before, phases), callsOf(after, phases), (call) => call.identity);
+export function diffExecution(before: Scenario, after: Scenario, phases: Phase[] = [Phase.Call], moves: Moves = Moves.none()): ExecutionDiff {
+  // Base calls are identified as head names their functions, so a moved function lines up with itself.
+  const aligned = align(callsOf(before, phases, moves.headKey), callsOf(after, phases, (key) => key), (call) => call.identity);
+  const headKeys = aligned.steps.map((entry) => moves.headKey((entry.after ?? entry.before)!.symbol.key));
   const calls = aligned.steps.map((entry): CallStep => {
     const call = (entry.after ?? entry.before)!;
-    return { op: entry.op, depth: call.depth, symbol: functionRef(call.symbol), path: call.path, reparented: false };
+    const moved = entry.before !== null && entry.after !== null && entry.before.symbol.key !== entry.after.symbol.key;
+    return {
+      op: entry.op,
+      depth: call.depth,
+      symbol: functionRef(call.symbol),
+      path: call.path,
+      reparented: false,
+      movedFrom: moved ? entry.before!.symbol.namespaceName.text : null,
+    };
   });
-  markReparented(calls);
+  markReparented(calls, headKeys);
   return {
     scenarioId: after.nodeid,
     complete: aligned.complete,
@@ -59,28 +72,38 @@ export function mergeReplays(
   after: Scenario,
   phases: Phase[] = [Phase.Call],
   grouping: Grouping = FINE_GROUPING,
+  moves: Moves = Moves.none(),
 ): MergedReplayStep[] {
   const hopKey = (step: ReplayStep) => `${step.kind}|${step.from}|${step.to}|${step.kind === StepKind.External ? step.label : ""}`;
-  return align(buildReplay(before, phases, grouping), buildReplay(after, phases, grouping), hopKey).steps.map((entry) => ({
+  // The base's boxes under head's names, so a moved module's hops are the same hops.
+  const headId = (id: string) => renamedComponentId(id, moves.headName);
+  // A return step's edge keeps the call's direction, so each end of the edge id is renamed in place.
+  const beforeSteps = buildReplay(before, phases, grouping).map((step) => ({
+    ...step,
+    from: headId(step.from),
+    to: headId(step.to),
+    edgeId: step.edgeId.split("->").map(headId).join("->"),
+  }));
+  return align(beforeSteps, buildReplay(after, phases, grouping), hopKey).steps.map((entry) => ({
     op: entry.op,
     step: (entry.after ?? entry.before)!,
   }));
 }
 
-/** Pairs each added call with a removed call of the same function, one for one. */
-function markReparented(calls: CallStep[]): void {
+/** Pairs each added call with a removed call of the same function (by head's key), one for one. */
+function markReparented(calls: CallStep[], headKeys: string[]): void {
   const removed = new Map<string, CallStep[]>();
-  for (const call of calls) {
-    if (call.op !== Op.Removed) continue;
-    removed.set(call.symbol.key, [...(removed.get(call.symbol.key) ?? []), call]);
-  }
-  for (const call of calls) {
-    if (call.op !== Op.Added) continue;
-    const partner = removed.get(call.symbol.key)?.shift();
-    if (partner === undefined) continue;
+  calls.forEach((call, index) => {
+    if (call.op !== Op.Removed) return;
+    removed.set(headKeys[index]!, [...(removed.get(headKeys[index]!) ?? []), call]);
+  });
+  calls.forEach((call, index) => {
+    if (call.op !== Op.Added) return;
+    const partner = removed.get(headKeys[index]!)?.shift();
+    if (partner === undefined) return;
     partner.reparented = true;
     call.reparented = true;
-  }
+  });
 }
 
 interface Call {
@@ -92,7 +115,8 @@ interface Call {
   identity: string;
 }
 
-function callsOf(scenario: Scenario, phases: Phase[]): Call[] {
+/** `keyOf` names a function for alignment: head's key for it, on the base side. */
+function callsOf(scenario: Scenario, phases: Phase[], keyOf: (key: string) => string): Call[] {
   const included = new Set(phases);
   const calls: Call[] = [];
   const chains = new Map<Span, Call>();
@@ -105,7 +129,7 @@ function callsOf(scenario: Scenario, phases: Phase[]): Call[] {
       depth: above ? above.depth + 1 : 0,
       symbol,
       path: above ? `${above.path} > ${symbol.localName.text}` : symbol.localName.text,
-      identity: above ? `${above.identity} > ${symbol.key}` : symbol.key,
+      identity: above ? `${above.identity} > ${keyOf(symbol.key)}` : keyOf(symbol.key),
     };
     chains.set(span, call);
     calls.push(call);

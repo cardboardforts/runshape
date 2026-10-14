@@ -3,6 +3,7 @@ import { Outcome, Phase, Run, SymbolKind } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { FINE_GROUPING, Grouping } from "@runshape/architecture";
 import { diffExecution } from "./execution-diff";
+import { detectMoves } from "./moves";
 import { Change, diffRuns } from "./run-diff";
 
 /**
@@ -63,6 +64,8 @@ export interface ReviewSummary {
   caveats: string[];
   counts: Record<ReviewCategory, number>;
   items: ReviewItem[];
+  /** Code that moved rather than changed (see moves.ts). */
+  moved: string[];
 }
 
 const FAILING = new Set([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
@@ -74,7 +77,8 @@ export function buildReview(
 ): ReviewSummary {
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
-  const diff = diffRuns(base, head, { phases, grouping, rules: options.rules });
+  const moves = detectMoves(base, head);
+  const diff = diffRuns(base, head, { phases, grouping, rules: options.rules, moves });
   const items: ReviewItem[] = [];
 
   for (const scenario of diff.scenarios) {
@@ -85,7 +89,7 @@ export function buildReview(
     let movedCalls = 0;
     let aligned = true;
     if (before && after) {
-      const execution = diffExecution(before, after, phases);
+      const execution = diffExecution(before, after, phases, moves);
       aligned = execution.complete;
       // Module bodies run at import time, when whichever test happens to import first pays
       // for it: not something this test chose to do.
@@ -124,6 +128,7 @@ export function buildReview(
     caveats: diff.caveats,
     counts,
     items,
+    moved: diff.moved,
   };
 }
 
@@ -177,6 +182,9 @@ export function reviewMarkdown(summary: ReviewSummary): string {
   const silent = summary.counts[ReviewCategory.SilentChange];
   if (silent > 0) {
     out.push(`**${silent} test${silent === 1 ? " still passes" : "s still pass"} but now ${silent === 1 ? "runs" : "run"} differently** — the changes a green CI won't show you.`, "");
+  }
+  if (summary.moved.length > 0) {
+    out.push(`### Moved, not changed (${summary.moved.length})`, "", ...summary.moved.map((line) => `- ${codeSpan(line)}`), "");
   }
   for (const category of REVIEW_ORDER) {
     if (category === ReviewCategory.Unchanged) continue;

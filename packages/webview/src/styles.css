@@ -643,7 +643,8 @@ button {
 .added { color: #10b981; }
 .removed { color: #e5534b; }
 
-.caveat {
+.caveat,
+.moved-note {
   display: block;
   margin-top: 4px;
   color: var(--muted);

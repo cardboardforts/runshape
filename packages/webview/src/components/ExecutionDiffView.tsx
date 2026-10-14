@@ -55,6 +55,7 @@ export function ExecutionCalls({ diff, onOpenFunction }: { diff: ExecutionDiff; 
               <button type="button" className="link" onClick={() => onOpenFunction(row.step)}>
                 {row.step.symbol.path}
               </button>
+              {row.step.movedFrom !== null && <span className="muted"> moved from {row.step.movedFrom}</span>}
             </li>
           ),
         )}

@@ -6,6 +6,7 @@ export * from "./component-view";
 export * from "./execution-diff";
 export * from "./function-ref";
 export * from "./function-view";
+export * from "./moves";
 export * from "./object-graph";
 export * from "./replay";
 export * from "./review";

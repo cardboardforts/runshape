@@ -1,6 +1,7 @@
 import { CodeSymbol, Outcome, Phase, Role, Run, Scenario } from "@runshape/trace";
 import { FunctionRef, functionRef } from "./function-ref";
-import { componentOf, FINE_GROUPING, Grouping } from "@runshape/architecture";
+import { componentOf, FINE_GROUPING, Grouping, renamedComponent, renamedComponentId } from "@runshape/architecture";
+import { detectMoves, Moves } from "./moves";
 import { buildReplay, StepKind } from "./replay";
 import { ArchitectureProfile } from "@runshape/architecture";
 import { ZoneRules } from "@runshape/architecture";
@@ -57,6 +58,8 @@ export interface RunDiff {
   scenarios: ScenarioDiff[];
   /** Both sides are drawn in the rules' style. */
   profile: ArchitectureProfile;
+  /** Code that moved rather than changed (see moves.ts), one line per namespace or lone function. */
+  moved: string[];
 }
 
 export interface DiffOptions {
@@ -65,6 +68,8 @@ export interface DiffOptions {
   rules?: ZoneRules;
   /** The style to draw both sides in; defaults to the rules' style. */
   profile?: ArchitectureProfile;
+  /** What moved between the runs; detected when not given. */
+  moves?: Moves;
 }
 
 export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): RunDiff {
@@ -73,9 +78,14 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   const rules = options.rules ?? ZoneRules.none();
   const graphBefore = buildSystemGraph(before, { phases, grouping, rules, profile: options.profile });
   const graphAfter = buildSystemGraph(after, { phases, grouping, rules, profile: options.profile });
+  const moves = options.moves ?? detectMoves(before, after);
+  // The base's boxes under head's names: a moved module is the same box, not one gone and one new.
+  const headId = (id: string) => renamedComponentId(id, moves.headName);
+  const nodesBefore = graphBefore.nodes.map((node) => ({ ...node, id: headId(node.id) }));
+  const edgesBefore = graphBefore.edges.map((edge) => ({ ...edge, id: `${headId(edge.from)}->${headId(edge.to)}`, from: headId(edge.from), to: headId(edge.to) }));
 
-  const nodes = mergeById(graphBefore.nodes, graphAfter.nodes, (node, change) => ({ ...node, change }));
-  const edges = mergeById(graphBefore.edges, graphAfter.edges, (edge, change, previous) => ({
+  const nodes = mergeById(nodesBefore, graphAfter.nodes, (node, change) => ({ ...node, change }));
+  const edges = mergeById(edgesBefore, graphAfter.edges, (edge, change, previous) => ({
     ...edge,
     change,
     callsBefore: previous?.calls ?? 0,
@@ -85,12 +95,12 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   const scenarios: ScenarioDiff[] = [];
   // Only catalogued functions: import-time module code that happened to run mid-request
   // isn't something a reviewer can act on.
-  const catalogued = new Set([...before.catalog, ...after.catalog].map((fn) => fn.symbol.key));
+  const catalogued = new Set([...before.catalog.map((fn) => moves.headKey(fn.symbol.key)), ...after.catalog.map((fn) => fn.symbol.key)]);
   for (const id of scenarioIds) {
     const [textBefore, textAfter] = lineTexts(before, after);
-    scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter));
+    scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter, moves));
   }
-  return { caveats: caveatsFor(before, after), nodes, edges, scenarios, profile: graphAfter.profile };
+  return { caveats: caveatsFor(before, after), nodes, edges, scenarios, profile: graphAfter.profile, moved: moves.describe() };
 }
 
 function caveatsFor(before: Run, after: Run): string[] {
@@ -115,13 +125,14 @@ function diffScenario(
   catalogued: Set<string>,
   sourcesBefore: LineText,
   sourcesAfter: LineText,
+  moves: Moves,
 ): ScenarioDiff {
   const either = (after ?? before) as Scenario;
-  const hops = differenceOfSets(hopsOf(before, phases, grouping), hopsOf(after, phases, grouping));
+  const hops = differenceOfSets(hopsOf(before, phases, grouping, moves), hopsOf(after, phases, grouping, Moves.none()));
   const statements = differenceOfCounts(statementsOf(before, phases), statementsOf(after, phases));
   const functionsChanged = diffReachedLines(
-    reachedLines(before, phases, sourcesBefore),
-    reachedLines(after, phases, sourcesAfter),
+    reachedLines(before, phases, sourcesBefore, moves.headKey),
+    reachedLines(after, phases, sourcesAfter, (key) => key),
     catalogued,
   );
   const outcomeBefore = before?.outcome ?? null;
@@ -152,18 +163,20 @@ function diffScenario(
 }
 
 /** "middleware -> ArticlesFeedAPIView": each distinct hop between components, by label. */
-function hopsOf(scenario: Scenario | null, phases: Phase[], grouping: Grouping): Set<string> {
+/** `moves` renames the base's boxes as head names them; Moves.none() on the head side. */
+function hopsOf(scenario: Scenario | null, phases: Phase[], grouping: Grouping, moves: Moves): Set<string> {
   const hops = new Set<string>();
   if (scenario === null) return hops;
   const labels = new Map<string, string>();
   for (const span of scenario.spans) {
-    const ref = componentOf(span, grouping);
+    const ref = renamedComponent(componentOf(span, grouping), moves.headName);
     labels.set(ref.id, ref.label);
   }
   for (const step of buildReplay(scenario, phases, grouping)) {
     if (step.kind === StepKind.Return) continue;
-    const to = step.kind === StepKind.External ? step.to.replace(/^external:/, "") : (labels.get(step.to) ?? step.to);
-    hops.add(`${labels.get(step.from) ?? step.from} -> ${to}`);
+    const from = renamedComponentId(step.from, moves.headName);
+    const to = step.kind === StepKind.External ? step.to.replace(/^external:/, "") : renamedComponentId(step.to, moves.headName);
+    hops.add(`${labels.get(from) ?? from} -> ${labels.get(to) ?? to}`);
   }
   return hops;
 }
@@ -210,16 +223,17 @@ function lineTexts(before: Run, after: Run): [LineText, LineText] {
  * Lines reached per project function, keyed by what the line says (see lineTexts), so a
  * function that moved, or had code inserted above it, isn't reported as changed.
  */
-function reachedLines(scenario: Scenario | null, phases: Phase[], identify: LineText): Map<string, ReachedLines> {
+/** Keyed by `keyOf(CodeSymbol.key)`: head's key for a function, on the base side. */
+function reachedLines(scenario: Scenario | null, phases: Phase[], identify: LineText, keyOf: (key: string) => string): Map<string, ReachedLines> {
   const reached = new Map<string, ReachedLines>();
   if (scenario === null) return reached;
   const included = new Set(phases);
   for (const span of scenario.spans) {
     if (!included.has(span.phase) || span.fn.role !== Role.Source) continue;
-    let entry = reached.get(span.fn.symbol.key);
+    let entry = reached.get(keyOf(span.fn.symbol.key));
     if (entry === undefined) {
       entry = { symbol: span.fn.symbol, lines: new Map() };
-      reached.set(span.fn.symbol.key, entry);
+      reached.set(keyOf(span.fn.symbol.key), entry);
     }
     for (const line of span.lines) entry.lines.set(identify(span.fn.file, line, span.fn.firstLine), line);
   }
