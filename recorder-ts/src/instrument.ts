@@ -59,6 +59,8 @@ export function instrument(file: string, text: string): Instrumented {
   const namespace = file.replace(/\.[cm]?[jt]sx?$/, "").split("/");
   const functions: CatalogEntry[] = [];
   const insertions: Insertion[] = [];
+  /** Statements no span is open for, so they get no line mark and aren't catalogued lines. */
+  const outsideSpans = new Set<ts.Statement>();
   let visits = 0;
   const lineOf = (position: number) => source.getLineAndCharacterOfPosition(position).line + 1;
 
@@ -85,13 +87,18 @@ export function instrument(file: string, text: string): Instrumented {
         if (expressionLine !== null) entry.lines.push(expressionLine);
         wrap(node, index, ++visits, insertions, expressionLine);
         const inner: Scope = { current: entry, currentIndex: index, className: scope.className, container: [...symbol.container, symbol.name] };
+        // A derived constructor's span opens after super(...): what comes before runs outside it.
+        if (ts.isConstructorDeclaration(node) && isDerived(node)) {
+          const statements = node.body!.statements;
+          for (const statement of statements.slice(0, statements.indexOf(superStatement(node)!) + 1)) outsideSpans.add(statement);
+        }
         ts.forEachChild(node, (child) => visit(child, inner));
         return;
       }
     }
     if (scope.current !== null && (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node))) {
       for (const statement of node.statements) {
-        if (NOT_EXECUTED.has(statement.kind)) continue;
+        if (NOT_EXECUTED.has(statement.kind) || outsideSpans.has(statement)) continue;
         const line = lineOf(statement.getStart());
         if (!scope.current.lines.includes(line)) scope.current.lines.push(line);
         // Naming the function lets a callback's line count for the function that wrote it,

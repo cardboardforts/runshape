@@ -252,9 +252,11 @@ export class Recorder {
       ownerType: null,
     };
     const testFunction = this.registry.push({ role: "test", symbol, file: testFile, firstLine: 1, landmarkKind: null }) - 1;
-    // Until the test's own function starts: its beforeEach hooks are setup (see runner.ts).
-    scenario.events.push(["P", 0, "setup"]);
+    // The test itself is the call, as a pytest test function is: views show the call phase by
+    // default. What runs before its function starts (beforeEach) is setup (see runner.ts).
+    scenario.events.push(["P", 0, "call"]);
     scenario.events.push(["S", 0, scenario.rootSpan, scenario.local(testFunction), null, MAIN_THREAD, null]);
+    scenario.events.push(["P", 0, "setup"]);
     this.scenario = scenario;
   }
 

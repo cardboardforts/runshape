@@ -83,18 +83,20 @@ describe("package boundaries", () => {
   test("a package's tests reach only its own source, the packages below it, and trace's fixtures", () => {
     // So each package's tests run on their own: a views test importing core would tie them.
     const violations: string[] = [];
-    const fixtures = join(ROOT, "packages", "trace", "test");
-    for (const [pkg, allowed] of Object.entries(ALLOWED)) {
-      const tests = join(ROOT, pkg, "test");
-      if (!existsSync(tests)) continue;
-      for (const file of sourceFiles(tests).filter((path) => !path.includes(`${join("test", "fixtures")}${"/"}`))) {
+    const fixtures = join(ROOT, "packages", "trace", "test", "fixtures");
+    const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
+    // The webview's demo runs against the same fixtures, so it's held to the same rule.
+    const folders = Object.entries(ALLOWED).flatMap(([pkg, allowed]) => ["test", "demo"].map((folder) => ({ pkg, allowed, folder: join(ROOT, pkg, folder) })));
+    for (const { pkg, allowed, folder } of folders) {
+      if (!existsSync(folder)) continue;
+      for (const file of sourceFiles(folder).filter((path) => !isFixtures(path))) {
         const where = relative(ROOT, file);
         for (const specifier of importsOf(readFileSync(file, "utf8"))) {
           const runshape = specifier.match(/^@runshape\/([^/]+)/)?.[1];
           if (runshape !== undefined && !allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
           if (!specifier.startsWith(".")) continue;
           const target = resolve(dirname(file), specifier);
-          if (!target.startsWith(join(ROOT, pkg) + "/") && !target.startsWith(fixtures + "/")) violations.push(`${where} reaches outside its package: ${specifier}`);
+          if (!target.startsWith(join(ROOT, pkg) + "/") && !isFixtures(target)) violations.push(`${where} reaches outside its package: ${specifier}`);
         }
       }
     }

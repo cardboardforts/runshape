@@ -106,13 +106,22 @@ function testFunction(scenario: Scenario): CodeSymbol | null {
   return roots.length === 1 ? roots[0]!.fn.symbol : null;
 }
 
-/** Tests only one side has, paired one to one by their name within their file. */
+/**
+ * Tests only one side has, paired one to one by their whole name within their file (Python's
+ * includes the class, vitest's the describe blocks), and only out of a file head no longer has
+ * tests in: a test whose file is still there didn't move.
+ */
 function testMoves(base: Run, head: Run): TestMove[] {
   const headIds = new Set(head.scenarios.map((scenario) => scenario.nodeid));
   const baseIds = new Set(base.scenarios.map((scenario) => scenario.nodeid));
-  const added = groupBy(head.scenarios.filter((scenario) => !baseIds.has(scenario.nodeid)), (scenario) => scenario.name);
+  const headFiles = new Set(head.scenarios.map((scenario) => scenario.file));
+  const nameInFile = (scenario: Scenario) => scenario.nodeid.slice(scenario.file.length);
+  // A retried or repeated test is written once per attempt: one test, for pairing.
+  const firsts = (scenarios: Scenario[]) => [...new Map(scenarios.map((scenario) => [scenario.nodeid, scenario])).values()];
+  const added = groupBy(firsts(head.scenarios.filter((scenario) => !baseIds.has(scenario.nodeid))), nameInFile);
+  const gone = firsts(base.scenarios.filter((scenario) => !headIds.has(scenario.nodeid) && !headFiles.has(scenario.file)));
   const moves: TestMove[] = [];
-  for (const [name, candidates] of groupBy(base.scenarios.filter((scenario) => !headIds.has(scenario.nodeid)), (scenario) => scenario.name)) {
+  for (const [name, candidates] of groupBy(gone, nameInFile)) {
     const targets = added.get(name);
     if (candidates.length === 1 && targets?.length === 1) moves.push({ from: candidates[0]!, to: targets[0]! });
   }
@@ -120,8 +129,8 @@ function testMoves(base: Run, head: Run): TestMove[] {
 }
 
 /**
- * Tests only one side has pair by their name (describe blocks and title), one to one: their
- * file moved. The rest needs both recordings' source: without it a move and a rewrite look
+ * Tests only one side has pair by their whole name within the file, one to one, when the file
+ * they were in has no tests in head: the file moved (see testMoves). The rest needs both recordings' source: without it a move and a rewrite look
  * alike, and no function pairs.
  *
  * 1. A function only the base has pairs with one only head has when they share their name within

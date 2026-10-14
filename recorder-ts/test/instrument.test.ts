@@ -324,9 +324,7 @@ export function one(): void {
 
   test("a derived class's constructor is its own span from super() on, and the object is credited to it", () => {
     const recorder = new Recorder();
-    const { Derived } = loadSource(
-      recorder,
-      `export class Base {
+    const source = `export class Base {
   constructor(protected readonly name: string) {}
 }
 export class Derived extends Base {
@@ -336,13 +334,15 @@ export class Derived extends Base {
     this.other = new Base("other");
   }
 }
-`,
-    );
+`;
+    const { Derived } = loadSource(recorder, source);
     recorder.startScenario("app/s.test.ts::builds", "app/s.test.ts", ["builds"]);
     const built = new Derived("a", 1);
 
     const scenario = recorder.finishScenario("passed");
     expect([built.name, built.extra, built.other.name]).toEqual(["a", 1, "other"]);
+    // super(name) and anything before it run before the span opens: not lines it can reach.
+    expect(instrument("app/sample.ts", source).functions.find((fn) => fn.symbol.container[0] === "Derived")!.lines).toEqual([8]);
     expect(describeScenario(scenario)).toEqual([
       "builds []",
       // super(name) runs before Derived's own span opens: the base's part comes first, beside it.

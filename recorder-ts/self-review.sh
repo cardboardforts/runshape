@@ -1,10 +1,10 @@
 #!/bin/sh
 # npm run self-review [-- <base-ref> [<head-ref>]]   (default: main, and the working tree)
 #
-# Records packages/core's tests at <base-ref> and at <head-ref> (or the working tree) with the
+# Records the core packages' tests at <base-ref> and at <head-ref> (or the working tree) with the
 # TypeScript recorder, as one before/after pair the webview demo opens:
 #   npm run dev -w packages/webview, then /demo/index.html?app=self:<label>
-# Both are recorded by this checkout's recorder, so only core's code differs between them.
+# Both are recorded by this checkout's recorder, so only the code under test differs between them.
 set -eu
 
 BASE_REF="${1:-main}"

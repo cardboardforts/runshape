@@ -17,15 +17,15 @@ if (!runDirectory || !root) throw new Error("runshape: RUNSHAPE_RUN_DIR and RUNS
 const scenarios = join(runDirectory, "scenarios");
 mkdirSync(scenarios, { recursive: true });
 
-beforeEach((context) => {
-  const task = context.task;
+// Destructured: with vitest fixtures (test.extend), a hook taking the whole context fails to parse.
+beforeEach(({ task, onTestFinished }) => {
   const file = relative(root, task.file.filepath).split(sep).join("/");
   const path: string[] = [task.name];
   for (let suite = task.suite; suite !== undefined && suite.name !== "" && suite !== (task.file as unknown); suite = suite.suite) {
     path.unshift(suite.name);
   }
   recorder.startScenario(`${file}::${path.join(" > ")}`, file, path);
-  context.onTestFinished(({ task: finished }) => {
+  onTestFinished(({ task: finished }) => {
     const scenario = recorder.finishScenario(OUTCOMES[finished.result?.state ?? ""] ?? "unknown");
     // hrtime orders scenarios by when they ran, across the test files vitest runs one by one.
     writeFileSync(join(scenarios, `${process.hrtime.bigint()}.json`), JSON.stringify(scenario));

@@ -24,7 +24,13 @@ test("a test's beforeEach is recorded as setup and its afterEach as teardown; de
       stdio: "pipe",
     });
     const scenarios = join(out, "run", "scenarios");
-    const scenario = JSON.parse(readFileSync(join(scenarios, readdirSync(scenarios)[0]!), "utf8")) as ScenarioDto;
+    const recorded = readdirSync(scenarios).map((name) => JSON.parse(readFileSync(join(scenarios, name), "utf8")) as ScenarioDto);
+    const scenario = recorded.find((candidate) => candidate.nodeid.endsWith("::greets by name"))!;
+    // A test using vitest fixtures (test.extend) runs while recorded too.
+    expect(recorded.map((candidate) => `${candidate.outcome} ${candidate.nodeid}`).sort()).toEqual([
+      "passed test/fixtures.test.ts::greets with a fixture",
+      "passed test/greeter.test.ts::greets by name",
+    ]);
 
     const timeline: string[] = [];
     for (const event of scenario.events) {
@@ -35,8 +41,11 @@ test("a test's beforeEach is recorded as setup and its afterEach as teardown; de
       }
     }
     expect(timeline).toEqual([
-      "phase setup",
+      // The test itself is the call; only what its hooks do is setup and teardown. Views show
+      // the call phase by default, so a test opened in setup would vanish from them.
+      "phase call",
       "  greets by name",
+      "phase setup",
       // A derived class's constructor, as vite transpiles it (a parameter property after super()).
       "  LoudGreeter.constructor",
       "  Greeter.open",

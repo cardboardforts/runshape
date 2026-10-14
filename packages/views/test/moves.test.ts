@@ -12,7 +12,7 @@
 import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, Run, TraceFiles } from "@runshape/trace";
-import { Phase } from "@runshape/trace";
+import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Scenario, Span, SymbolKind } from "@runshape/trace";
 import { buildReview, Change, detectMoves, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "../src";
 import { fixtureFiles } from "../../trace/test/fixtures";
 
@@ -236,5 +236,25 @@ describe("moved tests", () => {
     const execution = diffExecution(base.scenario(CREATE)!, head.scenario(movedCreate)!, [Phase.Call], moves);
     expect([moves.baseScenarioId(movedCreate), execution.calls.filter((call) => call.op !== Op.Same)]).toEqual([CREATE, []]);
   });
+
+  test("tests pair by their whole name within the file, and only out of a file that's gone", async () => {
+    // Python's name for a test includes its class; a test whose file is still there didn't move.
+    const run = (nodeids: string[]) => ({ scenarios: nodeids.map((nodeid) => scenarioNamed(nodeid)), catalog: [], sources: null }) as unknown as Run;
+    const pairs = (base: string[], head: string[]) => detectMoves(run(base), run(head)).describe();
+
+    expect([
+      pairs(["a.py::A::test_x", "a.py::B::test_x"], ["b.py::A::test_x", "b.py::B::test_x"]),
+      pairs(["a.py::A::test_x"], ["b.py::B::test_x"]),
+      pairs(["a.py::test_x", "a.py::test_y"], ["a.py::test_y", "b.py::test_x"]),
+      // A retried test is written twice: still one test.
+      pairs(["a.py::test_x", "a.py::test_x"], ["b.py::test_x", "b.py::test_x"]),
+    ]).toEqual([["a.py -> b.py (2 tests)"], [], [], ["a.py -> b.py (1 test)"]]);
+  });
 });
 
+/** Just enough of a scenario for pairing tests: its id, and a test span at its root. */
+function scenarioNamed(nodeid: string) {
+  const symbol = new CodeSymbol([nodeid.split("::")[0]!], [], nodeid.split("::").at(-1)!, SymbolKind.Function, null);
+  const fn: FunctionInfo = { role: Role.Test, symbol, file: null, firstLine: 1, landmarkKind: null };
+  return new Scenario(nodeid, Outcome.Passed, 0, [new Span(1, fn, null, null, Phase.Call, 0, 1)], [], [], []);
+}
