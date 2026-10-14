@@ -90,6 +90,18 @@ export function splitDotted(text: string): string[] {
   return segments;
 }
 
+/** What a piece of code is, as far as drawing it goes; recorders map their language onto these. */
+export enum SymbolKind {
+  Function = "function",
+  Method = "method",
+  /** Builds an object: Python's __init__, a C# or JS constructor, Go's or Rust's by convention if the recorder knows. */
+  Constructor = "constructor",
+  /** Runs when a module, class or package is loaded: Python's <module>, a static initializer. */
+  Initializer = "initializer",
+  /** Defined inside another function: closures, lambdas, comprehensions. */
+  Nested = "nested",
+}
+
 /**
  * Where a function lives, as segments the trace parser split once, so no view parses a
  * language's separators. `key` is the identity diffs pair functions by across runs.
@@ -105,6 +117,9 @@ export class CodeSymbol {
     readonly namespace: readonly string[],
     readonly container: readonly string[],
     readonly name: string,
+    readonly kind: SymbolKind,
+    /** The type whose box this code is drawn in (a method's class, a closure's enclosing class), if any. */
+    readonly ownerType: string | null,
   ) {
     this.key = JSON.stringify([namespace, container, name]);
     // Built once: componentOf asks for them on every span, several times per view.
@@ -124,7 +139,6 @@ export class CodeSymbol {
 }
 
 export interface FunctionInfo {
-  key: string;
   role: Role;
   symbol: CodeSymbol;
   file: string | null;

@@ -1,4 +1,4 @@
-import { Phase, QualifiedName, Run, Scenario, Span } from "../model";
+import { Phase, QualifiedName, Run, Scenario, Span, SymbolKind } from "../model";
 import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName } from "../profiles";
 import { ZoneRules } from "../zones";
 import {
@@ -150,7 +150,7 @@ class GraphBuilder {
       if (parent !== null) {
         const parentRef = componentOf(parent, this.grouping);
         if (parentRef.id !== ref.id) {
-          this.edge(parentRef, ref, scenario.nodeid, span.fn.symbol.dottedPath.endsWith("__init__"));
+          this.edge(parentRef, ref, scenario.nodeid, span.fn.symbol.kind === SymbolKind.Constructor);
           if (this.isFrameworkCallIntoInboundPackage(parentRef, ref)) {
             node.calledByFramework = true;
           }

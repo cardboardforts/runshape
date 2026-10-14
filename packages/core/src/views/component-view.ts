@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span } from "../model";
+import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span, SymbolKind } from "../model";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 
 /** One box from the system graph opened up: its functions and how much the tests reach. */
@@ -76,7 +76,7 @@ export function buildComponentView(run: Run, componentId: string, grouping: Grou
     if (listed.has(symbol.key)) continue;
     // Comprehensions, lambdas and nested defs belong to the function that contains them
     // (its function view shows their lines); they aren't methods of their own.
-    if (symbol.container.includes("<locals>")) continue;
+    if (symbol.kind === SymbolKind.Nested) continue;
     const fn = run.catalogFunction(symbol);
     if (fn === undefined) continue;
     const owner = symbol.container[0] ?? symbol.dottedNamespace;

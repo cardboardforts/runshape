@@ -3,6 +3,7 @@ import {
   CatalogFunction,
   CodeSymbol,
   FunctionInfo,
+  SymbolKind,
   LandmarkKind,
   ObjectInstance,
   Outcome,
@@ -165,7 +166,6 @@ export function parseScenario(dto: ScenarioDto): Scenario {
 
 function parseFunction(dto: ScenarioDto["functions"][number]): FunctionInfo {
   return {
-    key: dto.key,
     role: parseEnum(Role, dto.role, "role"),
     symbol: pythonSymbol(dto.module, dto.qualname),
     file: dto.file,
@@ -186,9 +186,19 @@ function pythonName(dotted: string): QualifiedName {
 
 /** "pkg.mod" + "Class.method.<locals>.inner": with pythonName, the only places Python's dots are taken apart. */
 export function pythonSymbol(module: string, qualname: string): CodeSymbol {
-  const path = qualname.split(".");
-  const name = path.pop() ?? "";
-  return new CodeSymbol(module.split("."), path, name);
+  const container = qualname.split(".");
+  const name = container.pop() ?? "";
+  // "Class.method", "Class.method.<locals>.f" and "Outer.Inner.m" are drawn in the outermost
+  // class's box; "f.<locals>.g" in its module's.
+  const ownerType = container.length > 0 && container[1] !== "<locals>" ? container[0]! : null;
+  return new CodeSymbol(module.split("."), container, name, pythonKind(container, name, ownerType), ownerType);
+}
+
+function pythonKind(container: string[], name: string, ownerType: string | null): SymbolKind {
+  if (container.includes("<locals>")) return SymbolKind.Nested;
+  if (name === "<module>") return SymbolKind.Initializer;
+  if (ownerType === null) return SymbolKind.Function;
+  return name === "__init__" ? SymbolKind.Constructor : SymbolKind.Method;
 }
 
 function parseEnum<T extends Record<string, string>>(enumObject: T, value: string, field: string): T[keyof T] {

@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { CodeSymbol, FunctionInfo, Phase, Role, Span } from "../src/model";
+import { CodeSymbol, FunctionInfo, Phase, Role, Span, SymbolKind } from "../src/model";
 import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
 import { pythonSymbol } from "../src/trace/parse";
 import { componentOf } from "../src/views/components";
@@ -81,6 +81,35 @@ describe("CodeSymbol", () => {
     `);
   });
 
+  test("each symbol says what kind of code it is and which type owns it", () => {
+    // Views ask these instead of looking for __init__, <module> or <locals> in a name: a Go
+    // or Rust recorder says "constructor" or "nested" without Python's spelling.
+    const described = [
+      ["app.db.repositories.users", "UsersRepository.get_user_by_email"],
+      ["app.db.repositories.users", "UsersRepository.__init__"],
+      ["app.services.articles", "check_article_exists"],
+      ["app.api.dependencies.database", "get_repository.<locals>._get_repo"],
+      ["app.db.repositories.tags", "TagsRepository.get_all_tags.<locals>.<listcomp>"],
+      ["conduit.apps.articles.migrations.0002_comment", "<module>"],
+      ["app.models", "Outer.Inner.method"],
+    ].map(([module, qualname]) => {
+      const { kind, ownerType } = pythonSymbol(module!, qualname!);
+      return `${qualname}: ${kind}${ownerType ? ` of ${ownerType}` : ""}`;
+    });
+
+    expect(described).toEqual([
+      "UsersRepository.get_user_by_email: method of UsersRepository",
+      "UsersRepository.__init__: constructor of UsersRepository",
+      "check_article_exists: function",
+      "get_repository.<locals>._get_repo: nested",
+      // A comprehension in a method still belongs to the method's class box.
+      "TagsRepository.get_all_tags.<locals>.<listcomp>: nested of TagsRepository",
+      "<module>: initializer",
+      // Nested classes are drawn as their outermost class, as before.
+      "Outer.Inner.method: method of Outer",
+    ]);
+  });
+
   test("the same function in two recordings has the same key, so diffs can pair them up", async () => {
     const files = fixtureFiles("django-feed-fix");
     const before = (await loadPreviousRun(files))!;
@@ -117,8 +146,8 @@ describe("CodeSymbol", () => {
     const real = after.catalog.find((fn) => fn.symbol.dottedPath === "check_article_exists")!.symbol;
     const realCalls = calls(real);
 
-    const namesake = new CodeSymbol(["app", "legacy", "articles"], [], "check_article_exists");
-    const fn: FunctionInfo = { key: "namesake", role: Role.Source, symbol: namesake, file: "app/legacy/articles.py", firstLine: 1, landmarkKind: null };
+    const namesake = new CodeSymbol(["app", "legacy", "articles"], [], "check_article_exists", SymbolKind.Function, null);
+    const fn: FunctionInfo = { role: Role.Source, symbol: namesake, file: "app/legacy/articles.py", firstLine: 1, landmarkKind: null };
     after.scenario(create)!.spans.push(new Span(1_000_000, fn, null, null, Phase.Call, 0, 1));
 
     expect({ real: calls(real), namesake: calls(namesake) }).toEqual({ real: realCalls, namesake: "0 -> 1" });
@@ -131,13 +160,13 @@ describe("components are named from segments", () => {
   // segments where the recorder sent three.
   const GO_PACKAGE = ["example.com", "shop", "orders"];
   const spanOf = (symbol: CodeSymbol) => {
-    const fn: FunctionInfo = { key: "f", role: Role.Source, symbol, file: "orders/service.go", firstLine: 1, landmarkKind: null };
+    const fn: FunctionInfo = { role: Role.Source, symbol, file: "orders/service.go", firstLine: 1, landmarkKind: null };
     return new Span(1, fn, null, null, Phase.Call, 0, 1);
   };
 
   test("a method's box is its type; a free function's box is its package, labelled by its last two segments", () => {
-    const method = componentOf(spanOf(new CodeSymbol(GO_PACKAGE, ["Service"], "Place")));
-    const free = componentOf(spanOf(new CodeSymbol(GO_PACKAGE.slice(0, 2), [], "Handle")));
+    const method = componentOf(spanOf(new CodeSymbol(GO_PACKAGE, ["Service"], "Place", SymbolKind.Method, "Service")));
+    const free = componentOf(spanOf(new CodeSymbol(GO_PACKAGE.slice(0, 2), [], "Handle", SymbolKind.Function, null)));
 
     // Ids use Runshape's dotted syntax, where a dot inside a segment is escaped, so
     // "example.com"+"shop" and "example"+"com.shop" can't share a box.
