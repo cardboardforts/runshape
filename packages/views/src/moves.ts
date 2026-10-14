@@ -1,5 +1,5 @@
 import { Renaming } from "@runshape/architecture";
-import { CatalogFunction, CodeSymbol, QualifiedName, Run } from "@runshape/trace";
+import { CatalogFunction, CodeSymbol, QualifiedName, Role, Run, Scenario } from "@runshape/trace";
 
 /** The same function under another name in head: moved, and maybe edited on the way. */
 export interface FunctionMove {
@@ -13,6 +13,12 @@ export interface FunctionMove {
 export interface NamespaceMove {
   from: QualifiedName;
   to: QualifiedName;
+}
+
+/** A test only the base has and one only head has, with the same name: its file moved. */
+export interface TestMove {
+  from: Scenario;
+  to: Scenario;
 }
 
 /** A class gone from head whose methods all moved to one class elsewhere. */
@@ -30,13 +36,23 @@ export class Moves implements Renaming {
   private readonly headSymbols: Map<string, CodeSymbol>;
   private readonly headNamespaces: Map<string, QualifiedName>;
   private readonly headTypes: Map<string, QualifiedName>;
+  private readonly baseTestIds: Map<string, string>;
+  private readonly headTestIds: Map<string, string>;
 
   constructor(
     readonly functions: FunctionMove[],
     readonly namespaces: NamespaceMove[],
     readonly types: TypeMove[],
+    readonly tests: TestMove[] = [],
   ) {
     this.headSymbols = new Map(functions.map(({ from, to }) => [from.key, to]));
+    // A moved test's own function moved with it, catalogued or not (TypeScript tests aren't).
+    for (const { from, to } of tests) {
+      const [was, now] = [testFunction(from), testFunction(to)];
+      if (was !== null && now !== null && !this.headSymbols.has(was.key)) this.headSymbols.set(was.key, now);
+    }
+    this.baseTestIds = new Map(tests.map(({ from, to }) => [to.nodeid, from.nodeid]));
+    this.headTestIds = new Map(tests.map(({ from, to }) => [from.nodeid, to.nodeid]));
     this.headNamespaces = new Map(namespaces.map(({ from, to }) => [from.key, to]));
     this.headTypes = new Map(types.map(({ from, to }) => [from.key, to]));
   }
@@ -44,6 +60,12 @@ export class Moves implements Renaming {
   static none(): Moves {
     return new Moves([], [], []);
   }
+
+  /** The base's id for a head test: its old id if its file moved. */
+  baseScenarioId = (headId: string): string => this.baseTestIds.get(headId) ?? headId;
+
+  /** Head's id for a base test. */
+  headScenarioId = (baseId: string): string => this.headTestIds.get(baseId) ?? baseId;
 
   /** A base CodeSymbol.key as head names that function. */
   headKey = (baseKey: string): string => this.headSymbols.get(baseKey)?.key ?? baseKey;
@@ -71,12 +93,36 @@ export class Moves implements Renaming {
       if (this.headNamespaces.has(from.namespaceName.key)) continue;
       lines.push(`${from.localName.text}: ${from.namespaceName.text} -> ${to.namespaceName.text}`);
     }
+    const testFiles = new Map<string, number>();
+    for (const { from, to } of this.tests) testFiles.set(`${from.file} -> ${to.file}`, (testFiles.get(`${from.file} -> ${to.file}`) ?? 0) + 1);
+    for (const [files, count] of testFiles) lines.push(`${files} (${count} test${count === 1 ? "" : "s"})`);
     return lines;
   }
 }
 
+/** The span a test's own function opened, at the root of its scenario. */
+function testFunction(scenario: Scenario): CodeSymbol | null {
+  const roots = scenario.spans.filter((span) => span.parent === null && span.fn.role === Role.Test);
+  return roots.length === 1 ? roots[0]!.fn.symbol : null;
+}
+
+/** Tests only one side has, paired one to one by their name within their file. */
+function testMoves(base: Run, head: Run): TestMove[] {
+  const headIds = new Set(head.scenarios.map((scenario) => scenario.nodeid));
+  const baseIds = new Set(base.scenarios.map((scenario) => scenario.nodeid));
+  const added = groupBy(head.scenarios.filter((scenario) => !baseIds.has(scenario.nodeid)), (scenario) => scenario.name);
+  const moves: TestMove[] = [];
+  for (const [name, candidates] of groupBy(base.scenarios.filter((scenario) => !headIds.has(scenario.nodeid)), (scenario) => scenario.name)) {
+    const targets = added.get(name);
+    if (candidates.length === 1 && targets?.length === 1) moves.push({ from: candidates[0]!, to: targets[0]! });
+  }
+  return moves;
+}
+
 /**
- * Needs both recordings' source: without it a move and a rewrite look alike, and nothing pairs.
+ * Tests only one side has pair by their name (describe blocks and title), one to one: their
+ * file moved. The rest needs both recordings' source: without it a move and a rewrite look
+ * alike, and no function pairs.
  *
  * 1. A function only the base has pairs with one only head has when they share their name within
  *    the namespace, their kind and their source text, and nothing else shares all three. Bodies
@@ -87,7 +133,9 @@ export class Moves implements Renaming {
  * 4. A class moved when it's gone from head and its paired methods all went to one class.
  */
 export function detectMoves(base: Run, head: Run): Moves {
-  if (base.sources === null || head.sources === null) return Moves.none();
+  // Tests pair by name, which needs no source.
+  const tests = testMoves(base, head);
+  if (base.sources === null || head.sources === null) return new Moves([], [], [], tests);
   const baseKeys = new Set(base.catalog.map((fn) => fn.symbol.key));
   const headKeys = new Set(head.catalog.map((fn) => fn.symbol.key));
   const gone = base.catalog.filter((fn) => !headKeys.has(fn.symbol.key));
@@ -128,7 +176,7 @@ export function detectMoves(base: Run, head: Run): Moves {
 
   const order = new Map(base.catalog.map((fn, index) => [fn.symbol.key, index]));
   functions.sort((a, b) => order.get(a.from.key)! - order.get(b.from.key)!);
-  return new Moves(functions, namespaces, types);
+  return new Moves(functions, namespaces, types, tests);
 }
 
 /** Names gone from head (not in `stillThere`) whose pairs all point to one other name. */

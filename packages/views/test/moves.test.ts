@@ -198,3 +198,43 @@ describe("moves the first version got wrong (second-model review)", () => {
     expect(detectMoves(base, head).functions).toEqual([]);
   });
 });
+
+describe("moved tests", () => {
+  // A test's id is its file and name, so moving a test file (Runshape's own tests moving into
+  // their packages, say) read as every test in it removed and a namesake added.
+  const FROM_FILE = "tests/test_api/test_routes/test_articles.py";
+  const TO_FILE = "tests/api/test_articles.py";
+  const FROM_MODULE = "tests.test_api.test_routes.test_articles";
+  const TO_MODULE = "tests.api.test_articles";
+
+  /** The recording as if the articles tests had moved to tests/api/test_articles.py. */
+  function movedTests(files: TraceFiles): TraceFiles {
+    const moved = rewritten(files, { modules: { [FROM_MODULE]: TO_MODULE } });
+    const rename = (nodeid: string) => nodeid.replace(`${FROM_FILE}::`, `${TO_FILE}::`);
+    return {
+      async readText(path) {
+        const data = JSON.parse(await moved.readText(path));
+        if (path.endsWith("manifest.json")) for (const entry of data.scenarios) Object.assign(entry, { nodeid: rename(entry.nodeid), file: entry.file });
+        else if (path.includes("/scenarios/")) data.nodeid = rename(data.nodeid);
+        return JSON.stringify(data);
+      },
+    };
+  }
+
+  test("a moved test file's tests pair with themselves by name, and compare as unchanged", async () => {
+    const base = await loadLatestRun(SLUG());
+    const head = await loadLatestRun(movedTests(SLUG()));
+    const movedCreate = CREATE.replace(FROM_FILE, TO_FILE);
+
+    const diff = diffRuns(base, head);
+    const review = buildReview(base, head);
+    const moves = detectMoves(base, head);
+
+    expect(diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).map((scenario) => `${scenario.change} ${scenario.id}`)).toEqual([]);
+    expect(review.moved).toEqual([`${FROM_MODULE} -> ${TO_MODULE} (19 functions)`, `${FROM_FILE} -> ${TO_FILE} (3 tests)`]);
+    // The test's own calls line up too: its function moved with it.
+    const execution = diffExecution(base.scenario(CREATE)!, head.scenario(movedCreate)!, [Phase.Call], moves);
+    expect([moves.baseScenarioId(movedCreate), execution.calls.filter((call) => call.op !== Op.Same)]).toEqual([CREATE, []]);
+  });
+});
+

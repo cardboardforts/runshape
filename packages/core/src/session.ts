@@ -222,7 +222,7 @@ export class ViewerSession {
       case "adviseZone":
         return this.adviseZone(request.componentId, request.grouping);
       case "executionDiff": {
-        const before = this.baseline?.scenario(request.scenarioId);
+        const before = this.baseline?.scenario(this.moves().baseScenarioId(request.scenarioId));
         const after = this.run.scenario(request.scenarioId);
         if (before === undefined || after === undefined) {
           return { type: "error", message: "This test exists in only one of the two recordings; there is no execution to compare." };

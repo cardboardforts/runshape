@@ -82,7 +82,7 @@ export function buildReview(
   const items: ReviewItem[] = [];
 
   for (const scenario of diff.scenarios) {
-    const before = base.scenario(scenario.id);
+    const before = base.scenario(moves.baseScenarioId(scenario.id));
     const after = head.scenario(scenario.id);
     let newCalls: string[] = [];
     let goneCalls: string[] = [];

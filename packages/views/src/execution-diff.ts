@@ -184,7 +184,7 @@ export function diffFunctionExecution(
 ): FunctionExecutionDiff {
   const matchedBy = beforeRun.sources !== null && afterRun.sources !== null ? "text" : "line-number";
   // `symbol` is head's name for the function; the base may have run it under its old one.
-  const before = statementsOf(beforeRun, scenarioId, symbol, phases, matchedBy, moves.headKey);
+  const before = statementsOf(beforeRun, moves.baseScenarioId(scenarioId), symbol, phases, matchedBy, moves.headKey);
   const after = statementsOf(afterRun, scenarioId, symbol, phases, matchedBy, (key) => key);
   const aligned = align(before.statements, after.statements, (statement) => statement.key);
   const statements = aligned.steps.map(toStep);

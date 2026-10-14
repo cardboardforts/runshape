@@ -100,14 +100,15 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
     callsBefore: previous?.calls ?? 0,
   }));
 
-  const scenarioIds = new Set([...before.scenarios.map((s) => s.nodeid), ...after.scenarios.map((s) => s.nodeid)]);
+  // A test whose file moved is one scenario, under head's id.
+  const scenarioIds = new Set([...before.scenarios.map((s) => moves.headScenarioId(s.nodeid)), ...after.scenarios.map((s) => s.nodeid)]);
   const scenarios: ScenarioDiff[] = [];
   // Only catalogued functions: import-time module code that happened to run mid-request
   // isn't something a reviewer can act on.
   const catalogued = new Set([...before.catalog.map((fn) => moves.headKey(fn.symbol.key)), ...after.catalog.map((fn) => fn.symbol.key)]);
   for (const id of scenarioIds) {
     const [textBefore, textAfter] = lineTexts(before, after);
-    scenarios.push(diffScenario(before.scenario(id) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter, moves));
+    scenarios.push(diffScenario(before.scenario(moves.baseScenarioId(id)) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter, moves));
   }
   return { caveats: caveatsFor(before, after), nodes, edges, scenarios, profile: graphAfter.profile, moved: moves.describe() };
 }
