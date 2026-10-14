@@ -161,7 +161,8 @@ Accepted risks:
 - A function's view ends at its last executable line, so a closing bracket after it is cut.
 - Inferred zones are heuristics; declare the ones that matter in `runshape.json`. A leading
   `**.` in a rule needs at least one segment (`**.models` doesn't match `models`); a
-  trailing or inner `.**` may match none.
+  trailing or inner `.**` may match none. A dot inside a segment is written `\.` (a Go
+  module path: `example\.com.shop.**`), and a backslash `\\`; Python names never need it.
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before

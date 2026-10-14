@@ -31,8 +31,8 @@ export enum Outcome {
 
 /**
  * A name in Runshape's own dotted syntax, the one runshape.json globs and component names on
- * the wire use: segments joined by ".", whatever language they came from. Compare and match
- * by segments; `text` is for the edges.
+ * the wire use: segments joined by ".", whatever language they came from, with a "." or "\"
+ * inside a segment written "\." or "\\". Compare and match by segments; `text` is for the edges.
  */
 export class QualifiedName {
   /** JSON, like CodeSymbol.key: "example.com" + "shop" and "example" + "com.shop" stay apart. */
@@ -42,8 +42,13 @@ export class QualifiedName {
     this.key = JSON.stringify(segments);
   }
 
+  /** Reads `text` back; a "\" before any other character, or at the end, stands for itself. */
+  static parse(text: string): QualifiedName {
+    return new QualifiedName(splitDotted(text));
+  }
+
   get text(): string {
-    return this.segments.join(".");
+    return this.segments.map((segment) => segment.replace(/[\\.]/g, "\\$&")).join(".");
   }
 
   get last(): string {
@@ -62,6 +67,27 @@ export class QualifiedName {
   holds(other: QualifiedName): boolean {
     return other.segments.length > this.segments.length && this.segments.every((segment, i) => other.segments[i] === segment);
   }
+}
+
+/** Splits on unescaped dots and unescapes; QualifiedName.parse and rule globs share it. */
+export function splitDotted(text: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i]!;
+    const next = text[i + 1];
+    if (char === "\\" && (next === "." || next === "\\")) {
+      current += next;
+      i += 1;
+    } else if (char === ".") {
+      segments.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  segments.push(current);
+  return segments;
 }
 
 /**

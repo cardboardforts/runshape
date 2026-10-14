@@ -11,7 +11,7 @@ import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
 
 /** Names written the way runshape.json writes them. */
-const named = (dotted: string) => new QualifiedName(dotted.split("."));
+const named = (dotted: string) => QualifiedName.parse(dotted);
 
 function describeZones(graph: SystemGraph, labels: string[]): string[] {
   return graph.nodes
@@ -91,6 +91,21 @@ describe("ZoneRules", () => {
     expect(["a.b", "a.x.b", "a.x.y.b", "ab"].map((name) => middle.matchFor(named(name)) !== null)).toEqual([true, true, true, false]);
     const leading = new ZoneRules([{ match: "**.models", zone: HexagonalZone.Core, reason: "r", by: "user" }]);
     expect(["models", "app.models", "app.x.models", "app.modelsx"].map((name) => leading.matchFor(named(name)) !== null)).toEqual([true, true, true, false]);
+  });
+
+  test("a dot inside a segment is written \\. so Go's example.com stays one segment", () => {
+    const goPackage = new QualifiedName(["example.com", "shop", "orders"]);
+    const lookalike = new QualifiedName(["example", "com", "shop", "orders"]);
+    const odd = new QualifiedName(["a\\b", "c.d"]);
+
+    expect([goPackage.text, lookalike.text, odd.text]).toEqual(["example\\.com.shop.orders", "example.com.shop.orders", "a\\\\b.c\\.d"]);
+    expect([goPackage, lookalike, odd].every((name) => QualifiedName.parse(name.text).equals(name))).toBe(true);
+
+    const rules = new ZoneRules([{ match: "example\\.com.shop.**", zone: HexagonalZone.Core, reason: "the shop module", by: "user" }]);
+    expect([rules.matchFor(goPackage) !== null, rules.matchFor(lookalike) !== null]).toEqual([true, false]);
+    // "Set zone" writes the node's name as an exact rule: it has to match that node again.
+    const placed = ZoneRules.none().withRuleFor(goPackage.text, HexagonalZone.InboundAdapter, "by hand", "user");
+    expect(placed.matchFor(goPackage)?.rule.reason).toBe("by hand");
   });
 
   test("a hostile glob in a cloned repo's runshape.json can't hang the viewer", () => {

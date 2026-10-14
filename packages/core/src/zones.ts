@@ -2,7 +2,7 @@
 // Inference says what a component *does*; a rule says what it *is supposed to be*. Where the
 // two disagree is the architecture finding.
 
-import { QualifiedName } from "./model";
+import { QualifiedName, splitDotted } from "./model";
 import { ArchitectureProfile, HEXAGONAL, PROFILES, profileFor } from "./profiles";
 
 export const RULES_FILE = "runshape.json";
@@ -10,7 +10,10 @@ export const RULES_FILE = "runshape.json";
 export const RULES_VERSION = 2;
 
 export interface ZoneRule {
-  /** Dotted-name glob: `*` is any text within one segment, `**` any number of segments (zero too: `app.**` matches `app`). */
+  /**
+   * Dotted-name glob: `*` is any text within one segment, `**` any number of segments (zero too:
+   * `app.**` matches `app`). A dot inside a segment is written `\.` (Go's `example\.com.shop`).
+   */
   match: string;
   /** One of the style's zone ids (profiles.ts). Framework, external and test-double zones are facts, not choices. */
   zone: string;
@@ -130,7 +133,7 @@ class Glob {
   private readonly segments: string[];
 
   constructor(pattern: string) {
-    this.segments = pattern.split(".");
+    this.segments = splitDotted(pattern);
   }
 
   matches(parts: readonly string[]): boolean {

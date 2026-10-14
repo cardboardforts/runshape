@@ -139,12 +139,12 @@ describe("components are named from segments", () => {
     const method = componentOf(spanOf(new CodeSymbol(GO_PACKAGE, ["Service"], "Place")));
     const free = componentOf(spanOf(new CodeSymbol(GO_PACKAGE.slice(0, 2), [], "Handle")));
 
-    // Not the ids: they are still the joined text, so "example.com"+"shop" and "example"+"com.shop"
-    // would share one. They become keys when the wire carries symbols.
-    expect([method, free].map(({ kind, label, name }) => ({ kind, label, segments: name?.segments }))).toEqual([
-      { kind: "class", label: "Service", segments: [...GO_PACKAGE, "Service"] },
+    // Ids use Runshape's dotted syntax, where a dot inside a segment is escaped, so
+    // "example.com"+"shop" and "example"+"com.shop" can't share a box.
+    expect([method, free].map(({ id, kind, label, name }) => ({ id, kind, label, segments: name?.segments }))).toEqual([
+      { id: "class:example\\.com.shop.orders.Service", kind: "class", label: "Service", segments: [...GO_PACKAGE, "Service"] },
       // Split text would have labelled this "com.shop".
-      { kind: "module", label: "example.com.shop", segments: ["example.com", "shop"] },
+      { id: "module:example\\.com.shop", kind: "module", label: "example.com.shop", segments: ["example.com", "shop"] },
     ]);
   });
 });

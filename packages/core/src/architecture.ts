@@ -3,7 +3,7 @@
 // catalogue of styles against evidence from a recording and proposes how the app's
 // modules map onto that style's zones. A person (or a model, see
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
-import { Run } from "./model";
+import { QualifiedName, Run } from "./model";
 import { ArchitectureStyle, HexagonalZone, LayoutShape, PROFILES } from "./profiles";
 import { buildSystemGraph } from "./views/system-graph";
 import { ZoneRule, ZoneRules } from "./zones";
@@ -50,11 +50,11 @@ export function detectArchitecture(run: Run): ArchitectureCandidate[] {
     let matchedZones = 0;
     for (const zone of profile.zones) {
       const words = profile.vocabulary[zone.id] ?? [];
-      const patterns = packages.filter((pkg) => words.includes(lastSegment(pkg))).map((pkg) => `${pkg}.**`);
+      const patterns = packages.filter((pkg) => words.includes(pkg.last)).map((pkg) => `${pkg.text}.**`);
       zones.push({ zone: zone.id, patterns });
       if (patterns.length > 0) {
         matchedZones += 1;
-        evidence.push(`${zone.name}: ${patterns.map((p) => p.replace(/\.\*\*$/, "")).join(", ")}`);
+        evidence.push(`${zone.name}: ${patterns.map(packageOfPattern).join(", ")}`);
       }
     }
     let score = matchedZones / profile.zones.length;
@@ -67,7 +67,7 @@ export function detectArchitecture(run: Run): ArchitectureCandidate[] {
       score += 0.25;
       evidence.push(`persistence sits behind repositories/gateways: ${short(dataMappers)}`);
     }
-    if (profile.style === ArchitectureStyle.Hexagonal && !packages.some((pkg) => /\b(ports|adapters|domain)$/.test(pkg))) {
+    if (profile.style === ArchitectureStyle.Hexagonal && !packages.some((pkg) => /\b(ports|adapters|domain)$/.test(pkg.last))) {
       score -= 0.2;
       evidence.push("no ports/adapters/domain package: nothing names the hexagon's boundary");
     }
@@ -100,16 +100,16 @@ export function proposedRules(candidate: ArchitectureCandidate): ZoneRules {
   for (const proposal of candidate.zones) {
     const zoneName = profile.zones.find((zone) => zone.id === proposal.zone)?.name ?? proposal.zone;
     for (const pattern of proposal.patterns) {
-      const word = lastSegment(pattern.replace(/\.\*\*$/, ""));
+      const word = QualifiedName.parse(packageOfPattern(pattern)).last;
       rules.push({ match: pattern, zone: proposal.zone, reason: `${zoneName.toLowerCase()}: the package is named "${word}"`, by: "detected" });
     }
   }
-  const packageOf = (rule: ZoneRule) => rule.match.replace(/\.\*\*$/, "");
-  const depth = (rule: ZoneRule) => packageOf(rule).split(".").length;
+  const packageOf = (rule: ZoneRule) => QualifiedName.parse(packageOfPattern(rule.match));
+  const depth = (rule: ZoneRule) => packageOf(rule).segments.length;
   // A rule inside a broader one that already says the same zone adds nothing.
   const needed = rules.filter((rule) => {
     const enclosing = rules
-      .filter((other) => other !== rule && packageOf(rule).startsWith(`${packageOf(other)}.`))
+      .filter((other) => other !== rule && packageOf(other).holds(packageOf(rule)))
       .sort((a, b) => depth(b) - depth(a))[0];
     return enclosing === undefined || enclosing.zone !== rule.zone;
   });
@@ -121,23 +121,28 @@ export function proposedRules(candidate: ArchitectureCandidate): ZoneRules {
  * Every package and module in the app's own code. Modules count too: Django names its roles
  * per module (app/views.py, app/models.py), other frameworks per package (app/api/routes/).
  */
-export function projectPackages(run: Run): string[] {
+export function projectPackages(run: Run): QualifiedName[] {
   const testFiles = /(^|\/)tests?\//;
-  const packages = new Set<string>();
+  const packages = new Map<string, QualifiedName>();
   for (const fn of run.catalog) {
     if (testFiles.test(fn.file)) continue;
     const segments = fn.symbol.namespace;
-    for (let length = 1; length <= segments.length; length += 1) packages.add(segments.slice(0, length).join("."));
+    for (let length = 1; length <= segments.length; length += 1) {
+      const pkg = new QualifiedName(segments.slice(0, length));
+      packages.set(pkg.key, pkg);
+    }
   }
-  return [...packages].sort();
+  return [...packages.values()].sort((a, b) => (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
 }
 
-function lastSegment(name: string): string {
-  return name.slice(name.lastIndexOf(".") + 1);
+/** "app.db.**" -> "app.db": the package a proposed rule covers. */
+function packageOfPattern(pattern: string): string {
+  return pattern.replace(/\.\*\*$/, "");
 }
 
+/** Last segments of graph node names (Runshape's dotted text), first three. */
 function short(names: string[]): string {
-  const labels = [...new Set(names.map(lastSegment))];
+  const labels = [...new Set(names.map((name) => QualifiedName.parse(name).last))];
   return labels.length > 3 ? `${labels.slice(0, 3).join(", ")} and ${labels.length - 3} more` : labels.join(", ");
 }
 

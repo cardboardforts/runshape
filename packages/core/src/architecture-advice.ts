@@ -2,6 +2,7 @@
 // The deterministic ranking is its evidence; the model may disagree, and must say why. Like
 // zone advice it only proposes: the session keeps the proposal and a person adopts it.
 import { ArchitectureCandidate } from "./architecture";
+import type { QualifiedName } from "./model";
 import { Confidence } from "./zone-advice";
 import { PROFILES, profileFor } from "./profiles";
 import { ZoneRule, ZoneRules } from "./zones";
@@ -16,7 +17,7 @@ export class ArchitectureAdviceError extends Error {}
 
 const MAX_PACKAGES = 150;
 
-export function architecturePrompt(candidates: ArchitectureCandidate[], packages: string[]): string {
+export function architecturePrompt(candidates: ArchitectureCandidate[], packages: QualifiedName[]): string {
   const styles = PROFILES.map(
     (profile) => `- ${profile.style} (${profile.name}): zones ${profile.zones.map((zone) => `${zone.id} = ${zone.meaning}`).join("; ")}`,
   ).join("\n");
@@ -32,7 +33,7 @@ A heuristic ranked them from package names and from what the recorded tests did 
 ${ranking}
 
 The application's packages and modules${packages.length > shown.length ? ` (first ${shown.length} of ${packages.length})` : ""}:
-${shown.map((name) => `  ${name}`).join("\n")}
+${shown.map((name) => `  ${name.text}`).join("\n")}
 
 Pick the style the code most plausibly follows (it may differ from the heuristic's first choice;
 names can mislead, e.g. a package called "models" holding domain objects). Then map packages to
