@@ -1,3 +1,3 @@
 module github.com/cardboardforts/runshape/recorder-go
 
-go 1.22
+go 1.18

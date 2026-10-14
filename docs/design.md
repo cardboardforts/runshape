@@ -171,6 +171,13 @@ Accepted risks:
   share one scenario slot and aren't recorded reliably;
   each line is recorded once per call, and a caller's first 50 calls of a function are kept
   (recorderErrors says what was left out).
+- The Go recorder (recorder-go/): a goroutine's first call hangs off the test, not the code
+  that started the goroutine, and work a test left running is recorded into whichever test is
+  current; t.Parallel tests and parallel subtests aren't recorded (one scenario at a time);
+  a closure that outlives the function that wrote it (a returned handler) records nothing once
+  that function returns; Fuzz and Example functions run but aren't scenarios; a recorded call
+  costs about 3 µs (a mutex and a stack read), so hot loops slow down a lot even past the
+  per-caller limit.
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before

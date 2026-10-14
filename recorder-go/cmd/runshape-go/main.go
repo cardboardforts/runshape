@@ -30,13 +30,27 @@ func main() {
 		fmt.Fprintln(os.Stderr, "runshape-go record: name the module directory")
 		os.Exit(2)
 	}
-	module, err := filepath.Abs(flags.Arg(0))
-	exitOn(err)
+	module := fromInvocation(flags.Arg(0))
 	if *out == "" {
 		*out = filepath.Join(module, ".runshape", "traces")
 	}
+	*out = fromInvocation(*out)
 	exitOn(record.Record(record.Options{Module: module, Out: *out, Run: *run, Packages: flags.Args()[1:], RecorderModule: recorderModule()}))
 	fmt.Printf("runshape-go: recorded %s in %s\n", module, filepath.Join(*out, *run))
+}
+
+// fromInvocation resolves a path given on the command line. Run through npm (`go -C
+// recorder-go run ...`), the working directory is recorder-go: npm's INIT_CWD is where the
+// command was typed.
+func fromInvocation(path string) string {
+	if !filepath.IsAbs(path) {
+		if invoked := os.Getenv("INIT_CWD"); invoked != "" {
+			path = filepath.Join(invoked, path)
+		}
+	}
+	absolute, err := filepath.Abs(path)
+	exitOn(err)
+	return absolute
 }
 
 // recorderModule is this module's directory, which the recorded copy's go.mod points at.

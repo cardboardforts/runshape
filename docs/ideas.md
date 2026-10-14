@@ -15,8 +15,9 @@ points at end-to-end tests: start the program the way it really starts, drive it
 record that.
 
 - **Already there:** the Python recorder records the FastAPI and Django examples' API tests, which
-  go through the real app factory, middleware and routing ("Include setup" shows app startup). The
-  TypeScript recorder records unit tests only.
+  go through the real app factory, middleware and routing ("Include setup" shows app startup).
+  The Go example (examples/go-shop) has e2e tests that wire the app as main does and drive the
+  real router in process, recorded by recorder-go. The TypeScript recorder records unit tests.
 - **To decide:** what counts as the run (a process from `main` to shutdown, a request through a
   deployed stack?); whether recording attaches to a test harness or to the process itself; how a
   long-running process maps onto scenarios (one per request? per user journey?).

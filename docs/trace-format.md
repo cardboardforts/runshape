@@ -85,6 +85,9 @@ A `symbol` is `{namespace, container, name, kind, ownerType}`:
   `nested` (closures, lambdas, callbacks).
 - `ownerType`: the type whose box the code is drawn in (a method's class), or `null`.
 
+The TypeScript and Go recorders catalog the project's source, not its tests: a test appears as
+the root span of its scenario, with role `test`.
+
 The manifest's `version` decides how every entry is read: a version 2 entry naming code by
 `module`/`qualname` is refused, as is a version 2 manifest without `language` and `runtime`.
 A malformed catalog entry or scenario is skipped and reported; a malformed manifest is fatal.

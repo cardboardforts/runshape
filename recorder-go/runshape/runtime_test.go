@@ -16,6 +16,7 @@ type fakeT struct{ failed bool }
 func (f fakeT) Name() string   { return "TestSample" }
 func (f fakeT) Failed() bool   { return f.failed }
 func (f fakeT) Skipped() bool  { return false }
+func (f fakeT) Cleanup(func())  {}
 
 type service struct{ calls int }
 

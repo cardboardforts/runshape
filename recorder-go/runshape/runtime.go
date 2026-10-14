@@ -33,6 +33,15 @@ type TB interface {
 	Name() string
 	Failed() bool
 	Skipped() bool
+	Cleanup(func())
+}
+
+// Table is an instrumented file's function table: the catalog entries as JSON, registered on
+// first use. A literal of constants, so it's set before the package initialises.
+type Table struct {
+	Entries string
+	once    sync.Once
+	ids     []int
 }
 
 type symbol struct {
@@ -106,27 +115,39 @@ func newRecorder(limits Limits) *recorder { return &recorder{limits: limits} }
 
 var global = newRecorder(DefaultLimits)
 
-// Functions registers a file's function table (JSON, from the instrumenter) and returns the
-// functions' ids, in table order.
-func Functions(table string) []int { return global.functions(table) }
+// Enter opens a frame for the table's index-th function, called on recv (a pointer receiver, or
+// nil).
+func Enter(table *Table, index int, recv any) *Frame {
+	table.once.Do(func() {
+		if table.Entries != "" {
+			table.ids = global.functions(table.Entries)
+		}
+	})
+	if index >= len(table.ids) {
+		return &Frame{r: global}
+	}
+	return global.enter(table.ids[index], recv)
+}
 
-// Enter opens a frame for function id, called on recv (a pointer receiver, or nil).
-func Enter(id int, recv any) *Frame { return global.enter(id, recv) }
-
-// Scenario starts recording test t; the function it returns, deferred, finishes and writes it.
+// Scenario starts recording test t. It finishes in t.Cleanup, registered first so it runs last:
+// a failure in the test's own cleanups counts. The function it returns, deferred by the test,
+// notes a panic on the way out (the panic carries on).
 func Scenario(t TB, file, name string) func() {
 	finish := global.scenario(t, file, name)
-	return func() {
-		panicked := recover()
+	panicked := false
+	t.Cleanup(func() {
 		result := finish()
-		if panicked != nil {
+		if panicked {
 			result.Outcome = "failed"
 		}
 		if directory := os.Getenv("RUNSHAPE_RUN_DIR"); directory != "" {
 			write(directory, result)
 		}
-		if panicked != nil {
-			panic(panicked)
+	})
+	return func() {
+		if p := recover(); p != nil {
+			panicked = true
+			panic(p)
 		}
 	}
 }
@@ -305,7 +326,8 @@ func (r *recorder) objectOf(s *scenarioState, id int, recv any) any {
 		return nil
 	}
 	value := reflect.ValueOf(recv)
-	if value.Kind() != reflect.Pointer || value.IsNil() {
+	// Zero-size values all live at one address: they can't be told apart.
+	if value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Type().Size() == 0 {
 		return nil
 	}
 	owner := r.registry[id].Symbol.OwnerType

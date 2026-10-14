@@ -5,8 +5,10 @@ package record
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/build"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -48,6 +50,10 @@ type problem struct {
 // Record runs the module's tests instrumented. Failing tests are recorded like passing ones;
 // a package that doesn't build is named in the manifest's sessionProblems.
 func Record(options Options) error {
+	// Before anything touches the disk: Out/Run is removed and rewritten.
+	if run := options.Run; run == "" || run == "." || run == ".." || strings.ContainsAny(run, `/\`) {
+		return fmt.Errorf("run name %q must be one directory name", run)
+	}
 	modulePath, err := modulePathOf(options.Module)
 	if err != nil {
 		return err
@@ -65,6 +71,9 @@ func Record(options Options) error {
 	if err := goCommand(work, "mod", "edit", "-require="+RecorderModulePath+"@v0.0.0", "-replace="+RecorderModulePath+"="+options.RecorderModule).Run(); err != nil {
 		return fmt.Errorf("pointing the copy at the recorder: %w", err)
 	}
+	if err := absoluteReplaces(work, options.Module); err != nil {
+		return err
+	}
 
 	runDirectory := filepath.Join(options.Out, options.Run)
 	if err := os.RemoveAll(runDirectory); err != nil {
@@ -79,17 +88,20 @@ func Record(options Options) error {
 		packages = []string{"./..."}
 	}
 	// One package and one test at a time: the runtime records one scenario at a time.
-	test := goCommand(work, append([]string{"test", "-count=1", "-p=1", "-parallel=1"}, packages...)...)
+	test := goCommand(work, append([]string{"test", "-json", "-count=1", "-p=1", "-parallel=1"}, packages...)...)
 	test.Env = append(os.Environ(), "RUNSHAPE_RUN_DIR="+runDirectory)
-	output, _ := test.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	test.Stdout, test.Stderr = &stdout, &stderr
+	testErr := test.Run()
 
 	scenarios, err := scenarioIndex(runDirectory)
 	if err != nil {
 		return err
 	}
-	sessionProblems := failedPackages(string(output))
-	if len(scenarios) == 0 && len(sessionProblems) > 0 {
-		return fmt.Errorf("no test ran:\n%s", output)
+	sessionProblems, raw := testProblems(stdout.String())
+	// Nothing recorded is a failed recording, not an empty one: say why, and leave latest alone.
+	if len(scenarios) == 0 {
+		return fmt.Errorf("no test was recorded (go test: %v)\n%s%s", testErr, strings.Join(raw, "\n"), stderr.String())
 	}
 	goVersion, _ := goCommand(work, "env", "GOVERSION").Output()
 
@@ -105,21 +117,36 @@ func Record(options Options) error {
 	return movePointers(options.Out, options.Run)
 }
 
-// instrumentCopy copies the module into work, instrumenting .go files on the way.
+// instrumentCopy copies the module into work, instrumenting the .go files its build compiles.
+// Copied as they are: testdata (test inputs, often Go source compared byte for byte), vendor,
+// modules nested inside (they're other modules), and files this build excludes.
 func instrumentCopy(module, work, modulePath string) ([]catalogEntry, map[string][]string, []problem, error) {
 	catalog := []catalogEntry{}
 	sources := map[string][]string{}
 	problems := []problem{}
+	verbatim := []string{}
 	err := filepath.WalkDir(module, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		relative, _ := filepath.Rel(module, path)
+		target := filepath.Join(work, relative)
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return copySymlink(path, target)
+		}
 		if entry.IsDir() {
-			if relative != "." && (strings.HasPrefix(entry.Name(), ".") || entry.Name() == "vendor" || entry.Name() == "node_modules") {
+			if relative != "." && (strings.HasPrefix(entry.Name(), ".") || entry.Name() == "node_modules") {
 				return filepath.SkipDir
 			}
-			return os.MkdirAll(filepath.Join(work, relative), 0o755)
+			_, nested := os.Stat(filepath.Join(path, "go.mod"))
+			if relative != "." && (nested == nil || entry.Name() == "testdata" || entry.Name() == "vendor") {
+				verbatim = append(verbatim, relative+string(filepath.Separator))
+			}
+			return os.MkdirAll(target, info.Mode().Perm()|0o700)
 		}
 		src, err := os.ReadFile(path)
 		if err != nil {
@@ -127,7 +154,17 @@ func instrumentCopy(module, work, modulePath string) ([]catalogEntry, map[string
 		}
 		file := filepath.ToSlash(relative)
 		code := src
+		copyAsIs := !strings.HasSuffix(file, ".go")
+		for _, prefix := range verbatim {
+			copyAsIs = copyAsIs || strings.HasPrefix(relative, prefix)
+		}
+		if !copyAsIs {
+			if matched, err := build.Default.MatchFile(filepath.Dir(path), entry.Name()); err != nil || !matched {
+				copyAsIs = true
+			}
+		}
 		switch {
+		case copyAsIs:
 		case strings.HasSuffix(file, "_test.go"):
 			if code, err = instrument.InstrumentTest(file, src); err != nil {
 				problems = append(problems, problem{file, err.Error()})
@@ -147,9 +184,52 @@ func instrumentCopy(module, work, modulePath string) ([]catalogEntry, map[string
 			code = result.Code
 			catalog = append(catalog, result.Functions...)
 		}
-		return os.WriteFile(filepath.Join(work, relative), code, 0o644)
+		return os.WriteFile(target, code, info.Mode().Perm())
 	})
 	return catalog, sources, problems, err
+}
+
+// copySymlink recreates a link in the copy, pointing where the original points.
+func copySymlink(path, target string) error {
+	destination, err := os.Readlink(path)
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(destination) {
+		destination = filepath.Join(filepath.Dir(path), destination)
+	}
+	return os.Symlink(destination, target)
+}
+
+// absoluteReplaces points the copy's relative replace directives (../dep, ./sub) where they
+// pointed from the original module: the copy lives elsewhere.
+func absoluteReplaces(work, module string) error {
+	listing, err := goCommand(work, "mod", "edit", "-json").Output()
+	if err != nil {
+		return fmt.Errorf("reading the copy's go.mod: %w", err)
+	}
+	var parsed struct {
+		Replace []struct {
+			Old struct{ Path, Version string }
+			New struct{ Path, Version string }
+		}
+	}
+	if err := json.Unmarshal(listing, &parsed); err != nil {
+		return err
+	}
+	for _, replace := range parsed.Replace {
+		if !strings.HasPrefix(replace.New.Path, "./") && !strings.HasPrefix(replace.New.Path, "../") {
+			continue
+		}
+		old := replace.Old.Path
+		if replace.Old.Version != "" {
+			old += "@" + replace.Old.Version
+		}
+		if err := goCommand(work, "mod", "edit", "-replace="+old+"="+filepath.Join(module, replace.New.Path)).Run(); err != nil {
+			return fmt.Errorf("pointing %s at %s: %w", old, replace.New.Path, err)
+		}
+	}
+	return nil
 }
 
 var modulePattern = regexp.MustCompile(`(?m)^module\s+(\S+)`)
@@ -208,18 +288,61 @@ func scenarioIndex(runDirectory string) ([]scenarioEntry, error) {
 	return index, nil
 }
 
-var failedPattern = regexp.MustCompile(`^FAIL\s+(\S+)\s+\[(build failed|setup failed)\]`)
+type testEvent struct {
+	Action      string
+	Package     string
+	Test        string
+	Output      string
+	FailedBuild string
+}
 
-// failedPackages names packages whose tests never ran: their tests are missing, not removed.
-func failedPackages(output string) []string {
+// testProblems reads go test -json for tests that are missing from the recording rather than
+// removed: packages that didn't build, test binaries a panic stopped, failures outside any test.
+// raw holds the lines that weren't JSON (go's own errors).
+func testProblems(output string) ([]string, []string) {
 	problems := []string{}
+	raw := []string{}
+	var order []string
+	seen := map[string]bool{}
+	failed := map[string]bool{}
+	testFailed := map[string]bool{}
+	panicked := map[string]bool{}
+	buildFailed := map[string]bool{}
 	scanner := bufio.NewScanner(strings.NewReader(output))
+	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for scanner.Scan() {
-		if match := failedPattern.FindStringSubmatch(scanner.Text()); match != nil {
-			problems = append(problems, fmt.Sprintf("%s: %s, so none of its tests are in this recording", match[1], match[2]))
+		var event testEvent
+		if json.Unmarshal(scanner.Bytes(), &event) != nil {
+			raw = append(raw, scanner.Text())
+			continue
+		}
+		if event.Package != "" && !seen[event.Package] {
+			seen[event.Package] = true
+			order = append(order, event.Package)
+		}
+		switch {
+		case event.Action == "output" && strings.HasPrefix(event.Output, "panic: "):
+			panicked[event.Package] = true
+		case event.Action == "fail" && event.Test != "":
+			testFailed[event.Package] = true
+		case event.Action == "fail" && event.FailedBuild != "":
+			buildFailed[event.Package] = true
+			failed[event.Package] = true
+		case event.Action == "fail":
+			failed[event.Package] = true
 		}
 	}
-	return problems
+	for _, pkg := range order {
+		switch {
+		case buildFailed[pkg]:
+			problems = append(problems, fmt.Sprintf("%s: build failed, so none of its tests are in this recording", pkg))
+		case panicked[pkg]:
+			problems = append(problems, fmt.Sprintf("%s: a test panicked and stopped the test binary, so the tests after it didn't run", pkg))
+		case failed[pkg] && !testFailed[pkg]:
+			problems = append(problems, fmt.Sprintf("%s: failed outside its tests (TestMain, init or the test binary), so some tests may be missing", pkg))
+		}
+	}
+	return problems, raw
 }
 
 // movePointers makes the new run latest, and the run that was latest previous.

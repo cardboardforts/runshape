@@ -68,11 +68,14 @@ Then in VS Code: **Runshape: Open Runtime View**. Re-running the tests updates t
 ### Go
 
 ```sh
-npm run record-go -- path/to/module            # needs Go 1.22+; writes <module>/.runshape/traces
+npm run record-go -- path/to/module            # needs the go command; writes <module>/.runshape/traces
 ```
 
 Each top-level `TestXxx` becomes one scenario. The module is copied and the copy instrumented,
-so your source is untouched; each run becomes `latest`, the one before it `previous`.
+so your source is untouched; each run becomes `latest`, the one before it `previous`. Tests
+that couldn't be recorded (a package that doesn't build, a panic that stops a test binary) are
+listed as problems; a run that records nothing fails and leaves the last good run in place.
+What it can't record yet is listed in docs/design.md.
 
 ### TypeScript (vitest)
 

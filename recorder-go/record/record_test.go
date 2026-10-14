@@ -152,3 +152,117 @@ func read(t *testing.T, path string, into any) {
 		t.Fatal(fmt.Errorf("%s: %w", path, err))
 	}
 }
+
+// The second-model review's probes, as a module (testdata/probe): each construct must build and
+// behave as it does uninstrumented, and what the recorder can't record must be said, not lost.
+func TestRecordsTheProbeModule(t *testing.T) {
+	out := t.TempDir()
+	module, _ := filepath.Abs(filepath.Join("testdata", "probe"))
+	recorder, _ := filepath.Abs("..")
+
+	// go 1.21 in its go.mod; a relative replace (../dep); a nested module (./sub).
+	if err := Record(Options{Module: module, Out: out, Run: "run", RecorderModule: recorder}); err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Catalog []struct {
+			File   string `json:"file"`
+			Symbol struct {
+				Container []string `json:"container"`
+				Name      string   `json:"name"`
+			} `json:"symbol"`
+			Lines []int `json:"lines"`
+		} `json:"catalog"`
+		Scenarios []struct {
+			Nodeid  string `json:"nodeid"`
+			File    string `json:"file"`
+			Outcome string `json:"outcome"`
+		} `json:"scenarios"`
+		SessionProblems []string `json:"sessionProblems"`
+	}
+	read(t, filepath.Join(out, "run", "manifest.json"), &manifest)
+
+	outcomes := map[string]string{}
+	for _, s := range manifest.Scenarios {
+		outcomes[s.Nodeid[strings.LastIndex(s.Nodeid, "::")+2:]] = s.Outcome
+	}
+	// TestShapes passing means: switch, type switch, select, goto, init order through a String
+	// method, relative replace and nested module all work instrumented.
+	if want := map[string]string{"TestShapes": "passed", "TestGoldenFileIsUntouched": "passed", "TestCleanupFails": "failed", "TestPanics": "failed"}; !reflect.DeepEqual(outcomes, want) {
+		t.Errorf("outcomes %v, want %v", outcomes, want)
+	}
+	if !reflect.DeepEqual(manifest.SessionProblems, []string{
+		"example.com/probe/shapes: a test panicked and stopped the test binary, so the tests after it didn't run",
+	}) {
+		t.Errorf("session problems %q", manifest.SessionProblems)
+	}
+
+	catalogued := map[string][]int{}
+	for _, fn := range manifest.Catalog {
+		catalogued[strings.Join(append(append([]string{}, fn.Symbol.Container...), fn.Symbol.Name), ".")] = fn.Lines
+	}
+	for _, absent := range []string{"Ignored", "Untouched", "Name"} {
+		if _, ok := catalogued[absent]; ok {
+			t.Errorf("%s is catalogued: build-ignored files, testdata and nested modules aren't the module's code", absent)
+		}
+	}
+	if lines, ok := catalogued["Marker.Mark"]; !ok || lines == nil || len(lines) != 0 {
+		t.Errorf("an empty method's lines are %#v, want []", lines)
+	}
+	if lines := catalogued["Skip"]; !reflect.DeepEqual(lines, []int{44, 45, 47, 49}) {
+		t.Errorf("Skip's lines %v: the labelled return is line 49", lines)
+	}
+
+	var shapes scenario
+	for _, s := range manifest.Scenarios {
+		if strings.HasSuffix(s.Nodeid, "::TestShapes") {
+			read(t, filepath.Join(out, "run", s.File), &shapes)
+		}
+	}
+	spans := map[float64]string{}
+	reached := map[string][]int{}
+	objects := 0
+	for _, e := range shapes.Events {
+		switch e[0] {
+		case "S":
+			spans[e[2].(float64)] = shapes.Functions[int(e[3].(float64))].Symbol.Name
+		case "L":
+			name := spans[e[1].(float64)]
+			reached[name] = append(reached[name], int(e[2].(float64)))
+		case "O":
+			objects++
+		}
+	}
+	// Skip(5) jumps to end: and returns: the jump target's line is recorded.
+	if !strings.Contains(fmt.Sprint(reached["Skip"]), "44 45 49") {
+		t.Errorf("Skip reached %v", reached["Skip"])
+	}
+	// Zero-size values share one address: they can't be told apart, so aren't objects.
+	if objects != 0 {
+		t.Errorf("%d objects recorded for zero-size Markers", objects)
+	}
+}
+
+func TestARunThatRecordsNothingFailsLoudlyAndKeepsTheLastRun(t *testing.T) {
+	out := t.TempDir()
+	broken := t.TempDir()
+	recorder, _ := filepath.Abs("..")
+	if err := os.WriteFile(filepath.Join(broken, "go.mod"), []byte("module example.com/broken\n\ngo 1.21\n\nrequire example.com/missing v1.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "latest.json"), []byte(`{"run":"good"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Record(Options{Module: broken, Out: out, Run: "bad", RecorderModule: recorder})
+	latest, _ := os.ReadFile(filepath.Join(out, "latest.json"))
+
+	if err == nil || string(latest) != `{"run":"good"}` {
+		t.Errorf("error %v, latest.json %s", err, latest)
+	}
+	for _, name := range []string{"", ".", "..", "../x", "a/b"} {
+		if err := Record(Options{Module: broken, Out: out, Run: name, RecorderModule: recorder}); err == nil || !strings.Contains(err.Error(), "run name") {
+			t.Errorf("run name %q: %v", name, err)
+		}
+	}
+}

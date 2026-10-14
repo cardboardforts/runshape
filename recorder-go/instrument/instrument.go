@@ -77,11 +77,11 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 			continue
 		}
 		symbol, receiver := symbolOf(fn, namespace, path.Base(file))
-		entry := Function{File: file, Symbol: symbol, FirstLine: line(fn.Pos()), LastLine: line(fn.End())}
+		entry := Function{File: file, Symbol: symbol, FirstLine: line(fn.Pos()), LastLine: line(fn.End()), Lines: []int{}}
 		index := len(functions)
 		insertions = append(insertions, insertion{
 			at:   offset(fn.Body.Lbrace) + 1,
-			text: fmt.Sprintf(" __rsF := __rs.Enter(%s[%d], %s); defer __rsF.Exit();", table, index, receiver),
+			text: fmt.Sprintf(" __rsF := __rs.Enter(&%s, %d, %s); defer __rsF.Exit();", table, index, receiver),
 		})
 		seen := map[int]bool{}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
@@ -89,12 +89,12 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 				if _, empty := statement.(*ast.EmptyStmt); empty {
 					continue
 				}
-				n := line(statement.Pos())
+				at, n := markPosition(statement, offset, line)
 				if !seen[n] {
 					seen[n] = true
 					entry.Lines = append(entry.Lines, n)
 				}
-				insertions = append(insertions, insertion{at: offset(statement.Pos()), text: fmt.Sprintf("__rsF.Line(%d); ", n), order: 1})
+				insertions = append(insertions, insertion{at: at, text: fmt.Sprintf("__rsF.Line(%d); ", n), order: 1})
 			}
 			return true
 		})
@@ -112,8 +112,11 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	// After the last line: Go wants imports before declarations, and appending moves nothing.
-	code = append(code, []byte(fmt.Sprintf("\nvar %s = __rs.Functions(%s)\n", table, strconv.Quote(string(entries))))...)
+	// After the last line: Go wants imports before declarations, and appending moves nothing. A
+	// literal of constants, so it's set before any package initialisation runs (a function
+	// another file's var reaches during init, through an interface, can already use it); the
+	// runtime registers it on first use.
+	code = append(code, []byte(fmt.Sprintf("\nvar %s = __rs.Table{Entries: %s}\n", table, strconv.Quote(string(entries))))...)
 	return Result{Code: code, Functions: functions}, nil
 }
 
@@ -203,11 +206,36 @@ func receiverType(expr ast.Expr) (string, bool) {
 	return "?", false
 }
 
-// statementsOf returns the statement lists a node holds: where line marks go.
+// markPosition is where a statement's line mark goes, and the line it marks. A labelled
+// statement is marked after its label, so a goto to the label still records the line, except
+// a labelled loop, switch or select: break and continue name the label, which must stay on it.
+func markPosition(statement ast.Stmt, offset func(token.Pos) int, line func(token.Pos) int) (int, int) {
+	labelled, ok := statement.(*ast.LabeledStmt)
+	if !ok {
+		return offset(statement.Pos()), line(statement.Pos())
+	}
+	inner := labelled.Stmt
+	switch inner.(type) {
+	case *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+		return offset(statement.Pos()), line(inner.Pos())
+	}
+	return offset(inner.Pos()), line(inner.Pos())
+}
+
+// statementsOf returns the statement lists a node holds: where line marks go. A switch's or a
+// select's block holds case clauses, not statements: nothing goes between them.
 func statementsOf(node ast.Node) []ast.Stmt {
 	switch n := node.(type) {
 	case *ast.BlockStmt:
-		return n.List
+		statements := []ast.Stmt{}
+		for _, statement := range n.List {
+			switch statement.(type) {
+			case *ast.CaseClause, *ast.CommClause:
+				continue
+			}
+			statements = append(statements, statement)
+		}
+		return statements
 	case *ast.CaseClause:
 		return n.Body
 	case *ast.CommClause:
