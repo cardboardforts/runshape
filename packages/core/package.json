@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@runshape/trace": "0.1.0",
-    "@runshape/architecture": "0.1.0"
+    "@runshape/architecture": "0.1.0",
+    "@runshape/views": "0.1.0"
   }
 }

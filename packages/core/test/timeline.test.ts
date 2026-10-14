@@ -5,8 +5,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { formatMicros } from "../src/views/replay";
-import { buildTimeline } from "../src/views/timeline";
+import { formatMicros } from "@runshape/views";
+import { buildTimeline } from "@runshape/views";
 import { loadFixtureRun } from "./fixtures";
 
 describe("timeline", () => {

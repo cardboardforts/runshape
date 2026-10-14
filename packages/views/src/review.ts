@@ -1,4 +1,4 @@
-import { Op } from "../align";
+import { Op } from "./align";
 import { Outcome, Phase, Run, SymbolKind } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { FINE_GROUPING, Grouping } from "@runshape/architecture";

@@ -5,16 +5,16 @@ import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "@r
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
 import { RULES_FILE, ZoneRules } from "@runshape/architecture";
 import { UiRequest, UiResponse } from "./ui-protocol";
-import { buildComponentView } from "./views/component-view";
+import { buildComponentView } from "@runshape/views";
 import { Grouping } from "@runshape/architecture";
-import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
-import { buildReplay } from "./views/replay";
-import { buildTimeline } from "./views/timeline";
-import { diffExecution, diffFunctionExecution, mergeReplays } from "./views/execution-diff";
-import { aggregateWiring, buildObjectGraph } from "./views/object-graph";
-import { buildReview } from "./views/review";
-import { diffRuns } from "./views/run-diff";
-import { buildSystemGraph } from "./views/system-graph";
+import { buildFunctionView, UnknownFunctionError } from "@runshape/views";
+import { buildReplay } from "@runshape/views";
+import { buildTimeline } from "@runshape/views";
+import { diffExecution, diffFunctionExecution, mergeReplays } from "@runshape/views";
+import { aggregateWiring, buildObjectGraph } from "@runshape/views";
+import { buildReview } from "@runshape/views";
+import { diffRuns } from "@runshape/views";
+import { buildSystemGraph } from "@runshape/views";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */
 export interface SourceReader {

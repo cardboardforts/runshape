@@ -11,8 +11,8 @@ import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
 import { ZoneRules } from "@runshape/architecture";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
 import { pythonSymbol } from "@runshape/trace";
-import { buildComponentView } from "../src/views/component-view";
-import { buildSystemGraph } from "../src/views/system-graph";
+import { buildComponentView } from "@runshape/views";
+import { buildSystemGraph } from "@runshape/views";
 import { loadFixtureRun } from "./fixtures";
 
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";

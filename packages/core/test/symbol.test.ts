@@ -10,7 +10,7 @@ import { CodeSymbol, FunctionInfo, Phase, Role, Span, SymbolKind } from "@runsha
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
 import { componentOf } from "@runshape/architecture";
-import { diffFunctionExecution } from "../src/views/execution-diff";
+import { diffFunctionExecution } from "@runshape/views";
 import { fixtureFiles, loadFixtureRun } from "./fixtures";
 
 describe("CodeSymbol", () => {

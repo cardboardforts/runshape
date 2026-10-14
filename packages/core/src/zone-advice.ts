@@ -2,8 +2,8 @@
 // accepts, and only then does it become a rule in runshape.json. Everything here is pure so
 // the prompt and the validation of the answer are testable without a model.
 import { ArchitectureProfile } from "@runshape/architecture";
-import type { ComponentView } from "./views/component-view";
-import type { GraphNode, SystemGraph } from "./views/system-graph";
+import type { ComponentView } from "@runshape/views";
+import type { GraphNode, SystemGraph } from "@runshape/views";
 
 /** Port: send one prompt to a model, get its text back. */
 export interface ZoneAdvisor {

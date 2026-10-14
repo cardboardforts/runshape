@@ -1,18 +1,12 @@
+// The viewer's application layer: the session that answers the webview's requests (session.ts,
+// ui-protocol.ts), and the advice on which architecture an app follows (architecture.ts, by
+// heuristic; architecture-advice.ts and zone-advice.ts, by asking a model). It re-exports the
+// packages below so the adapters (webview, extension, CLI) depend on @runshape/core alone.
 export * from "@runshape/trace";
 export * from "@runshape/architecture";
-export * from "./views/system-graph";
-export * from "./views/component-view";
-export * from "./views/function-ref";
-export * from "./views/function-view";
-export * from "./views/replay";
+export * from "@runshape/views";
+export * from "./architecture";
+export * from "./architecture-advice";
 export * from "./session";
 export * from "./ui-protocol";
-export * from "./views/run-diff";
 export * from "./zone-advice";
-export * from "./align";
-export * from "./views/execution-diff";
-export * from "./views/object-graph";
-export * from "./views/review";
-export * from "./architecture";
-export * from "./views/timeline";
-export * from "./architecture-advice";

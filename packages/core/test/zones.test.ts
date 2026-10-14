@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 import { QualifiedName } from "@runshape/trace";
 import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
 import { ZoneRules, ZoneRulesError } from "@runshape/architecture";
-import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
+import { buildSystemGraph, SystemGraph } from "@runshape/views";
 import { loadFixtureRun } from "./fixtures";
 
 /** Names written the way runshape.json writes them. */

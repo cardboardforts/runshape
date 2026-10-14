@@ -5,7 +5,7 @@
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
 import { QualifiedName, Run } from "@runshape/trace";
 import { ArchitectureStyle, HexagonalZone, LayoutShape, PROFILES } from "@runshape/architecture";
-import { buildSystemGraph } from "./views/system-graph";
+import { buildSystemGraph } from "@runshape/views";
 import { ZoneRule, ZoneRules } from "@runshape/architecture";
 
 export interface ZoneProposal {

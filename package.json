@@ -5,6 +5,7 @@
   "workspaces": [
     "packages/trace",
     "packages/architecture",
+    "packages/views",
     "packages/core",
     "packages/webview",
     "packages/extension",

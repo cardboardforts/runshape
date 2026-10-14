@@ -7,12 +7,12 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Op } from "../src/align";
+import { Op } from "@runshape/views";
 import { Run } from "@runshape/trace";
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
-import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src/views/execution-diff";
-import { diffRuns } from "../src/views/run-diff";
+import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "@runshape/views";
+import { diffRuns } from "@runshape/views";
 import { fixtureFiles } from "./fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";

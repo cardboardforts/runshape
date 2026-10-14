@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { ArchitectureStyle, HexagonalZone, profileFor } from "@runshape/architecture";
 import { ViewerSession, ZoneRuleStore } from "../src/session";
 import { ZoneRules } from "@runshape/architecture";
-import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
+import { buildSystemGraph, SystemGraph } from "@runshape/views";
 import { Phase } from "@runshape/trace";
 import { loadFixtureRun } from "./fixtures";
 

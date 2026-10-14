@@ -6,15 +6,15 @@ import type { ZoneAdvice } from "./zone-advice";
 import type { ZoneRule } from "@runshape/architecture";
 import type { Grouping } from "@runshape/architecture";
 import type { RunSummary } from "./session";
-import type { ComponentView } from "./views/component-view";
-import type { FunctionView } from "./views/function-view";
-import type { ReplayStep } from "./views/replay";
-import type { RunDiff } from "./views/run-diff";
-import type { ComponentWiring, ObjectGraph } from "./views/object-graph";
-import type { ReviewSummary } from "./views/review";
-import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "./views/execution-diff";
-import type { SystemGraph } from "./views/system-graph";
-import type { Timeline } from "./views/timeline";
+import type { ComponentView } from "@runshape/views";
+import type { FunctionView } from "@runshape/views";
+import type { ReplayStep } from "@runshape/views";
+import type { RunDiff } from "@runshape/views";
+import type { ComponentWiring, ObjectGraph } from "@runshape/views";
+import type { ReviewSummary } from "@runshape/views";
+import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "@runshape/views";
+import type { SystemGraph } from "@runshape/views";
+import type { Timeline } from "@runshape/views";
 
 export type UiRequest =
   | { type: "ready" }
