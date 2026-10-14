@@ -32,8 +32,8 @@ const echoAdvisor = {
 };
 
 test("dump every view", async () => {
-  const { ViewerSession, PROFILES } = await import(join(CORE_SRC, "index.ts"));
-  const { loadLatestRun, loadPreviousRun } = await import(join(CORE_SRC, "trace/load.ts"));
+  // Everything through core's index: modules move between packages, the index keeps exporting them.
+  const { ViewerSession, PROFILES, loadLatestRun, loadPreviousRun } = await import(join(CORE_SRC, "index.ts"));
   const phases = PHASE_SETS.call;
   const responses: Record<string, unknown> = {};
 
