@@ -14,13 +14,14 @@ if (labels.length === 0) {
   console.log("view-diff: both dumps are empty; nothing was compared");
   process.exit(2);
 }
-const threw = Object.keys(after).filter((label) => after[label]?.threw !== undefined);
-if (threw.length > 0) console.log(`view-diff: ${threw.length} requests threw in the working tree (first: ${threw[0]})`);
+// A request that throws shows the person nothing, even when it throws the same way on both sides.
+const threw = labels.filter((label) => before[label]?.threw !== undefined || after[label]?.threw !== undefined);
+for (const label of threw) console.log(`view-diff: threw: ${label}: ${after[label]?.threw ?? before[label]?.threw}`);
 const changed = labels.filter((label) => JSON.stringify(before[label]) !== JSON.stringify(after[label]));
 
 if (changed.length === 0) {
   console.log(`view-diff: all ${labels.length} viewer responses identical`);
-  process.exit(0);
+  process.exit(threw.length > 0 ? 1 : 0);
 }
 
 console.log(`view-diff: ${changed.length} of ${labels.length} viewer responses changed`);
