@@ -174,7 +174,35 @@ func TestWorkATestLeftRunningIsNotRecordedInTheNextTest(t *testing.T) {
 	<-done
 	second := finishSecond()
 
-	if lines := describe(second); !reflect.DeepEqual(lines, []string{"TestSecond [] thread=false"}) {
+	// g continues work TestFirst started (f is still open): not TestSecond's. The later call
+	// is new work on that goroutine, done during TestSecond: it's TestSecond's.
+	if lines := describe(second); !reflect.DeepEqual(lines, []string{"TestSecond [] thread=false", "  check [] thread=true"}) {
 		t.Errorf("TestSecond recorded %q", lines)
+	}
+}
+
+func TestALongLivedGoroutineWorksForEveryTestThatUsesIt(t *testing.T) {
+	// A worker started once (a shared test server, a pool behind sync.Once) serves later tests.
+	r := newRecorder(DefaultLimits)
+	ids := r.functions(table)
+	jobs, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		for range jobs {
+			f := r.enter(ids[2], nil)
+			f.Exit()
+			done <- struct{}{}
+		}
+	}()
+	var recorded [][]string
+	for _, name := range []string{"TestOne", "TestTwo"} {
+		finish := r.scenario(fakeT{}, "svc_test.go", name)
+		jobs <- struct{}{}
+		<-done
+		recorded = append(recorded, describe(finish()))
+	}
+	close(jobs)
+
+	if want := [][]string{{"TestOne [] thread=false", "  work [] thread=true"}, {"TestTwo [] thread=false", "  work [] thread=true"}}; !reflect.DeepEqual(recorded, want) {
+		t.Errorf("recorded %q, want %q", recorded, want)
 	}
 }

@@ -110,12 +110,14 @@ type recorder struct {
 	limits   Limits
 	registry []functionEntry
 	current  *scenarioState
-	// seenIn is the scenario each goroutine first ran recorded code in (Go never reuses ids).
-	seenIn map[uint64]*scenarioState
+	// openIn is the scenario a goroutine has calls open in: only goroutines with open calls.
+	openIn map[uint64]*scenarioState
+	// known holds goroutines whose creator was looked up (Go never reuses ids).
+	known map[uint64]bool
 }
 
 func newRecorder(limits Limits) *recorder {
-	return &recorder{limits: limits, seenIn: map[uint64]*scenarioState{}}
+	return &recorder{limits: limits, openIn: map[uint64]*scenarioState{}, known: map[uint64]bool{}}
 }
 
 var global = newRecorder(DefaultLimits)
@@ -191,7 +193,6 @@ func (r *recorder) scenario(t TB, file, name string) func() scenarioFile {
 	s.spanFn[rootSpan] = root
 	s.events = append(s.events, []any{"P", int64(0), "call"}, []any{"S", int64(0), rootSpan, 0, nil, s.thread, nil})
 	r.current = s
-	r.seenIn[s.thread] = s
 	return func() scenarioFile {
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -235,7 +236,8 @@ func (r *recorder) enter(id int, recv any) *Frame {
 	if len(stack) > 0 {
 		parent = stack[len(stack)-1].span
 	} else {
-		parent = r.firstCallParent(s, thread)
+		parent = r.outermostParent(s, thread)
+		r.openIn[thread] = s
 	}
 	frame := &Frame{r: r, s: s, span: notRecorded, fn: id, thread: thread}
 	if parent != notRecorded && r.admits(s, parent, id) {
@@ -265,6 +267,9 @@ func (f *Frame) Exit() {
 			f.s.stacks[f.thread] = append(stack[:i], stack[i+1:]...)
 			break
 		}
+	}
+	if len(f.s.stacks[f.thread]) == 0 && f.r.openIn[f.thread] == f.s {
+		delete(f.r.openIn, f.thread)
 	}
 	if f.span != notRecorded {
 		f.s.events = append(f.s.events, []any{"X", f.s.now(), f.span})
@@ -318,21 +323,24 @@ func (f *Frame) Line(n int) {
 	f.s.events = append(f.s.events, []any{"L", f.span, n})
 }
 
-// firstCallParent is the caller of a goroutine's outermost recorded call: what the goroutine
-// that created it is running (the span that handed it the work), or the test when that's
-// unknown (a goroutine created by code that isn't recorded, such as an HTTP server's). A
-// goroutine of an earlier test's, still running, isn't recorded into this one.
-func (r *recorder) firstCallParent(s *scenarioState, thread uint64) int {
-	if seen, ok := r.seenIn[thread]; ok && seen != s {
+// outermostParent is the caller of a call with nothing recorded under it on its goroutine.
+//   - It continues work an earlier test started (the goroutine has that test's calls open):
+//     not this test's.
+//   - On a goroutine's first recorded call ever: what its creator is running, the span that
+//     handed it the work, when the creator is running recorded code.
+//   - Otherwise the test: new work on a long-lived goroutine (a shared server, a worker pool)
+//     belongs to the test it's done in.
+func (r *recorder) outermostParent(s *scenarioState, thread uint64) int {
+	if open, ok := r.openIn[thread]; ok && open != s {
 		return notRecorded
 	}
-	r.seenIn[thread] = s
+	if thread == s.thread || r.known[thread] {
+		return rootSpan
+	}
+	r.known[thread] = true
 	creator, ok := goroutineCreator()
 	if !ok {
 		return rootSpan
-	}
-	if seen, ok := r.seenIn[creator]; ok && seen != s {
-		return notRecorded
 	}
 	if frames := s.stacks[creator]; len(frames) > 0 {
 		return frames[len(frames)-1].span
@@ -428,11 +436,18 @@ func goroutineID() uint64 {
 // createdBy is the line a goroutine's stack ends with: "created by main.f in goroutine 7".
 var createdBy = regexp.MustCompile(`created by .* in goroutine (\d+)`)
 
-// goroutineCreator is the id of the goroutine that created the current one. Read on a
-// goroutine's first recorded call only, when its stack is short.
+// goroutineCreator is the id of the goroutine that created the current one, read on a
+// goroutine's first recorded call only. The line is last, so the buffer grows until it fits.
 func goroutineCreator() (uint64, bool) {
-	buffer := make([]byte, 16*1024)
-	buffer = buffer[:runtime.Stack(buffer, false)]
+	var buffer []byte
+	for size := 16 * 1024; size <= 4*1024*1024; size *= 4 {
+		buffer = make([]byte, size)
+		n := runtime.Stack(buffer, false)
+		if n < size {
+			buffer = buffer[:n]
+			break
+		}
+	}
 	match := createdBy.FindSubmatch(buffer)
 	if match == nil {
 		return 0, false

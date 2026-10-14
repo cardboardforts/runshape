@@ -59,6 +59,56 @@ type Route struct {
 	Handler string
 	// Method is set when the handler was a method value (h.placeOrder), not a function.
 	Method bool
+	// Package is the import path when the handler is another package's function (web.Index).
+	Package string
+}
+
+// imports is what a file calls the packages it imports: net/http's name, and the others by name.
+type imports struct {
+	http   string
+	byName map[string]string
+}
+
+func importsOf(file *ast.File) imports {
+	found := imports{byName: map[string]string{}}
+	for _, spec := range file.Imports {
+		path, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			continue
+		}
+		name := lastSegment(path)
+		if spec.Name != nil {
+			name = spec.Name.Name
+		}
+		if path == "net/http" {
+			found.http = name
+		} else {
+			found.byName[name] = path
+		}
+	}
+	return found
+}
+
+// lastSegment is a package's default name: example.com/x/web is web, example.com/x/v2 is x.
+func lastSegment(path string) string {
+	segments := strings.Split(path, "/")
+	last := segments[len(segments)-1]
+	if len(segments) > 1 && len(last) > 1 && last[0] == 'v' && strings.Trim(last[1:], "0123456789") == "" {
+		return segments[len(segments)-2]
+	}
+	return last
+}
+
+// isHTTP is net/http's name for something, as this file imports it (also dot-imported).
+func (i imports) isHTTP(expr ast.Expr, name string) bool {
+	switch e := expr.(type) {
+	case *ast.SelectorExpr:
+		ident, ok := e.X.(*ast.Ident)
+		return ok && i.http != "" && i.http != "." && ident.Name == i.http && e.Sel.Name == name
+	case *ast.Ident:
+		return i.http == "." && e.Name == name
+	}
+	return false
 }
 
 type insertion struct {
@@ -81,6 +131,7 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 	line := func(pos token.Pos) int { return tf.Line(pos) }
 	namespace := strings.Split(pkgPath, "/")
 	table := tableName(file)
+	imported := importsOf(parsed)
 
 	var functions []Function
 	var handlers []Symbol
@@ -94,10 +145,11 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 		entry := Function{File: file, Symbol: symbol, FirstLine: line(fn.Pos()), LastLine: line(fn.End()), Lines: []int{}}
 		index := len(functions)
 		open := fmt.Sprintf(" __rsF := __rs.Enter(&%s, %d, %s); defer __rsF.Exit();", table, index, receiver)
-		if request, ok := handlerRequest(fn.Type); ok {
+		if request, ok := handlerRequest(fn.Type, imported); ok {
 			handlers = append(handlers, symbol)
 			if request != "" {
-				open += fmt.Sprintf(" __rsF.Request(%s.Method, %s.URL.Path);", request, request)
+				// Read only when there's a request to read: a handler may be called with nil.
+				open += fmt.Sprintf(" if %s != nil && %s.URL != nil { __rsF.Request(%s.Method, %s.URL.Path) };", request, request, request, request)
 			}
 		}
 		insertions = append(insertions, insertion{at: offset(fn.Body.Lbrace) + 1, text: open})
@@ -119,7 +171,7 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 		sort.Ints(entry.Lines)
 		functions = append(functions, entry)
 	}
-	routes := routesIn(parsed)
+	routes := routesIn(parsed, imported)
 	if len(functions) == 0 {
 		return Result{Code: src, Routes: routes}, nil
 	}
@@ -141,7 +193,7 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 
 // handlerRequest reports whether a function is an HTTP handler, (http.ResponseWriter,
 // *http.Request), and the request parameter's name ("" when it's blank or unnamed).
-func handlerRequest(typ *ast.FuncType) (string, bool) {
+func handlerRequest(typ *ast.FuncType, imported imports) (string, bool) {
 	var params []*ast.Field
 	var names []string
 	for _, field := range typ.Params.List {
@@ -152,11 +204,11 @@ func handlerRequest(typ *ast.FuncType) (string, bool) {
 			params, names = append(params, field), append(names, name.Name)
 		}
 	}
-	if len(params) != 2 || !isSelector(params[0].Type, "http", "ResponseWriter") {
+	if len(params) != 2 || !imported.isHTTP(params[0].Type, "ResponseWriter") {
 		return "", false
 	}
 	star, ok := params[1].Type.(*ast.StarExpr)
-	if !ok || !isSelector(star.X, "http", "Request") {
+	if !ok || !imported.isHTTP(star.X, "Request") {
 		return "", false
 	}
 	if names[1] == "_" {
@@ -165,18 +217,10 @@ func handlerRequest(typ *ast.FuncType) (string, bool) {
 	return names[1], true
 }
 
-func isSelector(expr ast.Expr, pkg, name string) bool {
-	selector, ok := expr.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != name {
-		return false
-	}
-	ident, ok := selector.X.(*ast.Ident)
-	return ok && ident.Name == pkg
-}
-
 // routesIn finds x.HandleFunc("pattern", handler) and x.Handle("pattern", handler) calls,
-// looking through a conversion such as http.HandlerFunc(health).
-func routesIn(file *ast.File) []Route {
+// looking through http.HandlerFunc(f). A handler built by a call (http.FileServer(dir),
+// makeHandler(db)) or a closure isn't one this file names: skipped.
+func routesIn(file *ast.File, imported imports) []Route {
 	var routes []Route
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
@@ -196,12 +240,16 @@ func routesIn(file *ast.File) []Route {
 			return true
 		}
 		handler := call.Args[1]
-		if conversion, ok := handler.(*ast.CallExpr); ok && len(conversion.Args) == 1 {
+		if conversion, ok := handler.(*ast.CallExpr); ok && len(conversion.Args) == 1 && imported.isHTTP(conversion.Fun, "HandlerFunc") {
 			handler = conversion.Args[0]
 		}
 		switch h := handler.(type) {
 		case *ast.SelectorExpr:
-			routes = append(routes, Route{Pattern: pattern, Handler: h.Sel.Name, Method: true})
+			if pkg, ok := h.X.(*ast.Ident); ok && imported.byName[pkg.Name] != "" {
+				routes = append(routes, Route{Pattern: pattern, Handler: h.Sel.Name, Package: imported.byName[pkg.Name]})
+			} else {
+				routes = append(routes, Route{Pattern: pattern, Handler: h.Sel.Name, Method: true})
+			}
 		case *ast.Ident:
 			routes = append(routes, Route{Pattern: pattern, Handler: h.Name})
 		}

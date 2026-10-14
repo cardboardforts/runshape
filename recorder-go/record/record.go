@@ -233,16 +233,25 @@ func (h httpShape) resolve() ([]route, []problem) {
 	}
 	sort.Strings(packages)
 	for _, pkg := range packages {
-		shape := h[pkg]
-		for _, reg := range shape.registrations {
+		for _, reg := range h[pkg].registrations {
+			// web.Index names package web's function; otherwise the handler is this package's.
+			home := pkg
+			if reg.route.Package != "" {
+				home = reg.route.Package
+			}
 			var matches []instrument.Symbol
-			for _, handler := range shape.handlers {
-				if handler.Name == reg.route.Handler && (len(handler.Container) == 1) == reg.route.Method {
-					matches = append(matches, handler)
+			if shape := h[home]; shape != nil {
+				for _, handler := range shape.handlers {
+					if handler.Name == reg.route.Handler && (len(handler.Container) == 1) == reg.route.Method {
+						matches = append(matches, handler)
+					}
 				}
 			}
+			// None: a variable, or a package outside the module (not a problem); several: ambiguous.
+			if len(matches) > 1 {
+				problems = append(problems, problem{reg.file, fmt.Sprintf("route %q: %d handlers named %s in %s; can't tell which", reg.route.Pattern, len(matches), reg.route.Handler, home)})
+			}
 			if len(matches) != 1 {
-				problems = append(problems, problem{reg.file, fmt.Sprintf("route %q: found %d handlers named %s in %s", reg.route.Pattern, len(matches), reg.route.Handler, pkg)})
 				continue
 			}
 			methods, path := []string{}, reg.route.Pattern

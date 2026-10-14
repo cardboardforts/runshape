@@ -173,7 +173,12 @@ Accepted risks:
   (recorderErrors says what was left out).
 - The Go recorder (recorder-go/): a goroutine's first call hangs off what its creator was
   running, read from the "created by" line of its stack, so one created by code that isn't
-  recorded (an HTTP server's connection goroutine) hangs off the test; t.Parallel tests and parallel subtests aren't recorded (one scenario at a time);
+  recorded (an HTTP server's connection goroutine) hangs off the test, and a call that
+  continues work an earlier test started isn't recorded; routes are read from
+  `HandleFunc`/`Handle` calls whose pattern is a string literal and whose handler is a named
+  function or method (closures, handlers built by a call, chi/echo/gorilla methods aren't), a
+  pattern's host stays in its path, and a request is labelled on the outermost handler (a
+  middleware's ServeHTTP, when there is one); t.Parallel tests and parallel subtests aren't recorded (one scenario at a time);
   a closure that outlives the function that wrote it (a returned handler) records nothing once
   that function returns; Fuzz and Example functions run but aren't scenarios; a recorded call
   costs about 3 µs (a mutex and a stack read), so hot loops slow down a lot even past the

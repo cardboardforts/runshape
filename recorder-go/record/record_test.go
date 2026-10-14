@@ -221,13 +221,27 @@ func TestRecordsTheProbeModule(t *testing.T) {
 	}
 	// TestShapes passing means: switch, type switch, select, goto, init order through a String
 	// method, relative replace and nested module all work instrumented.
-	if want := map[string]string{"TestShapes": "passed", "TestGoldenFileIsUntouched": "passed", "TestCleanupFails": "failed", "TestPanics": "failed"}; !reflect.DeepEqual(outcomes, want) {
+	if want := map[string]string{"TestShapes": "passed", "TestGoldenFileIsUntouched": "passed", "TestCleanupFails": "failed", "TestPanics": "failed", "TestANilRequestIsServed": "passed"}; !reflect.DeepEqual(outcomes, want) {
 		t.Errorf("outcomes %v, want %v", outcomes, want)
 	}
 	if !reflect.DeepEqual(manifest.SessionProblems, []string{
 		"example.com/probe/shapes: a test panicked and stopped the test binary, so the tests after it didn't run",
 	}) {
 		t.Errorf("session problems %q", manifest.SessionProblems)
+	}
+
+	var framework struct {
+		Framework struct {
+			Routes []struct {
+				Path    string   `json:"path"`
+				Handler []string `json:"handler"`
+			} `json:"routes"`
+		} `json:"framework"`
+	}
+	read(t, filepath.Join(out, "run", "manifest.json"), &framework)
+	// wiring registers server.Index: server's function, not wiring's own Index method.
+	if routes := framework.Framework.Routes; len(routes) != 1 || strings.Join(routes[0].Handler, ".") != "example.com.probe.server.Index" {
+		t.Errorf("routes %+v", routes)
 	}
 
 	catalogued := map[string][]int{}

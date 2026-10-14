@@ -155,7 +155,50 @@ func TestFindsHandlersRoutesAndReportsRequests(t *testing.T) {
 		t.Errorf("routes %+v, want %+v", result.Routes, want)
 	}
 	code := string(result.Code)
-	if strings.Count(code, "__rsF.Request(r.Method, r.URL.Path);") != 2 {
+	if strings.Count(code, "__rsF.Request(r.Method, r.URL.Path)") != 2 {
 		t.Errorf("want the two handlers with a named request to report it:\n%s", code)
+	}
+}
+
+const sampleImports = `package wiring
+
+import (
+	nethttp "net/http"
+
+	"example.com/shop/internal/server"
+	"example.com/shop/internal/http"
+)
+
+func Routes(m *nethttp.ServeMux) {
+	m.HandleFunc("/index", server.Index)
+	m.Handle("/files", nethttp.FileServer(nil))
+}
+
+func (w *Wiring) Index(rw nethttp.ResponseWriter, req *nethttp.Request) {}
+
+// Not net/http's: a package that happens to be named http.
+func Fake(w http.ResponseWriter, r *http.Request) {}
+`
+
+// Handlers are found by what the file imports as net/http, under any name; a selector on an
+// imported package names that package's function; a request is only read when there is one.
+func TestHandlersFollowTheFilesImports(t *testing.T) {
+	result, err := Instrument("internal/wiring/wiring.go", "example.com/shop/internal/wiring", []byte(sampleImports))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handlers []string
+	for _, h := range result.Handlers {
+		handlers = append(handlers, strings.Join(append(append([]string{}, h.Container...), h.Name), "."))
+	}
+	if want := []string{"Wiring.Index"}; !reflect.DeepEqual(handlers, want) {
+		t.Errorf("handlers %q, want %q", handlers, want)
+	}
+	// FileServer(nil) is a call, not a handler this file names: skipped, not a problem.
+	if want := []Route{{Pattern: "/index", Handler: "Index", Package: "example.com/shop/internal/server"}}; !reflect.DeepEqual(result.Routes, want) {
+		t.Errorf("routes %+v, want %+v", result.Routes, want)
+	}
+	if code := string(result.Code); !strings.Contains(code, "if req != nil && req.URL != nil { __rsF.Request(req.Method, req.URL.Path) };") {
+		t.Errorf("want a nil-safe request read:\n%s", code)
 	}
 }
