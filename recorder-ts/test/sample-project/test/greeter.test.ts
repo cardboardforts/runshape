@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { Greeter } from "../src/greeter";
+import { LoudGreeter } from "../src/greeter";
 
-let greeter: Greeter;
+let greeter: LoudGreeter;
 
 beforeEach(() => {
-  greeter = new Greeter();
-  greeter.open();
+  greeter = new LoudGreeter("!");
 });
 
 afterEach(() => {
@@ -14,5 +13,5 @@ afterEach(() => {
 });
 
 test("greets by name", () => {
-  expect(greeter.greet("ada")).toBe("hello ada");
+  expect(greeter.greet("ada")).toBe("hello ada!");
 });

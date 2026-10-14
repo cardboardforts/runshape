@@ -69,6 +69,8 @@ class Scenario {
   private readonly localIndex = new Map<number, number>();
   private readonly objectIds = new WeakMap<object, number>();
   private readonly wired = new Set<string>();
+  /** Each object's "O" event: the constructor credited with it can change (see built). */
+  private readonly objectEvents = new Map<number, EventDto>();
   /** Lines each open span has recorded: a line is recorded once per call. */
   private readonly linesBySpan = new Map<number, Set<number>>();
   /** "caller span:function" -> calls seen, recorded or not. */
@@ -159,7 +161,9 @@ class Scenario {
     if (type === undefined || this.isFull()) return null;
     const id = this.nextObject++;
     this.objectIds.set(value, id);
-    this.events.push(["O", this.now(), id, type, builtBy]);
+    const event: EventDto = ["O", this.now(), id, type, builtBy];
+    this.objectEvents.set(id, event);
+    this.events.push(event);
     return id;
   }
 
@@ -167,6 +171,9 @@ class Scenario {
   built(value: object, span: number): void {
     const id = this.objectId(value, span);
     if (id === null) return;
+    // A base class's constructor finishes first; the most-derived one, last, built the object.
+    const event = this.objectEvents.get(id);
+    if (event !== undefined && event[0] === "O") event[4] = span;
     // Data fields only: reading an accessor would run the app's code, outside any span.
     for (const [attribute, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
       if (!descriptor.enumerable || !("value" in descriptor)) continue;

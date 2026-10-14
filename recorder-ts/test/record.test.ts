@@ -15,7 +15,7 @@ import type { ScenarioDto } from "../src/runtime";
 const HERE = import.meta.dirname;
 const REPO = join(HERE, "..", "..");
 
-test("a test's beforeEach is recorded as setup and its afterEach as teardown", () => {
+test("a test's beforeEach is recorded as setup and its afterEach as teardown; derived constructors are spans", () => {
   const out = mkdtempSync(join(tmpdir(), "runshape-record-"));
   try {
     execFileSync(process.execPath, [join(REPO, "node_modules", "vitest", "vitest.mjs"), "run", "--config", join(REPO, "recorder-ts", "vitest.record.config.ts")], {
@@ -37,8 +37,11 @@ test("a test's beforeEach is recorded as setup and its afterEach as teardown", (
     expect(timeline).toEqual([
       "phase setup",
       "  greets by name",
+      // A derived class's constructor, as vite transpiles it (a parameter property after super()).
+      "  LoudGreeter.constructor",
       "  Greeter.open",
       "phase call",
+      "  LoudGreeter.greet",
       "  Greeter.greet",
       "phase teardown",
       "  Greeter.close",

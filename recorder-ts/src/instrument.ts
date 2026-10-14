@@ -5,8 +5,9 @@
 // Tracked, each with a catalog entry and a span per call: function declarations, class
 // methods, accessors and constructors, arrow functions and function expressions bound to a
 // top-level const or a class property. Not tracked: callbacks and object-literal methods
-// (their lines count toward the function they run in), generators, and constructors of
-// derived classes (a super() call can't move into the closure that wraps a body).
+// (their lines count toward the function they run in), generators, and a derived class's
+// constructor whose super() call isn't a statement of its own (only what follows super() is
+// wrapped: the call can't move into a closure, and `this` exists only after it).
 import ts from "typescript";
 
 import type { SymbolDto } from "./runtime";
@@ -131,8 +132,9 @@ function trackedSymbol(node: FunctionWithBody, scope: Scope, namespace: string[]
   });
 
   if (ts.isConstructorDeclaration(node)) {
-    const derived = node.parent.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword) ?? false;
-    return derived || scope.className === null ? null : symbol("constructor", "constructor", scope.className);
+    if (scope.className === null) return null;
+    if (isDerived(node) && superStatement(node) === null) return null;
+    return symbol("constructor", "constructor", scope.className);
   }
   if ((ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)) && inClass && scope.className !== null) {
     const name = node.name.getText();
@@ -154,6 +156,16 @@ function trackedSymbol(node: FunctionWithBody, scope: Scope, namespace: string[]
   return null;
 }
 
+function isDerived(node: ts.ConstructorDeclaration): boolean {
+  return node.parent.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword) ?? false;
+}
+
+/** A derived constructor's `super(...);` when it's a statement of the body itself. */
+function superStatement(node: ts.ConstructorDeclaration): ts.Statement | null {
+  const statements = node.body?.statements ?? [];
+  return statements.find((statement) => ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression) && statement.expression.expression.kind === ts.SyntaxKind.SuperKeyword) ?? null;
+}
+
 /** A static and an instance member may share a name; their symbols must not. */
 function isStatic(node: ts.Node): boolean {
   return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Static) !== 0;
@@ -173,12 +185,14 @@ function wrap(node: FunctionWithBody, index: number, visit: number, insertions: 
   if (ts.isBlock(body)) {
     const open = ` return __rs.${run}(__rsF[${index}], ${receiver}, ${arrow} {`;
     const close = `}${built});`;
-    // An empty body `{}` opens and closes at one position: one insertion keeps them in order.
-    if (body.statements.length === 0 && body.getStart() + 1 === body.end - 1) {
+    // A derived constructor's span opens after its super(...) statement (see the file comment).
+    const after = ts.isConstructorDeclaration(node) && isDerived(node) ? superStatement(node)!.end : body.getStart() + 1;
+    // Nothing between open and close (`{}`, or super() last): one insertion keeps them in order.
+    if (after === body.end - 1) {
       insertions.push({ at: body.end - 1, text: open + close, order: visit });
       return;
     }
-    insertions.push({ at: body.getStart() + 1, text: open, order: visit });
+    insertions.push({ at: after, text: open, order: visit });
     insertions.push({ at: body.end - 1, text: close, order: -visit });
   } else {
     insertions.push({ at: body.getStart(), text: `__rs.${run}(${fn}, ${receiver}, ${arrow} (__rs.l(${expressionLine}, ${fn}), `, order: visit });

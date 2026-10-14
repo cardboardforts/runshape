@@ -322,6 +322,41 @@ export function one(): void {
     expect(recorder.finishScenario("passed").recorderErrors).toEqual(["stopped recording after 6 events: 4 later calls were not recorded"]);
   });
 
+  test("a derived class's constructor is its own span from super() on, and the object is credited to it", () => {
+    const recorder = new Recorder();
+    const { Derived } = loadSource(
+      recorder,
+      `export class Base {
+  constructor(protected readonly name: string) {}
+}
+export class Derived extends Base {
+  readonly other: Base;
+  constructor(name: string, private readonly extra: number) {
+    super(name);
+    this.other = new Base("other");
+  }
+}
+`,
+    );
+    recorder.startScenario("app/s.test.ts::builds", "app/s.test.ts", ["builds"]);
+    const built = new Derived("a", 1);
+
+    const scenario = recorder.finishScenario("passed");
+    expect([built.name, built.extra, built.other.name]).toEqual(["a", 1, "other"]);
+    expect(describeScenario(scenario)).toEqual([
+      "builds []",
+      // super(name) runs before Derived's own span opens: the base's part comes first, beside it.
+      "  Base.constructor []",
+      "  Derived.constructor [8]",
+      "    Base.constructor []",
+      "built Derived#1 (app.sample.Derived)",
+      "built Base#2 (app.sample.Base)",
+      "wired Derived#1.other -> Base#2",
+    ]);
+    const derivedSpan = scenario.events.find((event) => event[0] === "S" && scenario.functions[event[3]]!.symbol.container[0] === "Derived")![2];
+    expect(scenario.events.find((event) => event[0] === "O" && event[2] === 1)![4]).toBe(derivedSpan);
+  });
+
   test("outside a scenario the instrumented code just runs", () => {
     const recorder = new Recorder();
     const { Service } = load(recorder);
