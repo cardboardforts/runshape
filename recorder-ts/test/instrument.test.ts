@@ -357,6 +357,29 @@ export class Derived extends Base {
     expect(scenario.events.find((event) => event[0] === "O" && event[2] === 1)![4]).toBe(derivedSpan);
   });
 
+  test("a branch or loop body without braces has its own line, so which branch ran is recorded", () => {
+    const source = `export function sign(n: number): string {
+  if (n < 0)
+    return "negative";
+  else if (n === 0)
+    return "zero";
+  for (const step of [1])
+    n += step;
+  return "positive";
+}
+`;
+    const recorder = new Recorder();
+    const { sign } = loadSource(recorder, source);
+    recorder.startScenario("app/s.test.ts::signs", "app/s.test.ts", ["signs"]);
+    const answers = [sign(-1), sign(0), sign(5)];
+
+    expect(instrument("app/sample.ts", source).functions[0]!.lines).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect([answers, describeScenario(recorder.finishScenario("passed"))]).toEqual([
+      ["negative", "zero", "positive"],
+      ["signs []", "  sign [2,3]", "  sign [2,4,5]", "  sign [2,4,6,7,8]"],
+    ]);
+  });
+
   test("outside a scenario the instrumented code just runs", () => {
     const recorder = new Recorder();
     const { Service } = load(recorder);

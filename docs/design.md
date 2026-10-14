@@ -164,8 +164,7 @@ Accepted risks:
   trailing or inner `.**` may match none. A dot inside a segment is written `\.` (a Go
   module path: `example\.com.shop.**`), and a backslash `\\`; Python names never need it.
 - The TypeScript recorder (recorder-ts/): a derived class's constructor is a span from its
-  `super(...)` statement on (one whose super() isn't a statement of its own isn't recorded); a
-  statement that isn't in a block (`if (a) f(); else g();`) has no line of its own;
+  `super(...)` statement on (one whose super() isn't a statement of its own isn't recorded);
   each line is recorded once per call, and a caller's first 50 calls of a function are kept
   (recorderErrors says what was left out).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the

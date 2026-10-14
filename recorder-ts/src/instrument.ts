@@ -99,6 +99,15 @@ export function instrument(file: string, text: string): Instrumented {
         insertions.push({ at: statement.getStart(), text: `;__rs.l(${line}, __rsF[${scope.currentIndex}]);`, order: LINE_MARK_ORDER });
       }
     }
+    if (scope.current !== null) {
+      // `if (a) f(); else g();`: each body becomes a block holding its own line mark.
+      for (const body of unbracedBodies(node)) {
+        const line = lineOf(body.getStart());
+        if (!scope.current.lines.includes(line)) scope.current.lines.push(line);
+        insertions.push({ at: body.getStart(), text: `{;__rs.l(${line}, __rsF[${scope.currentIndex}]);`, order: LINE_MARK_ORDER });
+        insertions.push({ at: body.end, text: "}", order: -LINE_MARK_ORDER });
+      }
+    }
     ts.forEachChild(node, (child) => visit(child, scope));
   };
   visit(source, { current: null, currentIndex: -1, className: null, container: [] });
@@ -164,6 +173,13 @@ function isDerived(node: ts.ConstructorDeclaration): boolean {
 function superStatement(node: ts.ConstructorDeclaration): ts.Statement | null {
   const statements = node.body?.statements ?? [];
   return statements.find((statement) => ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression) && statement.expression.expression.kind === ts.SyntaxKind.SuperKeyword) ?? null;
+}
+
+/** The branches and loop bodies of `node` written without braces. */
+function unbracedBodies(node: ts.Node): ts.Statement[] {
+  if (ts.isIfStatement(node)) return [node.thenStatement, node.elseStatement].filter((body): body is ts.Statement => body !== undefined && !ts.isBlock(body));
+  if (ts.isIterationStatement(node, false)) return ts.isBlock(node.statement) ? [] : [node.statement];
+  return [];
 }
 
 /** A static and an instance member may share a name; their symbols must not. */
