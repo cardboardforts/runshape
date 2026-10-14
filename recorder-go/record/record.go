@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/build"
 	"io/fs"
@@ -50,70 +51,94 @@ type problem struct {
 // Record runs the module's tests instrumented. Failing tests are recorded like passing ones;
 // a package that doesn't build is named in the manifest's sessionProblems.
 func Record(options Options) error {
-	// Before anything touches the disk: Out/Run is removed and rewritten.
-	if run := options.Run; run == "" || run == "." || run == ".." || strings.ContainsAny(run, `/\`) {
-		return fmt.Errorf("run name %q must be one directory name", run)
-	}
-	modulePath, err := modulePathOf(options.Module)
+	run, err := prepare(options)
 	if err != nil {
 		return err
 	}
-	work, err := os.MkdirTemp("", "runshape-go-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(work)
-
-	catalog, sources, http, catalogProblems, err := instrumentCopy(options.Module, work, modulePath)
-	if err != nil {
-		return err
-	}
-	routes, routeProblems := http.resolve()
-	catalogProblems = append(catalogProblems, routeProblems...)
-	if err := goCommand(work, "mod", "edit", "-require="+RecorderModulePath+"@v0.0.0", "-replace="+RecorderModulePath+"="+options.RecorderModule).Run(); err != nil {
-		return fmt.Errorf("pointing the copy at the recorder: %w", err)
-	}
-	if err := absoluteReplaces(work, options.Module); err != nil {
-		return err
-	}
-
-	runDirectory := filepath.Join(options.Out, options.Run)
-	if err := os.RemoveAll(runDirectory); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(runDirectory, "scenarios"), 0o755); err != nil {
-		return err
-	}
-	createdAt := time.Now().Format(time.RFC3339)
+	defer run.cleanup()
 	packages := options.Packages
 	if len(packages) == 0 {
 		packages = []string{"./..."}
 	}
 	// One package and one test at a time: the runtime records one scenario at a time.
-	test := goCommand(work, append([]string{"test", "-json", "-count=1", "-p=1", "-parallel=1"}, packages...)...)
-	test.Env = append(os.Environ(), "RUNSHAPE_RUN_DIR="+runDirectory)
+	test := goCommand(run.work, append([]string{"test", "-json", "-count=1", "-p=1", "-parallel=1"}, packages...)...)
+	test.Env = append(os.Environ(), "RUNSHAPE_RUN_DIR="+run.directory)
 	var stdout, stderr bytes.Buffer
 	test.Stdout, test.Stderr = &stdout, &stderr
 	testErr := test.Run()
+	sessionProblems, raw := testProblems(stdout.String())
+	return run.finish(options, sessionProblems, func() string {
+		return fmt.Sprintf("no test was recorded (go test: %v)\n%s%s", testErr, strings.Join(raw, "\n"), stderr.String())
+	})
+}
 
-	scenarios, err := scenarioIndex(runDirectory)
+// preparedRun is an instrumented copy of the module, and the run directory it records into.
+type preparedRun struct {
+	work, directory string
+	catalog         []catalogEntry
+	sources         map[string][]string
+	routes          []route
+	catalogProblems []problem
+	createdAt       string
+}
+
+// prepare copies and instruments the module and points the copy at the recorder.
+func prepare(options Options) (*preparedRun, error) {
+	// Before anything touches the disk: Out/Run is removed and rewritten.
+	if run := options.Run; run == "" || run == "." || run == ".." || strings.ContainsAny(run, `/\`) {
+		return nil, fmt.Errorf("run name %q must be one directory name", run)
+	}
+	modulePath, err := modulePathOf(options.Module)
+	if err != nil {
+		return nil, err
+	}
+	work, err := os.MkdirTemp("", "runshape-go-")
+	if err != nil {
+		return nil, err
+	}
+	run := &preparedRun{work: work, directory: filepath.Join(options.Out, options.Run), createdAt: time.Now().Format(time.RFC3339)}
+	fail := func(err error) (*preparedRun, error) { run.cleanup(); return nil, err }
+	catalog, sources, http, catalogProblems, err := instrumentCopy(options.Module, work, modulePath)
+	if err != nil {
+		return fail(err)
+	}
+	routes, routeProblems := http.resolve()
+	run.catalog, run.sources, run.routes, run.catalogProblems = catalog, sources, routes, append(catalogProblems, routeProblems...)
+	if err := goCommand(work, "mod", "edit", "-require="+RecorderModulePath+"@v0.0.0", "-replace="+RecorderModulePath+"="+options.RecorderModule).Run(); err != nil {
+		return fail(fmt.Errorf("pointing the copy at the recorder: %w", err))
+	}
+	if err := absoluteReplaces(work, options.Module); err != nil {
+		return fail(err)
+	}
+	if err := os.RemoveAll(run.directory); err != nil {
+		return fail(err)
+	}
+	if err := os.MkdirAll(filepath.Join(run.directory, "scenarios"), 0o755); err != nil {
+		return fail(err)
+	}
+	return run, nil
+}
+
+func (run *preparedRun) cleanup() { os.RemoveAll(run.work) }
+
+// finish writes the manifest and makes the run latest. Nothing recorded is a failed recording,
+// not an empty one: it says why (nothingRecorded) and leaves latest alone.
+func (run *preparedRun) finish(options Options, sessionProblems []string, nothingRecorded func() string) error {
+	scenarios, err := scenarioIndex(run.directory)
 	if err != nil {
 		return err
 	}
-	sessionProblems, raw := testProblems(stdout.String())
-	// Nothing recorded is a failed recording, not an empty one: say why, and leave latest alone.
 	if len(scenarios) == 0 {
-		return fmt.Errorf("no test was recorded (go test: %v)\n%s%s", testErr, strings.Join(raw, "\n"), stderr.String())
+		return errors.New(nothingRecorded())
 	}
-	goVersion, _ := goCommand(work, "env", "GOVERSION").Output()
-
+	goVersion, _ := goCommand(run.work, "env", "GOVERSION").Output()
 	manifest := map[string]any{
-		"format": "runshape-trace", "version": 2, "createdAt": createdAt,
+		"format": "runshape-trace", "version": 2, "createdAt": run.createdAt,
 		"language": "go", "runtime": strings.TrimSpace(string(goVersion)), "recorder": Version, "backend": "instrument",
-		"root": options.Module, "framework": frameworkOf(routes), "catalog": catalog, "sources": sources,
-		"catalogProblems": catalogProblems, "sessionProblems": sessionProblems, "scenarios": scenarios,
+		"root": options.Module, "framework": frameworkOf(run.routes), "catalog": run.catalog, "sources": run.sources,
+		"catalogProblems": run.catalogProblems, "sessionProblems": sessionProblems, "scenarios": scenarios,
 	}
-	if err := writeJSON(filepath.Join(runDirectory, "manifest.json"), manifest); err != nil {
+	if err := writeJSON(filepath.Join(run.directory, "manifest.json"), manifest); err != nil {
 		return err
 	}
 	return movePointers(options.Out, options.Run)

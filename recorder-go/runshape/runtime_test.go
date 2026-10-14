@@ -3,6 +3,7 @@ package runshape
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -132,10 +133,8 @@ func TestOnlyTheOutermostHandlerReportsTheRequest(t *testing.T) {
 	ids := r.functions(table)
 	finish := r.scenario(fakeT{}, "svc_test.go", "TestSample")
 
-	serve := r.enter(ids[0], nil)
-	serve.Request("POST", "/orders")
-	route := r.enter(ids[1], nil) // the route's handler, called by the mux inside serve
-	route.Request("POST", "/orders")
+	serve := r.enterHTTP(ids[0], nil, "POST", "/orders")
+	route := r.enterHTTP(ids[1], nil, "POST", "/orders") // the route's handler, called by the mux inside serve
 	route.Exit()
 	serve.Exit()
 
@@ -204,5 +203,58 @@ func TestALongLivedGoroutineWorksForEveryTestThatUsesIt(t *testing.T) {
 
 	if want := [][]string{{"TestOne [] thread=false", "  work [] thread=true"}, {"TestTwo [] thread=false", "  work [] thread=true"}}; !reflect.DeepEqual(recorded, want) {
 		t.Errorf("recorded %q, want %q", recorded, want)
+	}
+}
+
+// A running program, not a test (process mode): what runs outside any request is the startup
+// scenario, and each request is a scenario of its own, rooted at its client, even when requests
+// overlap. A request's scenario is written when its outermost handler returns.
+func TestAProcessRecordsStartupAndEachRequest(t *testing.T) {
+	var written []scenarioFile
+	var mu sync.Mutex
+	r := newRecorder(DefaultLimits)
+	r.startProcess(func(s scenarioFile) { mu.Lock(); written = append(written, s); mu.Unlock() })
+	ids := r.functions(table)
+
+	boot := r.enter(ids[0], nil) // main wiring the app
+	boot.Exit()
+
+	var wg sync.WaitGroup
+	inside := make(chan struct{})
+	for _, path := range []string{"/orders", "/orders/1"} {
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			serve := r.enterHTTP(ids[0], nil, "GET", path)
+			inside <- struct{}{} // both requests are open at once
+			work := r.enter(ids[2], nil)
+			work.Exit()
+			serve.Exit()
+		}(path)
+	}
+	<-inside
+	<-inside
+	wg.Wait()
+	r.flush()
+
+	mu.Lock()
+	defer mu.Unlock()
+	var got []string
+	for _, s := range written {
+		got = append(got, fmt.Sprintf("%s: %q", s.Nodeid, describe(s)))
+	}
+	sort.Strings(got)
+	want := []string{
+		`process::GET /orders #1: ["GET /orders [] thread=false" "  Service.Place [] thread=false" "    work [] thread=false"]`,
+		`process::GET /orders/1 #2: ["GET /orders/1 [] thread=false" "  Service.Place [] thread=false" "    work [] thread=false"]`,
+		`process::startup: ["startup [] thread=false" "  Service.Place [] thread=false"]`,
+	}
+	// Which request got #1 depends on scheduling; the shapes don't.
+	for i := range got {
+		got[i] = strings.Replace(strings.Replace(got[i], "#2", "#n", 1), "#1", "#n", 1)
+		want[i] = strings.Replace(strings.Replace(want[i], "#2", "#n", 1), "#1", "#n", 1)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("written:\n got %q\nwant %q", got, want)
 	}
 }

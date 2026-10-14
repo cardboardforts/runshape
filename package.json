@@ -18,7 +18,8 @@
     "test:e2e": "npm run build && npm run test:e2e -w packages/extension",
     "view-diff": "sh tools/view-diff/view-diff.sh",
     "self-review": "sh recorder-ts/self-review.sh",
-    "record-go": "go -C recorder-go run ./cmd/runshape-go record"
+    "record-go": "go -C recorder-go run ./cmd/runshape-go record",
+    "run-go": "go -C recorder-go run ./cmd/runshape-go run"
   },
   "devDependencies": {
     "typescript": "5.9.3",

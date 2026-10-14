@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -101,6 +103,10 @@ type scenarioState struct {
 	dropped   int
 	objects   map[uintptr]int
 	lines     map[int]map[int]bool
+	// finished is set once the scenario was written: later events from it are dropped.
+	finished bool
+	// request is set on a process's request scenario: it ends when its first frame returns.
+	request bool
 }
 
 func (s *scenarioState) now() int64 { return time.Since(s.started).Microseconds() }
@@ -114,6 +120,13 @@ type recorder struct {
 	openIn map[uint64]*scenarioState
 	// known holds goroutines whose creator was looked up (Go never reuses ids).
 	known map[uint64]bool
+
+	// Process mode (a running program, not tests): see startProcess.
+	process    bool
+	sink       func(scenarioFile)
+	background *scenarioState
+	startedUp  bool
+	requests   int
 }
 
 func newRecorder(limits Limits) *recorder {
@@ -122,9 +135,35 @@ func newRecorder(limits Limits) *recorder {
 
 var global = newRecorder(DefaultLimits)
 
+// A running program is recorded when started with RUNSHAPE_PROCESS=1 and RUNSHAPE_RUN_DIR (by
+// runshape-go run). SIGUSR1 asks it to write what ran outside requests before it's stopped.
+func init() {
+	directory := os.Getenv("RUNSHAPE_RUN_DIR")
+	if os.Getenv("RUNSHAPE_PROCESS") != "1" || directory == "" {
+		return
+	}
+	global.startProcess(func(s scenarioFile) { write(directory, s) })
+	flushes := make(chan os.Signal, 1)
+	signal.Notify(flushes, syscall.SIGUSR1)
+	go func() {
+		for range flushes {
+			global.flush()
+			// Tells runshape-go the background is written: it waits for this file.
+			_ = os.WriteFile(filepath.Join(directory, "flushed"), nil, 0o644)
+		}
+	}()
+}
+
 // Enter opens a frame for the table's index-th function, called on recv (a pointer receiver, or
 // nil).
 func Enter(table *Table, index int, recv any) *Frame {
+	return EnterHTTP(table, index, recv, "", "")
+}
+
+// EnterHTTP opens a handler's frame: method and path are the request it serves ("" for none).
+// The outermost handler on a call stack records the request; in a running program it starts
+// the request's own scenario.
+func EnterHTTP(table *Table, index int, recv any, method, path string) *Frame {
 	table.once.Do(func() {
 		if table.Entries != "" {
 			table.ids = global.functions(table.Entries)
@@ -133,7 +172,7 @@ func Enter(table *Table, index int, recv any) *Frame {
 	if index >= len(table.ids) {
 		return &Frame{r: global}
 	}
-	return global.enter(table.ids[index], recv)
+	return global.enterAt(table.ids[index], recv, method, path)
 }
 
 // Scenario starts recording test t. It finishes in t.Cleanup, registered first so it runs last:
@@ -177,21 +216,7 @@ func (r *recorder) functions(table string) []int {
 func (r *recorder) scenario(t TB, file, name string) func() scenarioFile {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	s := &scenarioState{
-		nodeid: file + "::" + name, started: time.Now(), thread: goroutineID(),
-		local: map[int]int{}, spanFn: map[int]int{}, nextSpan: rootSpan + 1,
-		stacks: map[uint64][]*Frame{}, calls: map[callKey]int{}, skipped: map[callKey]int{},
-		objects: map[uintptr]int{}, lines: map[int]map[int]bool{},
-	}
-	testFile := file
-	root := len(r.registry)
-	r.registry = append(r.registry, functionEntry{File: file, Symbol: symbol{
-		Namespace: strings.Split(strings.TrimSuffix(file, ".go"), "/"), Container: []string{}, Name: name, Kind: "function",
-	}, FirstLine: 1})
-	s.functions = append(s.functions, functionDTO{Role: "test", Symbol: r.registry[root].Symbol, File: &testFile, FirstLine: 1})
-	s.local[root] = 0
-	s.spanFn[rootSpan] = root
-	s.events = append(s.events, []any{"P", int64(0), "call"}, []any{"S", int64(0), rootSpan, 0, nil, s.thread, nil})
+	s := r.newScenario(file+"::"+name, file, name, goroutineID())
 	r.current = s
 	return func() scenarioFile {
 		r.mu.Lock()
@@ -199,16 +224,67 @@ func (r *recorder) scenario(t TB, file, name string) func() scenarioFile {
 		if r.current == s {
 			r.current = nil
 		}
-		duration := s.now()
-		s.events = append(s.events, []any{"X", duration, rootSpan})
 		outcome := "passed"
 		if t.Skipped() {
 			outcome = "skipped"
 		} else if t.Failed() {
 			outcome = "failed"
 		}
-		return scenarioFile{Nodeid: s.nodeid, Outcome: outcome, DurationUs: duration, Functions: s.functions, Events: s.events, RecorderErrors: r.omissions(s)}
+		return r.finish(s, outcome)
 	}
+}
+
+// newScenario starts a scenario whose root span is its client: the test, or a running
+// program's startup or request. Called with r.mu held.
+func (r *recorder) newScenario(nodeid, file, name string, thread uint64) *scenarioState {
+	s := &scenarioState{
+		nodeid: nodeid, started: time.Now(), thread: thread,
+		local: map[int]int{}, spanFn: map[int]int{}, nextSpan: rootSpan + 1,
+		stacks: map[uint64][]*Frame{}, calls: map[callKey]int{}, skipped: map[callKey]int{},
+		objects: map[uintptr]int{}, lines: map[int]map[int]bool{},
+	}
+	rootFile := file
+	root := len(r.registry)
+	r.registry = append(r.registry, functionEntry{File: file, Symbol: symbol{
+		Namespace: strings.Split(strings.TrimSuffix(file, ".go"), "/"), Container: []string{}, Name: name, Kind: "function",
+	}, FirstLine: 1})
+	s.functions = append(s.functions, functionDTO{Role: "test", Symbol: r.registry[root].Symbol, File: &rootFile, FirstLine: 1})
+	s.local[root] = 0
+	s.spanFn[rootSpan] = root
+	s.events = append(s.events, []any{"P", int64(0), "call"}, []any{"S", int64(0), rootSpan, 0, nil, thread, nil})
+	return s
+}
+
+// finish closes the scenario's root span and returns it to be written. Called with r.mu held.
+func (r *recorder) finish(s *scenarioState, outcome string) scenarioFile {
+	s.finished = true
+	duration := s.now()
+	s.events = append(s.events, []any{"X", duration, rootSpan})
+	return scenarioFile{Nodeid: s.nodeid, Outcome: outcome, DurationUs: duration, Functions: s.functions, Events: s.events, RecorderErrors: r.omissions(s)}
+}
+
+// startProcess records a running program instead of tests. What runs outside any request is
+// the startup scenario, written when the first request arrives (then a background scenario,
+// written by flush); each request is its own scenario, rooted at its client, written when its
+// outermost handler returns. sink receives each finished scenario.
+func (r *recorder) startProcess(sink func(scenarioFile)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.process = true
+	r.sink = sink
+	r.background = r.newScenario("process::startup", "process", "startup", goroutineID())
+}
+
+// flush writes the background scenario, if anything ran in it: a running program has no end
+// to wait for, so the recorder asks (SIGUSR1) before stopping it.
+func (r *recorder) flush() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.process || r.background == nil || r.background.nextSpan == rootSpan+1 {
+		return
+	}
+	r.sink(r.finish(r.background, "passed"))
+	r.background = r.newScenario("process::background", "process", "background", r.background.thread)
 }
 
 // Frame is one call of an instrumented function.
@@ -219,35 +295,95 @@ type Frame struct {
 	fn     int
 	thread uint64
 	closed bool
-	// serving is set on the frame that reported a request (see Request).
+	// serving is set on the frame that recorded a request.
 	serving bool
+	// owner is set on a request scenario's first frame: when it returns, the request is done.
+	owner bool
 }
 
-func (r *recorder) enter(id int, recv any) *Frame {
+func (r *recorder) enter(id int, recv any) *Frame { return r.enterAt(id, recv, "", "") }
+
+func (r *recorder) enterHTTP(id int, recv any, method, path string) *Frame {
+	return r.enterAt(id, recv, method, path)
+}
+
+func (r *recorder) enterAt(id int, recv any, method, path string) *Frame {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	s := r.current
+	thread := goroutineID()
+	s, parent, owner := r.place(thread, method, path)
 	if s == nil {
 		return &Frame{r: r}
 	}
-	thread := goroutineID()
 	stack := s.stacks[thread]
-	parent := rootSpan
-	if len(stack) > 0 {
-		parent = stack[len(stack)-1].span
-	} else {
-		parent = r.outermostParent(s, thread)
-		r.openIn[thread] = s
-	}
-	frame := &Frame{r: r, s: s, span: notRecorded, fn: id, thread: thread}
+	frame := &Frame{r: r, s: s, span: notRecorded, fn: id, thread: thread, owner: owner}
 	if parent != notRecorded && r.admits(s, parent, id) {
 		frame.span = s.nextSpan
 		s.nextSpan++
 		s.spanFn[frame.span] = id
 		s.events = append(s.events, []any{"S", s.now(), frame.span, r.localIndex(s, id), parent, thread, r.objectOf(s, id, recv)})
+		if method != "" && !serving(stack) {
+			frame.serving = true
+			s.events = append(s.events, []any{"Q", s.now(), frame.span, method, path})
+		}
+	}
+	if len(stack) == 0 {
+		r.openIn[thread] = s
 	}
 	s.stacks[thread] = append(stack, frame)
 	return frame
+}
+
+// place is the scenario a call on this goroutine goes in, its caller's span, and whether the
+// call starts a request scenario of its own. Called with r.mu held.
+func (r *recorder) place(thread uint64, method, path string) (*scenarioState, int, bool) {
+	// Calls under a recorded call belong where it does.
+	if open := r.openIn[thread]; open != nil && len(open.stacks[thread]) > 0 {
+		frames := open.stacks[thread]
+		return open, frames[len(frames)-1].span, false
+	}
+	if r.process {
+		if method != "" {
+			return r.startRequest(thread, method, path), rootSpan, true
+		}
+		if !r.known[thread] {
+			r.known[thread] = true
+			if creator, ok := goroutineCreator(); ok {
+				if cs := r.openIn[creator]; cs != nil && len(cs.stacks[creator]) > 0 {
+					frames := cs.stacks[creator]
+					return cs, frames[len(frames)-1].span, false
+				}
+			}
+		}
+		return r.background, rootSpan, false
+	}
+	if r.current == nil {
+		return nil, 0, false
+	}
+	return r.current, r.outermostParent(r.current, thread), false
+}
+
+// startRequest begins a request's scenario; the first one also ends startup. With r.mu held.
+func (r *recorder) startRequest(thread uint64, method, path string) *scenarioState {
+	if !r.startedUp {
+		r.startedUp = true
+		r.sink(r.finish(r.background, "passed"))
+		r.background = r.newScenario("process::background", "process", "background", r.background.thread)
+	}
+	r.requests++
+	s := r.newScenario(fmt.Sprintf("process::%s %s #%d", method, path, r.requests), "process", method+" "+path, thread)
+	s.request = true
+	return s
+}
+
+// serving reports whether a frame on the stack already records a request.
+func serving(stack []*Frame) bool {
+	for _, frame := range stack {
+		if frame.serving {
+			return true
+		}
+	}
+	return false
 }
 
 // Exit closes the frame; deferred by the instrumented function, so it runs on panics too.
@@ -275,29 +411,9 @@ func (f *Frame) Exit() {
 		f.s.events = append(f.s.events, []any{"X", f.s.now(), f.span})
 		delete(f.s.lines, f.span)
 	}
-}
-
-// Request records the HTTP request a handler serves, on the outermost handler of its call
-// stack only: a mux's route handler serves the same request as the ServeHTTP that called it.
-func (f *Frame) Request(method, path string) {
-	if f.s == nil {
-		return
+	if f.owner && !f.s.finished {
+		f.r.sink(f.r.finish(f.s, "passed"))
 	}
-	f.r.mu.Lock()
-	defer f.r.mu.Unlock()
-	if f.closed || f.span == notRecorded || f.r.current != f.s || f.r.isFull(f.s) {
-		return
-	}
-	for _, outer := range f.s.stacks[f.thread] {
-		if outer == f {
-			break
-		}
-		if outer.serving {
-			return
-		}
-	}
-	f.serving = true
-	f.s.events = append(f.s.events, []any{"Q", f.s.now(), f.span, method, path})
 }
 
 // Line records that the function ran line n: once per call. A closure marks its lines through
@@ -308,7 +424,7 @@ func (f *Frame) Line(n int) {
 	}
 	f.r.mu.Lock()
 	defer f.r.mu.Unlock()
-	if f.closed || f.span == notRecorded || f.r.current != f.s || f.r.isFull(f.s) {
+	if f.closed || f.span == notRecorded || f.s.finished || f.r.isFull(f.s) {
 		return
 	}
 	seen := f.s.lines[f.span]
@@ -323,17 +439,14 @@ func (f *Frame) Line(n int) {
 	f.s.events = append(f.s.events, []any{"L", f.span, n})
 }
 
-// outermostParent is the caller of a call with nothing recorded under it on its goroutine.
-//   - It continues work an earlier test started (the goroutine has that test's calls open):
-//     not this test's.
+// outermostParent is the caller, in a test, of a call with nothing recorded under it on its
+// goroutine (a call continuing work an earlier test started is placed with that test: see
+// place).
 //   - On a goroutine's first recorded call ever: what its creator is running, the span that
 //     handed it the work, when the creator is running recorded code.
 //   - Otherwise the test: new work on a long-lived goroutine (a shared server, a worker pool)
 //     belongs to the test it's done in.
 func (r *recorder) outermostParent(s *scenarioState, thread uint64) int {
-	if open, ok := r.openIn[thread]; ok && open != s {
-		return notRecorded
-	}
 	if thread == s.thread || r.known[thread] {
 		return rootSpan
 	}

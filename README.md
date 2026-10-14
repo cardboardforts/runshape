@@ -78,6 +78,14 @@ that couldn't be recorded (a package that doesn't build, a panic that stops a te
 listed as problems; a run that records nothing fails and leaves the last good run in place.
 What it can't record yet is listed in docs/design.md.
 
+To record the program itself running rather than its tests:
+
+```sh
+npm run run-go -- path/to/module ./cmd/server   # builds and starts it; send traffic, then Ctrl-C
+```
+
+Startup (everything before the first request) is one scenario and each HTTP request another.
+
 ### TypeScript (vitest)
 
 `npm run self-review -- <base> [<head>]` records Runshape's own packages at two commits; see

@@ -3,12 +3,16 @@ package record
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Recording a module end to end: copy it, instrument it, run its tests, write the trace. The
@@ -310,6 +314,80 @@ func TestARunThatRecordsNothingFailsLoudlyAndKeepsTheLastRun(t *testing.T) {
 	for _, name := range []string{"", ".", "..", "../x", "a/b"} {
 		if err := Record(Options{Module: broken, Out: out, Run: name, RecorderModule: recorder}); err == nil || !strings.Contains(err.Error(), "run name") {
 			t.Errorf("run name %q: %v", name, err)
+		}
+	}
+}
+
+// Recording the program as it runs, not its tests (docs/ideas.md, idea 1): go-shop's real
+// binary, started as main starts it, sent real HTTP requests. Startup is one scenario (main
+// wiring the app); each request is another, rooted at its client.
+func TestRecordsTheRunningShop(t *testing.T) {
+	out := t.TempDir()
+	module, _ := filepath.Abs(filepath.Join("..", "..", "examples", "go-shop"))
+	recorder, _ := filepath.Abs("..")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+
+	drive := func() error {
+		base := "http://" + address
+		for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+			if response, err := http.Get(base + "/orders/none"); err == nil {
+				response.Body.Close()
+				break
+			} else if time.Now().After(deadline) {
+				return fmt.Errorf("the shop never started: %w", err)
+			}
+		}
+		response, err := http.Post(base+"/orders", "application/json", strings.NewReader(`{"customer":"ada","items":[{"sku":"tea","quantity":1,"priceCents":350}]}`))
+		if err != nil {
+			return err
+		}
+		response.Body.Close()
+		response, err = http.Get(base + "/orders/ord-1")
+		if err != nil {
+			return err
+		}
+		return response.Body.Close()
+	}
+	err = RecordProcess(ProcessOptions{
+		Options: Options{Module: module, Out: out, Run: "run", RecorderModule: recorder},
+		Package: "./cmd/shop", Env: []string{"SHOP_ADDR=" + address}, Drive: drive, Output: io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest struct {
+		Scenarios []struct {
+			Nodeid string `json:"nodeid"`
+			File   string `json:"file"`
+		} `json:"scenarios"`
+	}
+	read(t, filepath.Join(out, "run", "manifest.json"), &manifest)
+	trees := map[string][]string{}
+	var names []string
+	for _, s := range manifest.Scenarios {
+		var recorded scenario
+		read(t, filepath.Join(out, "run", s.File), &recorded)
+		trees[s.Nodeid] = recorded.tree()
+		names = append(names, s.Nodeid)
+	}
+	// The readiness probe (GET /orders/none) is a request too.
+	if want := []string{"process::startup", "process::GET /orders/none #1", "process::POST /orders #2", "process::GET /orders/ord-1 #3"}; !reflect.DeepEqual(names, want) {
+		t.Fatalf("scenarios %q, want %q", names, want)
+	}
+	for nodeid, want := range map[string][]string{
+		"process::startup":         {"startup", "  shop.main", "    app.New", "      storage.NewMemoryRepository", "      orders.NewService", "      web.NewHandler"},
+		"process::POST /orders #2": {"POST /orders", "  web.Handler.ServeHTTP", "    web.Handler.placeOrder", "      orders.Service.Place", "        orders.Order.Problems", "        storage.MemoryRepository.Save"},
+	} {
+		for _, line := range want {
+			if !contains(trees[nodeid], line) {
+				t.Errorf("%s: missing %q in\n%s", nodeid, line, strings.Join(trees[nodeid], "\n"))
+			}
 		}
 	}
 }

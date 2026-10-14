@@ -21,6 +21,20 @@ record that.
 - **To decide:** what counts as the run (a process from `main` to shutdown, a request through a
   deployed stack?); whether recording attaches to a test harness or to the process itself; how a
   long-running process maps onto scenarios (one per request? per user journey?).
+- **First evaluation (2026-10-14):** `npm run run-go -- <module> <main package>` builds a Go
+  program instrumented, runs it, and records whatever traffic it's sent until Ctrl-C (fixture
+  `go-shop-running`: go-shop's real binary and a curl session). What it showed:
+  - Startup (main wiring the app) is a scenario of its own, and the clearest picture of the
+    architecture there is: the composition root building every layer.
+  - One scenario per request is a natural unit, the same shape an e2e test gives. Tests and
+    production differ in what traffic drives the program, not in what a recording looks like.
+  - Requests to one route take different paths (placed, refused by the rules, malformed), and
+    that is the interesting part. Real traffic would mean hundreds of scenarios per route: the
+    next abstraction is probably a route with its path variants, not a list of requests, which
+    is the "too granular" question again and ties into idea 4.
+  - Open: Python and TypeScript have no process mode; request paths carry ids (`/orders/ord-1`),
+    so grouping needs the route pattern, and recording real traffic raises what's safe to keep
+    (only method and path are recorded today).
 
 ## 2. A Kubernetes / Terraform view of how it runs in production
 

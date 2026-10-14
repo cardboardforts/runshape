@@ -171,6 +171,10 @@ Accepted risks:
   share one scenario slot and aren't recorded reliably;
   each line is recorded once per call, and a caller's first 50 calls of a function are kept
   (recorderErrors says what was left out).
+- Recording a running Go program (`runshape-go run`): a request is a scenario from its outermost
+  handler's entry to its return, so work it hands to a goroutine that outlives it is cut off;
+  what runs between requests is one background scenario, written when the recorder stops the
+  program (SIGUSR1, then SIGTERM; a program that handles SIGUSR1 itself conflicts).
 - The Go recorder (recorder-go/): a goroutine's first call hangs off what its creator was
   running, read from the "created by" line of its stack, so one created by code that isn't
   recorded (an HTTP server's connection goroutine) hangs off the test, and a call that

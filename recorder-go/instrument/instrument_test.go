@@ -155,7 +155,7 @@ func TestFindsHandlersRoutesAndReportsRequests(t *testing.T) {
 		t.Errorf("routes %+v, want %+v", result.Routes, want)
 	}
 	code := string(result.Code)
-	if strings.Count(code, "__rsF.Request(r.Method, r.URL.Path)") != 2 {
+	if strings.Count(code, "__rsM, __rsP = r.Method, r.URL.Path };") != 2 {
 		t.Errorf("want the two handlers with a named request to report it:\n%s", code)
 	}
 }
@@ -198,7 +198,7 @@ func TestHandlersFollowTheFilesImports(t *testing.T) {
 	if want := []Route{{Pattern: "/index", Handler: "Index", Package: "example.com/shop/internal/server"}}; !reflect.DeepEqual(result.Routes, want) {
 		t.Errorf("routes %+v, want %+v", result.Routes, want)
 	}
-	if code := string(result.Code); !strings.Contains(code, "if req != nil && req.URL != nil { __rsF.Request(req.Method, req.URL.Path) };") {
+	if code := string(result.Code); !strings.Contains(code, "if req != nil && req.URL != nil { __rsM, __rsP = req.Method, req.URL.Path };") {
 		t.Errorf("want a nil-safe request read:\n%s", code)
 	}
 }

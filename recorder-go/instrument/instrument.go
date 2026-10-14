@@ -148,8 +148,9 @@ func Instrument(file, pkgPath string, src []byte) (Result, error) {
 		if request, ok := handlerRequest(fn.Type, imported); ok {
 			handlers = append(handlers, symbol)
 			if request != "" {
-				// Read only when there's a request to read: a handler may be called with nil.
-				open += fmt.Sprintf(" if %s != nil && %s.URL != nil { __rsF.Request(%s.Method, %s.URL.Path) };", request, request, request, request)
+				// The request is read only when there is one: a handler may be called with nil.
+				open = fmt.Sprintf(" var __rsM, __rsP string; if %s != nil && %s.URL != nil { __rsM, __rsP = %s.Method, %s.URL.Path };"+
+					" __rsF := __rs.EnterHTTP(&%s, %d, %s, __rsM, __rsP); defer __rsF.Exit();", request, request, request, request, table, index, receiver)
 			}
 		}
 		insertions = append(insertions, insertion{at: offset(fn.Body.Lbrace) + 1, text: open})

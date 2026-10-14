@@ -1,28 +1,35 @@
-// Command runshape-go records a Go module's tests for Runshape:
+// Command runshape-go records a Go module for Runshape, its tests or its program running:
 //
 //	runshape-go record [-out dir] [-run name] <module dir> [packages...]
+//	runshape-go run    [-out dir] [-run name] <module dir> <main package> [args...]
 //
-// The run is written to <out>/<run> (default <module>/.runshape/traces/<time>), latest.json is
-// pointed at it, and the run that was latest becomes previous.json, for compare mode.
+// run builds and starts the program; send it traffic, then press Ctrl-C: startup is one
+// scenario and each HTTP request another. The run is written to <out>/<run> (default
+// <module>/.runshape/traces/<time>), latest.json is pointed at it, and the run that was latest
+// becomes previous.json, for compare mode.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/cardboardforts/runshape/recorder-go/record"
 )
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "record" {
+	if len(os.Args) < 2 || (os.Args[1] != "record" && os.Args[1] != "run") {
 		fmt.Fprintln(os.Stderr, "usage: runshape-go record [-out dir] [-run name] <module dir> [packages...]")
+		fmt.Fprintln(os.Stderr, "       runshape-go run    [-out dir] [-run name] <module dir> <main package> [args...]")
 		os.Exit(2)
 	}
-	flags := flag.NewFlagSet("record", flag.ExitOnError)
+	mode := os.Args[1]
+	flags := flag.NewFlagSet(mode, flag.ExitOnError)
 	out := flags.String("out", "", "traces directory (default <module>/.runshape/traces)")
 	run := flags.String("run", time.Now().Format("20060102-150405"), "the run's directory name")
 	_ = flags.Parse(os.Args[2:])
@@ -35,8 +42,30 @@ func main() {
 		*out = filepath.Join(module, ".runshape", "traces")
 	}
 	*out = fromInvocation(*out)
-	exitOn(record.Record(record.Options{Module: module, Out: *out, Run: *run, Packages: flags.Args()[1:], RecorderModule: recorderModule()}))
+	options := record.Options{Module: module, Out: *out, Run: *run, RecorderModule: recorderModule()}
+	if mode == "record" {
+		options.Packages = flags.Args()[1:]
+		exitOn(record.Record(options))
+	} else {
+		if flags.NArg() < 2 {
+			fmt.Fprintln(os.Stderr, "runshape-go run: name the main package to run, e.g. ./cmd/shop")
+			os.Exit(2)
+		}
+		exitOn(record.RecordProcess(record.ProcessOptions{
+			Options: options, Package: flags.Arg(1), Args: flags.Args()[2:], Output: os.Stdout, Drive: untilInterrupted,
+		}))
+	}
 	fmt.Printf("runshape-go: recorded %s in %s\n", module, filepath.Join(*out, *run))
+}
+
+// untilInterrupted is the traffic a person sends by hand: it returns at Ctrl-C.
+func untilInterrupted() error {
+	fmt.Fprintln(os.Stderr, "runshape-go: recording; send the program traffic, then press Ctrl-C to stop")
+	interrupted := make(chan os.Signal, 1)
+	signal.Notify(interrupted, os.Interrupt, syscall.SIGTERM)
+	<-interrupted
+	signal.Stop(interrupted)
+	return nil
 }
 
 // fromInvocation resolves a path given on the command line. Run through npm (`go -C
