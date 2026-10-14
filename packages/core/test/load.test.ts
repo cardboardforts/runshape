@@ -58,7 +58,7 @@ describe("loadLatestRun", () => {
     await expect(loadLatestRun(files)).rejects.toThrowErrorMatchingInlineSnapshot(`
       [Error: not a readable runshape trace:
         - format is "something-else", expected "runshape-trace"
-        - version 99 is not supported (this viewer reads version 1)]
+        - version 99 is not supported (this viewer reads versions 1 and 2)]
     `);
   });
 

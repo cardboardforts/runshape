@@ -14,7 +14,7 @@ import {
   Scenario,
   Span,
 } from "../model";
-import { CatalogFunctionDto, ManifestDto, ScenarioDto, SUPPORTED_VERSION, TRACE_FORMAT } from "./wire";
+import { CatalogFunctionDto, CodeNameDto, ManifestDto, ScenarioDto, SUPPORTED_VERSIONS, TRACE_FORMAT } from "./wire";
 
 export class TraceFormatError extends Error {
   constructor(readonly problems: string[]) {
@@ -36,8 +36,8 @@ export function parseRun(manifest: ManifestDto, loaded: LoadedScenario[]): Run {
   if (manifest.format !== TRACE_FORMAT) {
     manifestProblems.push(`format is ${JSON.stringify(manifest.format)}, expected ${JSON.stringify(TRACE_FORMAT)}`);
   }
-  if (manifest.version !== SUPPORTED_VERSION) {
-    manifestProblems.push(`version ${manifest.version} is not supported (this viewer reads version ${SUPPORTED_VERSION})`);
+  if (!SUPPORTED_VERSIONS.includes(manifest.version)) {
+    manifestProblems.push(`version ${manifest.version} is not supported (this viewer reads versions ${SUPPORTED_VERSIONS.join(" and ")})`);
   }
   if (manifestProblems.length > 0) {
     throw new TraceFormatError(manifestProblems);
@@ -58,11 +58,12 @@ export function parseRun(manifest: ManifestDto, loaded: LoadedScenario[]): Run {
   return new Run(
     manifest.root,
     manifest.createdAt,
-    manifest.python,
+    manifest.language ?? "python",
+    manifest.runtime ?? manifest.python ?? "unknown",
     manifest.backend,
     manifest.framework && {
       ...manifest.framework,
-      routes: manifest.framework.routes.map((route) => ({ ...route, handler: pythonName(route.handler) })),
+      routes: manifest.framework.routes.map((route) => ({ ...route, handler: typeName(route.handler) })),
     },
     (manifest.catalog ?? []).map(parseCatalogFunction),
     scenarios,
@@ -80,7 +81,7 @@ export function parseScenario(dto: ScenarioDto): Scenario {
   const createdIn = new Map<number, number>();
   for (const event of dto.events) {
     if (event[0] === "O") {
-      objects.set(event[2], new ObjectInstance(event[2], pythonName(event[3]), event[1]));
+      objects.set(event[2], new ObjectInstance(event[2], typeName(event[3]), event[1]));
       if (event[4] !== null) createdIn.set(event[2], event[4]);
     }
   }
@@ -167,7 +168,7 @@ export function parseScenario(dto: ScenarioDto): Scenario {
 function parseFunction(dto: ScenarioDto["functions"][number]): FunctionInfo {
   return {
     role: parseEnum(Role, dto.role, "role"),
-    symbol: pythonSymbol(dto.module, dto.qualname),
+    symbol: symbolOf(dto),
     file: dto.file,
     firstLine: dto.firstLine,
     landmarkKind: dto.landmarkKind === null ? null : parseEnum(LandmarkKind, dto.landmarkKind, "landmarkKind"),
@@ -175,16 +176,22 @@ function parseFunction(dto: ScenarioDto["functions"][number]): FunctionInfo {
 }
 
 function parseCatalogFunction(dto: CatalogFunctionDto): CatalogFunction {
-  const { module, qualname, ...rest } = dto;
-  return { ...rest, symbol: pythonSymbol(module, qualname) };
+  return { file: dto.file, firstLine: dto.firstLine, lastLine: dto.lastLine, lines: dto.lines, symbol: symbolOf(dto) };
 }
 
-/** "pkg.mod.Class": an object's class or a route's handler. */
-function pythonName(dotted: string): QualifiedName {
-  return new QualifiedName(dotted.split("."));
+/** Version 2 sends segments; version 1, Python's names. */
+function symbolOf(dto: CodeNameDto): CodeSymbol {
+  if (!("symbol" in dto)) return pythonSymbol(dto.module, dto.qualname);
+  const { namespace, container, name, kind, ownerType } = dto.symbol;
+  return new CodeSymbol(namespace, container, name, parseEnum(SymbolKind, kind, "symbol kind"), ownerType);
 }
 
-/** "pkg.mod" + "Class.method.<locals>.inner": with pythonName, the only places Python's dots are taken apart. */
+/** An object's class or a route's handler: segments (version 2) or "pkg.mod.Class" (version 1). */
+function typeName(name: string | string[]): QualifiedName {
+  return new QualifiedName(typeof name === "string" ? name.split(".") : name);
+}
+
+/** "pkg.mod" + "Class.method.<locals>.inner": with typeName, the only places Python's dots are taken apart. */
 export function pythonSymbol(module: string, qualname: string): CodeSymbol {
   const container = qualname.split(".");
   const name = container.pop() ?? "";

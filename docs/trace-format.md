@@ -1,8 +1,10 @@
-# Runshape trace format, version 1
+# Runshape trace format, versions 1 and 2
 
-The contract between the Python recorder (`recorder/`) and the viewer (`packages/core`). The
-recorder writes it; `packages/core/src/trace/parse.ts` is the only code that reads it.
-Changing anything here means bumping `version` in both places.
+The contract between the recorders and the viewer (`packages/core`). The recorders write it;
+`packages/core/src/trace/parse.ts` is the only code that reads it, and it reads both versions.
+The Python recorder (`recorder/`) writes version 1, below; recorders for other languages write
+version 2 (at the end), which names code by segments instead of Python's dotted names.
+Changing anything here means bumping `version` in the recorder and the reader.
 
 ## Layout
 
@@ -62,3 +64,27 @@ scenario holds tens of thousands of line events and key names would dominate the
 
 `t` is microseconds since the scenario started. A span's `S` is written before the `O` it
 causes, so readers resolve objects in a first pass.
+
+## Version 2
+
+Everything above, with these differences:
+
+| where | version 1 | version 2 |
+|---|---|---|
+| manifest | `python` | `language` (`"typescript"`, `"go"`, ...) and `runtime` (`"node 23.11.0"`) |
+| `catalog[]`, `functions[]` | `module`, `qualname` | `symbol` (below) |
+| `functions[]` | `key` | absent: events refer to functions by index |
+| `framework.routes[].handler` | dotted name | segments, e.g. `["app", "api", "users", "get_user"]` |
+| `O` event, `class` | dotted name | segments, the namespace then the type |
+
+A `symbol` is `{namespace, container, name, kind, ownerType}`:
+
+- `namespace`: segments of the module, package or file (`["packages", "core", "src", "zones"]`).
+- `container`: segments between the namespace and the name: a class, an enclosing function.
+- `kind`: `function`, `method`, `constructor`, `initializer` (module or static init) or
+  `nested` (closures, lambdas, callbacks).
+- `ownerType`: the type whose box the code is drawn in (a method's class), or `null`.
+
+Segments are sent already split, so no reader parses a language's separators. Two functions are
+the same function when all three name parts match, so they must be stable across commits: no
+line numbers or addresses in them.

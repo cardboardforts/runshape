@@ -101,8 +101,8 @@ function caveatsFor(before: Run, after: Run): string[] {
         "some differences may come from the recorder, not the code.",
     );
   }
-  if (before.backend !== after.backend || before.python !== after.python) {
-    caveats.push(`Recorded on different interpreters (${before.python}/${before.backend} → ${after.python}/${after.backend}).`);
+  if (before.backend !== after.backend || before.runtime !== after.runtime) {
+    caveats.push(`Recorded on different interpreters (${before.runtime}/${before.backend} → ${after.runtime}/${after.backend}).`);
   }
   return caveats;
 }

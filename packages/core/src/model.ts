@@ -288,7 +288,10 @@ export class Run {
   constructor(
     readonly root: string,
     readonly createdAt: string,
-    readonly python: string,
+    /** "python", "typescript", ...: who recorded it. */
+    readonly language: string,
+    /** The interpreter or runtime version: "3.12.9", "node 23.11.0". */
+    readonly runtime: string,
     readonly backend: string,
     readonly topology: Topology | null,
     readonly catalog: CatalogFunction[],

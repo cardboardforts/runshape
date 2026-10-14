@@ -57,7 +57,8 @@ export interface ScenarioSummary {
 export interface RunSummary {
   root: string;
   createdAt: string;
-  python: string;
+  language: string;
+  runtime: string;
   backend: string;
   framework: string | null;
   middleware: string[];
@@ -113,7 +114,8 @@ export class ViewerSession {
     return {
       root: run.root,
       createdAt: run.createdAt,
-      python: run.python,
+      language: run.language,
+      runtime: run.runtime,
       backend: run.backend,
       framework: run.topology?.framework ?? null,
       middleware: run.topology?.middleware ?? [],

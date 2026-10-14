@@ -70,6 +70,8 @@ interface Detail {
 const TEST_BODY_ONLY = [Phase.Call];
 const WITH_SETUP = [Phase.Setup, Phase.Call];
 const INITIAL_GROUPING: Grouping = { collapseMiddleware: true };
+/** How the header names the recording's language; others show as recorded. */
+const LANGUAGE_NAMES: Record<string, string> = { python: "Python", typescript: "TypeScript" };
 
 export function App({ host }: { host: Host }) {
   const [status, setStatus] = useState<Status>({ kind: "loading", message: "Loading the latest recording…" });
@@ -383,7 +385,7 @@ export function App({ host }: { host: Host }) {
         <header>
           <h1>Runshape</h1>
           <p className="muted">
-            {summary.framework ?? "no framework"} · Python {summary.python} · {summary.backend} · {summary.scenarios.length}{" "}
+            {summary.framework ?? "no framework"} · {LANGUAGE_NAMES[summary.language] ?? summary.language} {summary.runtime} · {summary.backend} · {summary.scenarios.length}{" "}
             scenarios
           </p>
           <label className="toggle">
