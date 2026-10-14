@@ -2,7 +2,8 @@
 //   RUNSHAPE_TARGET  the project root (default: this repository)
 //   RUNSHAPE_INCLUDE comma-separated source directories to record (default: the src of core and
 //                    of the packages it is built from, as far as the target has them)
-//   RUNSHAPE_TESTS   comma-separated test globs (default: packages/core/test/**/*.test.ts)
+//   RUNSHAPE_TESTS   comma-separated test globs (default: the tests of core and the packages it
+//                    is built from, wherever a revision keeps them)
 //   RUNSHAPE_OUT     the traces directory (default: <target>/.runshape/traces)
 //   RUNSHAPE_RUN     the run's directory name (default: the time)
 // npm run self-review sets these to record a base commit and the working tree.
@@ -21,11 +22,13 @@ const include = (process.env.RUNSHAPE_INCLUDE ?? CORE_PACKAGES.map((name) => `pa
 // @runshape/* resolves to the target's own packages: through node_modules, a base worktree
 // would get the working tree's.
 const packagesDirectory = join(target, "packages");
-const alias = Object.fromEntries(
-  readdirSync(packagesDirectory)
-    .filter((name) => existsSync(join(packagesDirectory, name, "src", "index.ts")))
-    .map((name) => [`@runshape/${name}`, join(packagesDirectory, name, "src", "index.ts")]),
-);
+const alias = existsSync(packagesDirectory)
+  ? Object.fromEntries(
+      readdirSync(packagesDirectory)
+        .filter((name) => existsSync(join(packagesDirectory, name, "src", "index.ts")))
+        .map((name) => [`@runshape/${name}`, join(packagesDirectory, name, "src", "index.ts")]),
+    )
+  : {};
 process.env.RUNSHAPE_TARGET = target;
 process.env.RUNSHAPE_INCLUDE = include.join(",");
 process.env.RUNSHAPE_OUT ??= join(target, ".runshape", "traces");
@@ -35,7 +38,9 @@ export default defineConfig({
   resolve: { alias },
   plugins: [runshapeInstrument(target, include)],
   test: {
-    include: (process.env.RUNSHAPE_TESTS ?? "packages/core/test/**/*.test.ts").split(","),
+    include: (process.env.RUNSHAPE_TESTS ?? CORE_PACKAGES.map((name) => `packages/${name}/test/**/*.test.ts`).join(",")).split(","),
+    // Wraps each test's function, so its hooks are told apart from its body (src/runner.ts).
+    runner: join(here, "src/runner.ts"),
     setupFiles: [join(here, "src/setup.ts")],
     globalSetup: [join(here, "src/global-setup.ts")],
     // One test file at a time, so scenario files are written in the order the tests ran.

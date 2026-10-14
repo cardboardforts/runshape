@@ -245,9 +245,15 @@ export class Recorder {
       ownerType: null,
     };
     const testFunction = this.registry.push({ role: "test", symbol, file: testFile, firstLine: 1, landmarkKind: null }) - 1;
-    scenario.events.push(["P", 0, "call"]);
+    // Until the test's own function starts: its beforeEach hooks are setup (see runner.ts).
+    scenario.events.push(["P", 0, "setup"]);
     scenario.events.push(["S", 0, scenario.rootSpan, scenario.local(testFunction), null, MAIN_THREAD, null]);
     this.scenario = scenario;
+  }
+
+  /** The scenario moved on: "call" when the test's function starts, "teardown" when it ends. */
+  phase(name: "call" | "teardown"): void {
+    this.scenario?.events.push(["P", this.scenario.now(), name]);
   }
 
   finishScenario(outcome: string): ScenarioDto {
