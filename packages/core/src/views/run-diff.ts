@@ -1,4 +1,4 @@
-import { CodeSymbol, Outcome, Phase, Role, Run, Scenario } from "../model";
+import { CodeSymbol, Outcome, Phase, Role, Run, Scenario } from "@runshape/trace";
 import { FunctionRef, functionRef } from "./function-ref";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 import { buildReplay, StepKind } from "./replay";

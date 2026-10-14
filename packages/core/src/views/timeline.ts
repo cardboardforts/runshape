@@ -1,4 +1,4 @@
-import { Phase, Role, Scenario, Span } from "../model";
+import { Phase, Role, Scenario, Span } from "@runshape/trace";
 import { componentOf, externalComponent, FINE_GROUPING, Grouping } from "./components";
 import { FunctionRef, functionRef } from "./function-ref";
 

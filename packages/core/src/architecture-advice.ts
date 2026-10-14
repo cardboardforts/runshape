@@ -2,7 +2,7 @@
 // The deterministic ranking is its evidence; the model may disagree, and must say why. Like
 // zone advice it only proposes: the session keeps the proposal and a person adopts it.
 import { ArchitectureCandidate } from "./architecture";
-import type { QualifiedName } from "./model";
+import type { QualifiedName } from "@runshape/trace";
 import { Confidence, languageName } from "./zone-advice";
 import { PROFILES, profileFor } from "./profiles";
 import { ZoneRule, ZoneRules } from "./zones";

@@ -1,4 +1,4 @@
-import { Run } from "../model";
+import { Run } from "./model";
 import { LoadedScenario, parseRun, TraceFormatError } from "./parse";
 import { ManifestDto, ScenarioDto } from "./wire";
 

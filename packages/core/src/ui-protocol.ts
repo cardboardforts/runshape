@@ -1,6 +1,6 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
-import { Phase } from "./model";
+import { Phase } from "@runshape/trace";
 import type { ArchitectureCandidate } from "./architecture";
 import type { ZoneAdvice } from "./zone-advice";
 import type { ZoneRule } from "./zones";

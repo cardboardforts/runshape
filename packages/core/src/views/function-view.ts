@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, Outcome, Run, Span } from "../model";
+import { CatalogFunction, CodeSymbol, Outcome, Run, Span } from "@runshape/trace";
 import { FunctionRef, functionRef } from "./function-ref";
 
 /**

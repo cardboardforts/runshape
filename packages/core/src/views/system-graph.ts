@@ -1,4 +1,4 @@
-import { Phase, QualifiedName, Run, Scenario, Span, SymbolKind } from "../model";
+import { Phase, QualifiedName, Run, Scenario, Span, SymbolKind } from "@runshape/trace";
 import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName } from "../profiles";
 import { ZoneRules } from "../zones";
 import {

@@ -1,4 +1,4 @@
-import { Phase, Scenario, Span } from "../model";
+import { Phase, Scenario, Span } from "@runshape/trace";
 import { componentOf, externalComponent, FINE_GROUPING, Grouping } from "./components";
 
 export enum StepKind {

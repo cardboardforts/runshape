@@ -5,10 +5,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "../src/model";
+import { Phase } from "@runshape/trace";
 import { buildComponentView } from "../src/views/component-view";
 import { buildFunctionView, FunctionView } from "../src/views/function-view";
-import { pythonSymbol } from "../src/trace/parse";
+import { pythonSymbol } from "@runshape/trace";
 import { buildReplay } from "../src/views/replay";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";

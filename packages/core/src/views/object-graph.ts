@@ -1,4 +1,4 @@
-import { Run, Scenario } from "../model";
+import { Run, Scenario } from "@runshape/trace";
 import { classComponentId } from "./components";
 
 /**

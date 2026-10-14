@@ -1,6 +1,6 @@
 import { detectArchitecture, projectPackages, proposedRules } from "./architecture";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, parseArchitectureAdvice } from "./architecture-advice";
-import { CodeSymbol, Outcome, Run } from "./model";
+import { CodeSymbol, Outcome, Run } from "@runshape/trace";
 import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
 import { RULES_FILE, ZoneRules } from "./zones";

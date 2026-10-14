@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "../src/model";
+import { Phase } from "@runshape/trace";
 import { buildReplay, describeGap, formatMicros, ReplayPace, stepDurationsMs } from "../src/views/replay";
 import { loadFixtureRun } from "./fixtures";
 

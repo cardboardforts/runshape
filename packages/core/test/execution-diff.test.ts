@@ -8,9 +8,9 @@
 import { describe, expect, test } from "vitest";
 
 import { Op } from "../src/align";
-import { Run } from "../src/model";
-import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
-import { pythonSymbol } from "../src/trace/parse";
+import { Run } from "@runshape/trace";
+import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import { pythonSymbol } from "@runshape/trace";
 import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src/views/execution-diff";
 import { diffRuns } from "../src/views/run-diff";
 import { fixtureFiles } from "./fixtures";

@@ -4,8 +4,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
-import { Outcome } from "../src/model";
+import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import { Outcome } from "@runshape/trace";
 import { Change } from "../src/views/run-diff";
 import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src/views/review";
 import { FixtureApp, fixtureFiles } from "./fixtures";

@@ -4,8 +4,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, TraceFiles } from "../src/trace/load";
-import { TraceFormatError } from "../src/trace/parse";
+import { loadLatestRun, TraceFiles } from "@runshape/trace";
+import { TraceFormatError } from "@runshape/trace";
 import { fixtureFiles } from "./fixtures";
 
 function filesWith(overrides: Record<string, string | Error>, fallback: TraceFiles): TraceFiles {

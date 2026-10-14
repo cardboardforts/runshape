@@ -1,5 +1,5 @@
 import { Op } from "../align";
-import { Outcome, Phase, Run, SymbolKind } from "../model";
+import { Outcome, Phase, Run, SymbolKind } from "@runshape/trace";
 import { ZoneRules } from "../zones";
 import { FINE_GROUPING, Grouping } from "./components";
 import { diffExecution } from "./execution-diff";

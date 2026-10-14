@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { QualifiedName } from "../src/model";
+import { QualifiedName } from "@runshape/trace";
 import { HexagonalZone, HEXAGONAL } from "../src/profiles";
 import { ZoneRules, ZoneRulesError } from "../src/zones";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";

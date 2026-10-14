@@ -9,7 +9,7 @@ import { ArchitectureStyle, HexagonalZone, profileFor } from "../src/profiles";
 import { ViewerSession, ZoneRuleStore } from "../src/session";
 import { ZoneRules } from "../src/zones";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
-import { Phase } from "../src/model";
+import { Phase } from "@runshape/trace";
 import { loadFixtureRun } from "./fixtures";
 
 const GROUPING = { collapseMiddleware: true };

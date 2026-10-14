@@ -8,10 +8,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Run } from "../src/model";
-import { loadLatestRun, loadPreviousRun, TraceFiles } from "../src/trace/load";
-import { pythonSymbol } from "../src/trace/parse";
-import { ManifestDto, ScenarioDto } from "../src/trace/wire";
+import { Run } from "@runshape/trace";
+import { loadLatestRun, loadPreviousRun, TraceFiles } from "@runshape/trace";
+import { pythonSymbol } from "@runshape/trace";
+import { ManifestDto, ScenarioDto } from "@runshape/trace";
 import { diffRuns } from "../src/views/run-diff";
 import { buildSystemGraph } from "../src/views/system-graph";
 import { FixtureApp, fixtureFiles } from "./fixtures";

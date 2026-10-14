@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "../src/model";
+import { Phase } from "@runshape/trace";
 import { aggregateWiring, buildObjectGraph } from "../src/views/object-graph";
 import { buildReplay } from "../src/views/replay";
 import { buildSystemGraph } from "../src/views/system-graph";

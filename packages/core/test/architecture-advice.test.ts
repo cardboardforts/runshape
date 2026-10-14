@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 
 import { architecturePrompt, parseArchitectureAdvice } from "../src/architecture-advice";
 import { detectArchitecture, projectPackages } from "../src/architecture";
-import { Phase } from "../src/model";
+import { Phase } from "@runshape/trace";
 import { ViewerSession, ZoneRuleStore } from "../src/session";
 import { loadFixtureRun } from "./fixtures";
 

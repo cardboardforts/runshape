@@ -3,7 +3,7 @@
 // system graph, the rules file and the violations all take their vocabulary from the active
 // profile; hexagonal is the default and reproduces the viewer's original behaviour exactly.
 
-import type { QualifiedName } from "./model";
+import type { QualifiedName } from "@runshape/trace";
 
 export enum ArchitectureStyle {
   Hexagonal = "hexagonal",

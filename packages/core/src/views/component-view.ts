@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span, SymbolKind } from "../model";
+import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span, SymbolKind } from "@runshape/trace";
 import { componentOf, FINE_GROUPING, Grouping } from "./components";
 import { FunctionRef, functionRef } from "./function-ref";
 

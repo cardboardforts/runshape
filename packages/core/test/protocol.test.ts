@@ -5,9 +5,9 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "../src/model";
+import { Phase } from "@runshape/trace";
 import { ViewerSession } from "../src/session";
-import { loadLatestRun, loadPreviousRun } from "../src/trace/load";
+import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { fixtureFiles } from "./fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
