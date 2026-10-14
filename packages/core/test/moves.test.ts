@@ -14,7 +14,7 @@ import { describe, expect, test } from "vitest";
 import { loadLatestRun, Run, TraceFiles } from "@runshape/trace";
 import { Phase } from "@runshape/trace";
 import { buildReview, Change, detectMoves, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "@runshape/views";
-import { fixtureFiles } from "./fixtures";
+import { fixtureFiles } from "../../trace/test/fixtures";
 
 const FROM = "app.services.articles";
 const TO = "app.domain.articles";

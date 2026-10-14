@@ -8,7 +8,7 @@ import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { Outcome } from "@runshape/trace";
 import { Change } from "@runshape/views";
 import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "@runshape/views";
-import { FixtureApp, fixtureFiles } from "./fixtures";
+import { FixtureApp, fixtureFiles } from "../../trace/test/fixtures";
 
 async function review(app: FixtureApp) {
   const files = fixtureFiles(app);

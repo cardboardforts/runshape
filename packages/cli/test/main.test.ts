@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { reviewFromDirectory } from "../src/main";
 
-const FIXTURES = join(import.meta.dirname, "..", "..", "core", "test", "fixtures");
+const FIXTURES = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures");
 
 describe("runshape-review-md", () => {
   test("reviews the latest recording against the previous one", async () => {

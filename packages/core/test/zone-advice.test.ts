@@ -13,7 +13,7 @@ import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
 import { pythonSymbol } from "@runshape/trace";
 import { buildComponentView } from "@runshape/views";
 import { buildSystemGraph } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";
 const GROUPING = { collapseMiddleware: true };

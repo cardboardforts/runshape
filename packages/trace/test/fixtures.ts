@@ -1,8 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { loadLatestRun, TraceFiles } from "@runshape/trace";
-import { Run } from "@runshape/trace";
+import { loadLatestRun, Run, TraceFiles } from "../src";
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 

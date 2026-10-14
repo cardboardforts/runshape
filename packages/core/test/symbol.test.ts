@@ -11,7 +11,7 @@ import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
 import { componentOf } from "@runshape/architecture";
 import { diffFunctionExecution } from "@runshape/views";
-import { fixtureFiles, loadFixtureRun } from "./fixtures";
+import { fixtureFiles, loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("CodeSymbol", () => {
   test("Python names split into namespace, container and name, whatever the nesting", async () => {

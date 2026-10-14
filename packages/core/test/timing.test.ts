@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 
 import { buildComponentView } from "@runshape/views";
 import { formatMicros } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("time per function", () => {
   test("FastAPI's users repository: creating a user is slow for what it calls (password hashing); lookups are their own queries", async () => {

@@ -16,7 +16,7 @@ import { layoutTriangle } from "../src/three/triangle-layout";
 import { overlappingTiles } from "./tiles";
 
 async function graphOf(app: string, style: ArchitectureStyle, collapseMiddleware = true): Promise<SystemGraph> {
-  const directory = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", app);
+  const directory = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", app);
   const run = await loadLatestRun({ readText: (path) => readFile(join(directory, path), "utf8") });
   return buildSystemGraph(run, { grouping: { collapseMiddleware }, profile: profileFor(style) });
 }

@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 
 import { formatMicros } from "@runshape/views";
 import { buildTimeline } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("timeline", () => {
   test("registering a user over FastAPI: the request, its dependencies, and an async handler that awaits", async () => {

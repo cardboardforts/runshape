@@ -10,7 +10,7 @@ import { ViewerSession, ZoneRuleStore } from "../src/session";
 import { ZoneRules } from "@runshape/architecture";
 import { buildSystemGraph, SystemGraph } from "@runshape/views";
 import { Phase } from "@runshape/trace";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const GROUPING = { collapseMiddleware: true };
 

@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { ArchitectureCandidate, detectArchitecture, proposedRules } from "../src/architecture";
 import { QualifiedName } from "@runshape/trace";
 import { ArchitectureStyle } from "@runshape/architecture";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const describeTop = (candidates: ArchitectureCandidate[]) =>
   candidates.slice(0, 3).map((c) => ({

@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { Change, diffRuns } from "@runshape/views";
-import { fixtureFiles } from "./fixtures";
+import { fixtureFiles } from "../../trace/test/fixtures";
 
 async function loadFeedFix() {
   const files = fixtureFiles("django-feed-fix");

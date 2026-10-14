@@ -1,5 +1,5 @@
 /**
- * Execution diff on a real refactor of the FastAPI example (fixtures/fastapi-slug-refactor),
+ * Execution diff on a real refactor of the FastAPI example (packages/trace/test/fixtures/fastapi-slug-refactor),
  * the kind of change an AI agent makes: the route's slug check is extracted into a new
  * service function `ensure_slug_available`, a class is added above `check_article_exists`
  * (shifting every line below it), and `get_slug_for_article` moves to the end of the file and
@@ -13,7 +13,7 @@ import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
 import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "@runshape/views";
 import { diffRuns } from "@runshape/views";
-import { fixtureFiles } from "./fixtures";
+import { fixtureFiles } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 

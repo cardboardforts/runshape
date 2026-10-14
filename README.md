@@ -41,7 +41,7 @@ npm run dev -w packages/webview
 ```
 
 The demo renders real recordings of the two example apps, checked in under
-`packages/core/test/fixtures`.
+`packages/trace/test/fixtures`.
 
 ## Recording your own app
 

@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/trace";
 import { buildReplay, describeGap, formatMicros, ReplayPace, stepDurationsMs } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("replay pace", () => {
   test("registering a user: the query and the password hash take the time, not the plumbing", async () => {

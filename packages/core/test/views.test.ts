@@ -1,6 +1,6 @@
 /**
  * The viewer's view models, built from real traces of the two example apps
- * (test/fixtures, recorded by examples/record.sh). Each test renders a view as plain text
+ * (packages/trace/test/fixtures, recorded by examples/record.sh). Each test renders a view as plain text
  * so the snapshot reads as a description of the app, and a reviewer can check it by eye.
  */
 import { describe, expect, test } from "vitest";
@@ -11,7 +11,7 @@ import { buildFunctionView, FunctionView } from "@runshape/views";
 import { pythonSymbol } from "@runshape/trace";
 import { buildReplay } from "@runshape/views";
 import { buildSystemGraph, SystemGraph } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 function describeGraph(graph: SystemGraph): string {
   const label = new Map(graph.nodes.map((node) => [node.id, node.label]));
@@ -355,7 +355,7 @@ function shortId(componentId: string): string {
 async function readFixtureSource(app: "django" | "fastapi", file: string): Promise<string[]> {
   const { readFile } = await import("node:fs/promises");
   const { join } = await import("node:path");
-  const text = await readFile(join(import.meta.dirname, "fixtures", app, "source", file), "utf8");
+  const text = await readFile(join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", app, "source", file), "utf8");
   return text.split("\n");
 }
 

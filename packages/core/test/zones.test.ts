@@ -8,7 +8,7 @@ import { QualifiedName } from "@runshape/trace";
 import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
 import { ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { buildSystemGraph, SystemGraph } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 /** Names written the way runshape.json writes them. */
 const named = (dotted: string) => QualifiedName.parse(dotted);

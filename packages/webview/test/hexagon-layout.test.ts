@@ -13,7 +13,7 @@ import { layoutHexagon } from "../src/three/hexagon-layout";
 import { overlappingTiles } from "./tiles";
 
 async function fastapiGraph() {
-  const fixtures = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", "fastapi");
+  const fixtures = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "fastapi");
   const run = await loadLatestRun({ readText: (path) => readFile(join(fixtures, path), "utf8") });
   return buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
 }

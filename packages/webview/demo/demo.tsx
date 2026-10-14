@@ -14,8 +14,8 @@ import { loadLatestRun, loadPreviousRun, RuleChange, TraceFiles, UiRequest, UiRe
 import { App } from "../src/App";
 import type { Host } from "../src/host";
 
-const traceFiles = import.meta.glob("../../core/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
-const sourceFiles = import.meta.glob("../../core/test/fixtures/*/source/**/*.py", { query: "?raw", import: "default" });
+const traceFiles = import.meta.glob("../../trace/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
+const sourceFiles = import.meta.glob("../../trace/test/fixtures/*/source/**/*.py", { query: "?raw", import: "default" });
 const selfTraceFiles = import.meta.glob("../../../.runshape/self/*/**/*.json", { query: "?raw", import: "default" });
 // Django's source isn't redistributed in fixtures (no upstream license); use a local checkout.
 const exampleSources = import.meta.glob("../../../examples/django-realworld/conduit/**/*.py", {
@@ -25,7 +25,7 @@ const exampleSources = import.meta.glob("../../../examples/django-realworld/cond
 
 function fixtureReader(app: string, files: Record<string, () => Promise<unknown>>, prefix: string) {
   return async (relativePath: string): Promise<string> => {
-    const load = files[`../../core/test/fixtures/${app}/${prefix}${relativePath}`];
+    const load = files[`../../trace/test/fixtures/${app}/${prefix}${relativePath}`];
     if (load === undefined) throw new Error(`demo: no fixture file ${relativePath}`);
     return (await load()) as string;
   };

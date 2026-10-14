@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { Phase } from "@runshape/trace";
 import { ViewerSession } from "../src/session";
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
-import { fixtureFiles } from "./fixtures";
+import { fixtureFiles } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 const GROUPING = { collapseMiddleware: true };

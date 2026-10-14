@@ -15,7 +15,7 @@ import { ArchitectureStyle, buildSystemGraph, FixedZone, GraphNode, loadLatestRu
 import { layoutGraph } from "../src/layout";
 
 async function fixtureRun(app: string) {
-  const directory = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", app);
+  const directory = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", app);
   return loadLatestRun({ readText: (path) => readFile(join(directory, path), "utf8") });
 }
 

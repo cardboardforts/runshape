@@ -15,7 +15,7 @@ trap 'git -C "$REPO" worktree remove --force "$WORK/base" >/dev/null 2>&1 || tru
 git -C "$REPO" worktree add --detach --quiet "$WORK/base" "$BASE_REF"
 
 dump() {
-  CORE_SRC="$1" FIXTURES="$REPO/packages/core/test/fixtures" DUMP_OUT="$2" \
+  CORE_SRC="$1" FIXTURES="$REPO/packages/trace/test/fixtures" DUMP_OUT="$2" \
     npx --prefix "$REPO" vitest run --config "$HERE/vitest.config.mjs" >"$2.log" 2>&1 \
     || { echo "view-diff: dumping $3 failed:"; cat "$2.log"; exit 2; }
 }

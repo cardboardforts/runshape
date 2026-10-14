@@ -9,7 +9,7 @@ import { architecturePrompt, parseArchitectureAdvice } from "../src/architecture
 import { detectArchitecture, projectPackages } from "../src/architecture";
 import { Phase } from "@runshape/trace";
 import { ViewerSession, ZoneRuleStore } from "../src/session";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("architecture advice", () => {
   test("the model sees every style, the ranked evidence, and the packages", async () => {

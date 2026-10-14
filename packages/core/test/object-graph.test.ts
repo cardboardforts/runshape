@@ -8,7 +8,7 @@ import { Phase } from "@runshape/trace";
 import { aggregateWiring, buildObjectGraph } from "@runshape/views";
 import { buildReplay } from "@runshape/views";
 import { buildSystemGraph } from "@runshape/views";
-import { loadFixtureRun } from "./fixtures";
+import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 const short = (id: string) => id.split(".").pop();
