@@ -7,8 +7,8 @@ import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/trace";
 import { parseZoneAdvice, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "../src/zone-advice";
-import { HexagonalZone, HEXAGONAL } from "../src/profiles";
-import { ZoneRules } from "../src/zones";
+import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
+import { ZoneRules } from "@runshape/architecture";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
 import { pythonSymbol } from "@runshape/trace";
 import { buildComponentView } from "../src/views/component-view";

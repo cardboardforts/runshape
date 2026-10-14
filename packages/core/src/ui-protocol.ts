@@ -3,8 +3,8 @@
 import { Phase } from "@runshape/trace";
 import type { ArchitectureCandidate } from "./architecture";
 import type { ZoneAdvice } from "./zone-advice";
-import type { ZoneRule } from "./zones";
-import type { Grouping } from "./views/components";
+import type { ZoneRule } from "@runshape/architecture";
+import type { Grouping } from "@runshape/architecture";
 import type { RunSummary } from "./session";
 import type { ComponentView } from "./views/component-view";
 import type { FunctionView } from "./views/function-view";

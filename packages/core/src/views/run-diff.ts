@@ -1,9 +1,9 @@
 import { CodeSymbol, Outcome, Phase, Role, Run, Scenario } from "@runshape/trace";
 import { FunctionRef, functionRef } from "./function-ref";
-import { componentOf, FINE_GROUPING, Grouping } from "./components";
+import { componentOf, FINE_GROUPING, Grouping } from "@runshape/architecture";
 import { buildReplay, StepKind } from "./replay";
-import { ArchitectureProfile } from "../profiles";
-import { ZoneRules } from "../zones";
+import { ArchitectureProfile } from "@runshape/architecture";
+import { ZoneRules } from "@runshape/architecture";
 import { buildSystemGraph, GraphEdge, GraphNode } from "./system-graph";
 
 /**

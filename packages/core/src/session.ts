@@ -1,12 +1,12 @@
 import { detectArchitecture, projectPackages, proposedRules } from "./architecture";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, parseArchitectureAdvice } from "./architecture-advice";
 import { CodeSymbol, Outcome, Run } from "@runshape/trace";
-import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "./profiles";
+import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "@runshape/architecture";
 import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
-import { RULES_FILE, ZoneRules } from "./zones";
+import { RULES_FILE, ZoneRules } from "@runshape/architecture";
 import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "./views/component-view";
-import { Grouping } from "./views/components";
+import { Grouping } from "@runshape/architecture";
 import { buildFunctionView, UnknownFunctionError } from "./views/function-view";
 import { buildReplay } from "./views/replay";
 import { buildTimeline } from "./views/timeline";

@@ -1,7 +1,7 @@
 import { Op } from "../align";
 import { Outcome, Phase, Run, SymbolKind } from "@runshape/trace";
-import { ZoneRules } from "../zones";
-import { FINE_GROUPING, Grouping } from "./components";
+import { ZoneRules } from "@runshape/architecture";
+import { FINE_GROUPING, Grouping } from "@runshape/architecture";
 import { diffExecution } from "./execution-diff";
 import { Change, diffRuns } from "./run-diff";
 

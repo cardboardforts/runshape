@@ -1,6 +1,6 @@
 import { Phase, QualifiedName, Run, Scenario, Span, SymbolKind } from "@runshape/trace";
-import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName } from "../profiles";
-import { ZoneRules } from "../zones";
+import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName } from "@runshape/architecture";
+import { ZoneRules } from "@runshape/architecture";
 import {
   CLIENT_ID,
   ComponentKind,
@@ -10,7 +10,7 @@ import {
   FINE_GROUPING,
   Grouping,
   MIDDLEWARE_CHAIN_ID,
-} from "./components";
+} from "@runshape/architecture";
 
 /**
  * Where a component sits, in the active profile's zones (see profiles.ts): a FixedZone for

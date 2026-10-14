@@ -4,6 +4,7 @@
   "packageManager": "npm@11.21.0",
   "workspaces": [
     "packages/trace",
+    "packages/architecture",
     "packages/core",
     "packages/webview",
     "packages/extension",

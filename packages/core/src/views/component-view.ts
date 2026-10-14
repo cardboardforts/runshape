@@ -1,5 +1,5 @@
 import { CatalogFunction, CodeSymbol, QualifiedName, Run, Span, SymbolKind } from "@runshape/trace";
-import { componentOf, FINE_GROUPING, Grouping } from "./components";
+import { componentOf, FINE_GROUPING, Grouping } from "@runshape/architecture";
 import { FunctionRef, functionRef } from "./function-ref";
 
 /** One box from the system graph opened up: its functions and how much the tests reach. */

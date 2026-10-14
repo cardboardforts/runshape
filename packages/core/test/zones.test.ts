@@ -5,8 +5,8 @@
 import { describe, expect, test } from "vitest";
 
 import { QualifiedName } from "@runshape/trace";
-import { HexagonalZone, HEXAGONAL } from "../src/profiles";
-import { ZoneRules, ZoneRulesError } from "../src/zones";
+import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
+import { ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { buildSystemGraph, SystemGraph } from "../src/views/system-graph";
 import { loadFixtureRun } from "./fixtures";
 

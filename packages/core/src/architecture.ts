@@ -4,9 +4,9 @@
 // modules map onto that style's zones. A person (or a model, see
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
 import { QualifiedName, Run } from "@runshape/trace";
-import { ArchitectureStyle, HexagonalZone, LayoutShape, PROFILES } from "./profiles";
+import { ArchitectureStyle, HexagonalZone, LayoutShape, PROFILES } from "@runshape/architecture";
 import { buildSystemGraph } from "./views/system-graph";
-import { ZoneRule, ZoneRules } from "./zones";
+import { ZoneRule, ZoneRules } from "@runshape/architecture";
 
 export interface ZoneProposal {
   zone: string;

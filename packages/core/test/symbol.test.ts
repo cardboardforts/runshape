@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 import { CodeSymbol, FunctionInfo, Phase, Role, Span, SymbolKind } from "@runshape/trace";
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
-import { componentOf } from "../src/views/components";
+import { componentOf } from "@runshape/architecture";
 import { diffFunctionExecution } from "../src/views/execution-diff";
 import { fixtureFiles, loadFixtureRun } from "./fixtures";
 
