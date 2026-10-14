@@ -59,12 +59,20 @@ export function zoneFacts(graph: SystemGraph, node: GraphNode, view: ComponentVi
   };
 }
 
-export function zoneAdvicePrompt(facts: ZoneFacts, source: string[] | null, profile: ArchitectureProfile): string {
+/** How a prompt names the language a run was recorded in; others go as recorded. */
+const LANGUAGE_NAMES: Record<string, string> = { python: "Python", typescript: "TypeScript" };
+
+export function languageName(language: string): string {
+  return LANGUAGE_NAMES[language] ?? language;
+}
+
+/** `language` is Run.language: it names the app and tags the source's code fence. */
+export function zoneAdvicePrompt(facts: ZoneFacts, source: string[] | null, profile: ArchitectureProfile, language: string): string {
   const list = (items: string[]) => (items.length ? items.map((item) => `  - ${item}`).join("\n") : "  (none)");
   const code = source ? source.slice(0, MAX_SOURCE_LINES).join("\n") : "(source not available)";
   const zones = profile.zones.map((zone) => `- ${zone.id}: ${zone.meaning}.`).join("\n");
   const answers = profile.zones.map((zone) => JSON.stringify(zone.id)).join(" | ");
-  return `You are reviewing a Python web application against this architecture: ${profile.name}.
+  return `You are reviewing a ${languageName(language)} application against this architecture: ${profile.name}.
 Zones:
 ${zones}
 
@@ -85,7 +93,7 @@ External systems it calls directly:
 ${list(facts.externalSystems)}
 
 Source:
-\`\`\`python
+\`\`\`${language}
 ${code}
 \`\`\`
 

@@ -15,8 +15,10 @@ describe("architecture advice", () => {
   test("the model sees every style, the ranked evidence, and the packages", async () => {
     const run = await loadFixtureRun("fastapi");
 
-    const prompt = architecturePrompt(detectArchitecture(run), projectPackages(run));
+    const prompt = architecturePrompt(detectArchitecture(run), projectPackages(run), run.language);
 
+    expect(prompt.split("\n")[0]).toBe("You are deciding which architecture style a Python application follows, so a viewer can draw it.");
+    expect(architecturePrompt([], [], "typescript").split("\n")[0]).toContain("a TypeScript application");
     // The middle of the prompt, where the evidence is; the frame is checked by the answer test.
     const lines = prompt.split("\n");
     const evidence = lines.findIndex((line) => line.startsWith("A heuristic ranked them"));

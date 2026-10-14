@@ -6,7 +6,7 @@
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "../src/model";
-import { parseZoneAdvice, ZoneAdvisor, zoneFacts } from "../src/zone-advice";
+import { parseZoneAdvice, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "../src/zone-advice";
 import { HexagonalZone, HEXAGONAL } from "../src/profiles";
 import { ZoneRules } from "../src/zones";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
@@ -75,6 +75,21 @@ describe("zone facts and the model's answer", () => {
         "qualifiedName": "app.db.repositories.users.UsersRepository",
       }
     `);
+  });
+
+  test("the prompt names the recording's language and shows the source fenced in it", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const graph = buildSystemGraph(run, { grouping: GROUPING });
+    const facts = zoneFacts(graph, graph.nodes.find((n) => n.id === USERS_REPOSITORY)!, buildComponentView(run, USERS_REPOSITORY, GROUPING));
+
+    const python = zoneAdvicePrompt(facts, ["class UsersRepository(BaseRepository):"], HEXAGONAL, run.language);
+    const typescript = zoneAdvicePrompt(facts, ["export class ZoneRules {"], HEXAGONAL, "typescript");
+
+    expect([python, typescript].map((prompt) => prompt.split("\n")[0])).toEqual([
+      "You are reviewing a Python application against this architecture: Hexagonal (ports and adapters).",
+      "You are reviewing a TypeScript application against this architecture: Hexagonal (ports and adapters).",
+    ]);
+    expect(typescript).toContain("```typescript\nexport class ZoneRules {\n```");
   });
 
   test("answers are accepted inside prose or code fences, and rejected when unusable", () => {

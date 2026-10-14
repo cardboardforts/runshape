@@ -287,7 +287,7 @@ export class ViewerSession {
     if (this.advisor === null || !this.advisor.available) {
       return { type: "architectureAdviceFailed", message: "No language model is available (in VS Code, one comes with e.g. GitHub Copilot)." };
     }
-    const prompt = architecturePrompt(detectArchitecture(this.run), projectPackages(this.run));
+    const prompt = architecturePrompt(detectArchitecture(this.run), projectPackages(this.run), this.run.language);
     let answer: string;
     try {
       answer = await this.advisor.complete(prompt);
@@ -320,7 +320,7 @@ export class ViewerSession {
       return { type: "zoneAdviceFailed", componentId, message: "Only project classes and modules can be placed in a zone." };
     }
     const view = buildComponentView(this.run, componentId, grouping);
-    const prompt = zoneAdvicePrompt(zoneFacts(graph, node, view), await this.componentSource(view), this.rules.profile);
+    const prompt = zoneAdvicePrompt(zoneFacts(graph, node, view), await this.componentSource(view), this.rules.profile, this.run.language);
     let answer: string;
     try {
       answer = await this.advisor.complete(prompt);

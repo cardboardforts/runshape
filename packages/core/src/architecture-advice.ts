@@ -3,7 +3,7 @@
 // zone advice it only proposes: the session keeps the proposal and a person adopts it.
 import { ArchitectureCandidate } from "./architecture";
 import type { QualifiedName } from "./model";
-import { Confidence } from "./zone-advice";
+import { Confidence, languageName } from "./zone-advice";
 import { PROFILES, profileFor } from "./profiles";
 import { ZoneRule, ZoneRules } from "./zones";
 
@@ -17,7 +17,7 @@ export class ArchitectureAdviceError extends Error {}
 
 const MAX_PACKAGES = 150;
 
-export function architecturePrompt(candidates: ArchitectureCandidate[], packages: QualifiedName[]): string {
+export function architecturePrompt(candidates: ArchitectureCandidate[], packages: QualifiedName[], language: string): string {
   const styles = PROFILES.map(
     (profile) => `- ${profile.style} (${profile.name}): zones ${profile.zones.map((zone) => `${zone.id} = ${zone.meaning}`).join("; ")}`,
   ).join("\n");
@@ -25,7 +25,7 @@ export function architecturePrompt(candidates: ArchitectureCandidate[], packages
     .map((candidate) => `- ${candidate.style} scored ${candidate.score}:\n${candidate.evidence.map((line) => `    - ${line}`).join("\n")}`)
     .join("\n");
   const shown = packages.slice(0, MAX_PACKAGES);
-  return `You are deciding which architecture style a Python web application follows, so a viewer can draw it.
+  return `You are deciding which architecture style a ${languageName(language)} application follows, so a viewer can draw it.
 Styles and their zones:
 ${styles}
 
