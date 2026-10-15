@@ -208,6 +208,12 @@ Accepted risks:
   differently (the response status isn't recorded) are one variant. A changed variant is a
   new shape paired with a gone one that both reached, or both missed, the handler and share
   at least half the longer path in order (`CHANGED_VARIANT_MIN_SHARED`).
+- Recordings kept per commit (`npm run runshape`, packages/library): only the TypeScript
+  recorder (Runshape's own tests) records into them so far; Python's `runshape-review` and Go's
+  recorder still keep their own latest/previous pair. A commit's recording is made by this
+  checkout's recorder, so one made before a recorder change isn't re-recorded unless asked
+  (`--again`). Nothing prunes old recordings yet (`forget` deletes one). The demo's dev server
+  reads .runshape/recordings and runs `git` for the list (local only, vite's default host).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before

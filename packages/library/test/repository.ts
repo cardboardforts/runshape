@@ -32,6 +32,8 @@ export function repository(): { root: string; commits: Record<string, string> } 
   const commit = (subject: string) => commitIn(root, subject);
   const first = commit("First");
   git("update-ref", "refs/remotes/origin/main", first);
+  // As a clone has it: origin/HEAD names origin's default branch.
+  git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
   const second = commit("Second");
   git("checkout", "--quiet", "-b", "feature");
   const third = commit("Feature work");

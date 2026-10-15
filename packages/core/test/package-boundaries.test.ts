@@ -89,7 +89,11 @@ describe("package boundaries", () => {
     const fixtures = join(ROOT, "packages", "trace", "test", "fixtures");
     const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
     // The webview's demo runs against the same fixtures, so it's held to the same rule.
-    const folders = Object.entries(ALLOWED).flatMap(([pkg, allowed]) => ["test", "demo"].map((folder) => ({ pkg, allowed, folder: join(ROOT, pkg, folder) })));
+    // The demo's recordings page also reads the library's overview, through the dev server.
+    const DEMO_ALSO: Record<string, string[]> = { "packages/webview": ["library"] };
+    const folders = Object.entries(ALLOWED).flatMap(([pkg, allowed]) =>
+      ["test", "demo"].map((folder) => ({ pkg, allowed: folder === "demo" ? [...allowed, ...(DEMO_ALSO[pkg] ?? [])] : allowed, folder: join(ROOT, pkg, folder) })),
+    );
     for (const { pkg, allowed, folder } of folders) {
       if (!existsSync(folder)) continue;
       for (const file of sourceFiles(folder).filter((path) => !isFixtures(path))) {

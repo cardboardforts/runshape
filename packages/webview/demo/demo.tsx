@@ -1,8 +1,9 @@
-// Runs the webview in a plain browser against the recorded example traces, with no VS Code:
-// `npm run dev -w packages/webview` then open /demo/index.html?app=django (or fastapi, or
-// django-feed-fix / fastapi-slug-refactor: two recordings, before and after a change, for
-// compare mode). ?app=self:<label> opens Runshape's own tests as recorded by
-// `npm run self-review` (.runshape/self/<label>), source included.
+// Runs the webview in a plain browser, with no VS Code: `npm run dev -w packages/webview`, then
+// /demo/index.html lists what there is to look at (RecordingsPage). Also by URL:
+//   ?recording=<id>          one recording kept by `npm run runshape` (.runshape/recordings/<id>)
+//   ?base=<id>&head=<id>     two of them, compared
+//   ?app=<example>           a checked-in example (django, fastapi-slug-refactor, …)
+//   ?app=self:<label>        a pair recorded by the old self-review (.runshape/self/<label>)
 // Never part of the extension bundle.
 import { createRoot } from "react-dom/client";
 
@@ -13,6 +14,8 @@ import { loadLatestRun, loadPreviousRun, RuleChange, TraceFiles, UiRequest, UiRe
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
+import { RecordingsPage } from "./RecordingsPage";
+import "./recordings.css";
 
 const traceFiles = import.meta.glob("../../trace/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
 const sourceFiles = import.meta.glob("../../trace/test/fixtures/*/source/**/*.py", { query: "?raw", import: "default" });
@@ -39,11 +42,48 @@ function selfReader(label: string) {
   };
 }
 
-function demoHost(app: string): Host {
+/** Reads a recording kept in .runshape/recordings, through the dev server (vite.config.ts). */
+async function libraryText(id: string, path: string): Promise<string> {
+  const response = await fetch(`/__runshape/recordings/${encodeURIComponent(id)}/${path}`);
+  if (!response.ok) throw new Error(`demo: no ${path} in recording ${id} (npm run runshape -- list)`);
+  return response.text();
+}
+
+/**
+ * One kept recording, or two as base and head: each is a traces directory of its own, so the
+ * pair is presented as one, its latest run the head's and its previous run the base's.
+ */
+function libraryTraces(head: string, base: string | null): TraceFiles {
+  const runOf = new Map<string, Promise<string>>();
+  const runDirectory = (id: string) => {
+    if (!runOf.has(id)) runOf.set(id, libraryText(id, "latest.json").then((text) => (JSON.parse(text) as { run: string }).run));
+    return runOf.get(id)!;
+  };
+  return {
+    async readText(path) {
+      if (path === "latest.json") return JSON.stringify({ run: "head" });
+      if (path === "previous.json") {
+        if (base === null) throw new Error("demo: one recording, nothing to compare with");
+        return JSON.stringify({ run: "base" });
+      }
+      const [side, ...rest] = path.split("/");
+      const id = side === "head" ? head : side === "base" && base !== null ? base : null;
+      if (id === null) throw new Error(`demo: no such file ${path}`);
+      return libraryText(id, `${await runDirectory(id)}/${rest.join("/")}`);
+    },
+  };
+}
+
+function demoHost(params: URLSearchParams): Host {
+  const app = params.get("app") ?? "django";
   const listeners = new Set<(response: UiResponse) => void>();
   const emit = (response: UiResponse) => listeners.forEach((listener) => listener(response));
+  const head = params.get("head") ?? params.get("recording");
   const selfLabel = app.startsWith("self:") ? app.slice("self:".length) : null;
-  const traces: TraceFiles = { readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) };
+  const traces: TraceFiles =
+    head !== null
+      ? libraryTraces(head, params.get("base"))
+      : { readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) };
   // Fixtures named "<app>-<change>" (django-feed-fix, fastapi-slug-refactor) share the app's source.
   const baseApp = app.split("-")[0] ?? app;
   const readFixtureSource = fixtureReader(baseApp, sourceFiles, "source/");
@@ -52,7 +92,7 @@ function demoHost(app: string): Host {
     return local ? ((await local()) as string) : readFixtureSource(file);
   };
   const latest = loadLatestRun(traces);
-  // Self-review recordings carry their source; the example apps' comes from fixtures or examples/.
+  // Runshape's own recordings carry their source; the example apps' comes from fixtures or examples/.
   const sources = {
     readLines: async (file: string) =>
       (await latest).sources?.get(file) ?? readSource(file).then((text) => text.split("\n"), () => null),
@@ -81,7 +121,28 @@ function demoHost(app: string): Host {
   };
 }
 
-const app = new URLSearchParams(location.search).get("app") ?? "django";
+/** What the URL asks to open; with nothing asked, the list of what there is. */
+function Demo() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has("app") && !params.has("recording") && !params.has("head")) {
+    const examples = Object.keys(traceFiles)
+      .map((path) => path.match(/fixtures\/([^/]+)\/latest\.json$/)?.[1])
+      .filter((name) => name !== undefined);
+    const olderPairs = Object.keys(selfTraceFiles)
+      .map((path) => path.match(/\.runshape\/self\/([^/]+)\/latest\.json$/)?.[1])
+      .filter((label) => label !== undefined);
+    return <RecordingsPage examples={examples} olderPairs={olderPairs} />;
+  }
+  return (
+    <>
+      <App host={demoHost(params)} />
+      <a className="back-to-recordings" href="?">
+        ← Recordings
+      </a>
+    </>
+  );
+}
+
 const root = document.getElementById("root");
 if (root === null) throw new Error("demo: #root element missing");
-createRoot(root).render(<App host={demoHost(app)} />);
+createRoot(root).render(<Demo />);

@@ -8,11 +8,12 @@
  * Tested against a real git repository made for each test, not a fake git.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { GitCli, RecordingLibrary, RecordingMetadata, serveLibraryFile } from "../src";
+import { GitCli, handleLibraryRequest, RecordingLibrary, RecordingMetadata, serveLibraryFile } from "../src";
 import { repository } from "./repository";
 
 function recordAt(library: string, metadata: RecordingMetadata): void {
@@ -52,9 +53,10 @@ describe("RecordingLibrary", () => {
   });
 
   test("a directory that isn't a recording (half written, or someone else's) is skipped, not fatal", async () => {
-    const { root } = repository();
+    const { root, commits } = repository();
     const directory = join(root, ".runshape", "recordings");
-    mkdirSync(join(directory, ".incoming-abc"), { recursive: true });
+    // Its metadata written, then interrupted before it was moved into place.
+    recordAt(directory, metadata(".incoming-abc", commits.first!, "First", "2026-10-02T09:00:00Z"));
     mkdirSync(join(directory, "broken"), { recursive: true });
     writeFileSync(join(directory, "broken", "recording.json"), "{not json");
 
@@ -100,5 +102,36 @@ describe("serveLibraryFile", () => {
     expect(
       await Promise.all([`${id}/latest.json`, `${id}/run/manifest.json`, `${id}/../secret.txt`, "../secret.txt", `${id}/run/nothing.json`, `${id}/run`].map(served)),
     ).toEqual(['200 {"run":"run"}', "200 {}", "404 ", "404 ", "404 ", "404 "]);
+  });
+});
+
+describe("handleLibraryRequest (the demo's dev server)", () => {
+  test("answers the overview and recordings' files under /__runshape/, and leaves every other URL alone", async () => {
+    const { root, commits } = repository();
+    const directory = join(root, ".runshape", "recordings");
+    const id = commits.second!.slice(0, 12);
+    recordAt(directory, metadata(id, commits.second!, "Second", "2026-10-02T09:00:00Z"));
+    const library = new RecordingLibrary(directory, new GitCli(root));
+
+    const answer = async (url: string) => {
+      const response = await handleLibraryRequest(library, url);
+      return response === null ? "not ours" : `${response.status} ${response.contentType}`;
+    };
+    const overview = await handleLibraryRequest(library, "/__runshape/library");
+
+    expect(
+      await Promise.all(["/__runshape/library", `/__runshape/recordings/${id}/latest.json`, "/__runshape/recordings/%2e%2e/secret", "/__runshape/recordings/%E0%A4%A", "/demo/index.html"].map(answer)),
+    ).toEqual(["200 application/json", "200 application/json", "404 text/plain", "404 text/plain", "not ours"]);
+    expect(JSON.parse(overview!.body).recordings.map((r: RecordingMetadata) => r.id)).toEqual([id]);
+  });
+
+  test("when git fails, the overview is an error that says what failed, not an empty library", async () => {
+    const directory = join(tmpdir(), "runshape-not-a-repository");
+    mkdirSync(directory, { recursive: true });
+    const library = new RecordingLibrary(join(directory, "recordings"), new GitCli(directory));
+
+    const response = await handleLibraryRequest(library, "/__runshape/library");
+
+    expect({ status: response?.status, body: response?.body }).toEqual({ status: 500, body: expect.stringMatching(/^git .*not a git repository/) });
   });
 });

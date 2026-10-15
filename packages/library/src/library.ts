@@ -98,7 +98,8 @@ export class RecordingLibrary {
     const recordings: RecordingMetadata[] = [];
     const problems: string[] = [];
     for (const name of names) {
-      if (name.startsWith(INCOMING_PREFIX) || name.startsWith(".")) continue;
+      // Hidden: a recording still being written (INCOMING_PREFIX), or not a recording at all.
+      if (name.startsWith(".")) continue;
       let text: string;
       try {
         text = await readFile(join(this.directory, name, METADATA_FILE), "utf8");

@@ -40,7 +40,7 @@ for decisions, limits, the threat model and what's next.
 ```sh
 npm install                    # npm 11 (see packageManager); `npx npm@11 install` with older npm
 npm run dev -w packages/webview
-# open http://localhost:5173/demo/index.html?app=django   (or ?app=fastapi)
+# open http://localhost:5173/demo/index.html: what there is to look at and compare
 #   ?app=django-feed-fix has two recordings (before/after a routing fix): tick "Compare"
 #   ?app=go-shop-running is a Go program's real traffic: open the Routes tab
 ```
@@ -91,10 +91,22 @@ npm run run-go -- path/to/module ./cmd/server   # builds and starts it; send tra
 
 Startup (everything before the first request) is one scenario and each HTTP request another.
 
-### TypeScript (vitest)
+### TypeScript (vitest): Runshape on its own changes
 
-`npm run self-review -- <base> [<head>]` records Runshape's own packages at two commits; see
-`recorder-ts/vitest.record.config.ts` to point it at another project.
+Recordings are kept per commit in `.runshape/recordings`, so each commit is recorded once and
+any two can be compared:
+
+```sh
+npm run runshape -- list                    # what's recorded, which branch tips aren't yet
+npm run runshape -- compare main --fetch    # fetch main, record it and your working tree, link them
+npm run runshape -- record <branch|commit|working> [--fetch] [--again]
+npm run runshape -- forget <id>             # each recording is ~100 MB
+```
+
+`/demo/index.html` (no `?app`) lists the same and compares any two recordings in the browser,
+read live: no dev-server restart after recording. `--fetch` records origin's tip without
+touching local branches. `npm run self-review` is `compare main`. See
+`recorder-ts/vitest.record.config.ts` to point the recorder at another project.
 
 ## Example apps
 

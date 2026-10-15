@@ -1,0 +1,140 @@
+/* The demo's recordings page and its way back; the viewer's own styles are src/styles.css. */
+
+.recordings-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  overflow-y: auto;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.recordings-page h1 {
+  margin-top: 0;
+}
+
+.recordings-page h2 {
+  font-size: 15px;
+  margin: 28px 0 8px;
+}
+
+.recordings-page code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.recordings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.recordings-table th,
+.recordings-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.recordings-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.recordings-table .failed {
+  color: #e5534b;
+}
+
+.compare-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.compare-picker label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.compare-picker select {
+  max-width: 420px;
+}
+
+.unrecorded,
+.examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.unrecorded li {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 1fr auto;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+
+.ref-name {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.ref-subject {
+  overflow-wrap: anywhere;
+}
+
+.command {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.examples li {
+  display: inline-block;
+  margin: 0 16px 6px 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.back-to-recordings {
+  position: fixed;
+  right: 12px;
+  bottom: 8px;
+  font-size: 12px;
+  color: var(--link);
+  background: var(--panel);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.recordings-page a {
+  color: var(--link);
+}
+
+.compare-picker button[type="submit"] {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border: none;
+  border-radius: 3px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+
+.compare-picker button[type="submit"]:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
