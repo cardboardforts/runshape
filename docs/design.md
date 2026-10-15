@@ -193,14 +193,20 @@ Accepted risks:
   costs about 3 µs (a mutex and a stack read), so hot loops slow down a lot even past the
   per-caller limit.
 - Routes (`packages/views/src/routes.ts`): a request belongs to the route whose handler ran
-  under it; one that never reached a handler joins the route whose pattern matches its path
-  segment by segment (placeholders `{x}`, `<x>`, `(?P<x>…)` match one segment; a regex
-  pattern that matches across segments won't), else it's grouped by its literal path. A
-  class registered for several patterns picks the one with as many segments as the path, the
-  first on a tie. A variant is the shape of the project code a request ran (framework code is
-  see-through; consecutive identical calls are one step, so a loop's length doesn't matter);
-  two requests that took one shape but answered differently (the response status isn't
-  recorded) are one variant. A changed variant is a new shape paired with a gone one sharing
+  under it: the registered function itself, or for a registered class (Django REST) a method
+  named for a verb or viewset action (`post`, `create`, …), else the first of its methods that
+  ran, so a class whose only methods to run were hooks (`get_permissions`) still counts as
+  reached. One that reached no handler joins the route whose pattern matches its path
+  (placeholders match one segment, a trailing `{rest...}` any; the most literal segments win,
+  then the first listed; a regex that spans segments won't match), else it's grouped by its
+  literal path. The method isn't matched: a route's group is per method. A class registered
+  for several patterns picks the one with as many segments as the path, the first on a tie. A
+  pattern renamed between recordings (`{id}` to `{slug}`) is one route gone and one new.
+  A variant is the shape of the project code the whole request ran, authentication and
+  renderers included (framework code is see-through; consecutive identical calls are one
+  step, so a loop's length doesn't matter); two requests that took one shape but answered
+  differently (the response status isn't recorded) are one variant. A changed variant is a
+  new shape paired with a gone one that both reached, or both missed, the handler and share
   at least half the longer path in order (`CHANGED_VARIANT_MIN_SHARED`).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).

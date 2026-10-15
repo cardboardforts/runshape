@@ -115,7 +115,9 @@ export function App({ host }: { host: Host }) {
   const [modelAdvice, setModelAdvice] = useState<ModelAdvice>({ kind: "idle" });
   /** The sidebar lists tests, or the requests they sent grouped by route. */
   const [listing, setListing] = useState<"tests" | "routes">("tests");
-  const [routeMap, setRouteMap] = useState<{ routes: RouteMap; diff: RouteMapDiff | null } | null>(null);
+  const [routeMap, setRouteMap] = useState<{ routes: RouteMap; diff: RouteMapDiff | null } | { failed: string } | null>(null);
+  /** Responses carry no request id: an error while routes are awaited is the routes' answer. */
+  const awaitingRoutes = useRef(false);
   const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined; listing: "tests" | "routes" }>({
     phases: TEST_BODY_ONLY,
     grouping: INITIAL_GROUPING,
@@ -143,6 +145,11 @@ export function App({ host }: { host: Host }) {
           setStatus({ kind: "empty", message: response.message });
           break;
         case "error":
+          if (awaitingRoutes.current) {
+            awaitingRoutes.current = false;
+            setRouteMap({ failed: response.message });
+            break;
+          }
           // Before a run is loaded an error is the whole story; after, it's a notice.
           if (runLoaded.current) {
             setNotice(response.message);
@@ -170,7 +177,10 @@ export function App({ host }: { host: Host }) {
             if (canCompare) {
               host.post({ type: "diff", phases, grouping: currentGrouping, style });
             }
-            if (currentListing === "routes") host.post({ type: "routes", phases, compare: canCompare });
+            if (currentListing === "routes") {
+              awaitingRoutes.current = true;
+              host.post({ type: "routes", phases, compare: canCompare });
+            }
             if (response.summary.baselineCreatedAt === null) setCompare(false);
           }
           runLoaded.current = true;
@@ -198,6 +208,7 @@ export function App({ host }: { host: Host }) {
           setReview(response.review);
           break;
         case "routes":
+          awaitingRoutes.current = false;
           setRouteMap({ routes: response.routes, diff: response.diff });
           break;
         case "rulesChanged": {
@@ -338,6 +349,7 @@ export function App({ host }: { host: Host }) {
   };
   const requestRoutes = (nextPhases: Phase[], comparing: boolean) => {
     setRouteMap(null); // never show routes worked out for other options
+    awaitingRoutes.current = true;
     host.post({ type: "routes", phases: nextPhases, compare: comparing });
   };
   const showListing = (next: "tests" | "routes") => {
@@ -496,6 +508,10 @@ export function App({ host }: { host: Host }) {
           />
         ) : routeMap === null ? (
           <p className="muted">Grouping requests by route…</p>
+        ) : "failed" in routeMap ? (
+          <p className="muted" role="alert">
+            Couldn't group requests by route: {routeMap.failed}
+          </p>
         ) : (
           <RoutesPanel
             routes={routeMap.routes}

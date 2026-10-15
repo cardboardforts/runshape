@@ -125,12 +125,13 @@ function Variant({ row, selected, onSelect, onReplay, onOpenFunction }: { row: V
             ) : (
               <li key={i} className={`op-${entry.op}`} style={{ paddingLeft: `${entry.step.depth * 12}px` }} title={entry.step.label}>
                 <span className="mark">{entry.op === Op.Added ? "+" : entry.op === Op.Removed ? "−" : " "}</span>
-                {entry.step.symbol ? (
+                {/* A gone variant's steps, and a changed one's dropped steps, are the earlier recording's functions: this one may not have them. */}
+                {entry.step.symbol && entry.op !== Op.Removed && change !== Change.Removed ? (
                   <button type="button" className="link" onClick={() => onOpenFunction(entry.step.symbol!)}>
                     {entry.step.label}
                   </button>
                 ) : (
-                  <span className="external-step">{entry.step.label}</span>
+                  <span className={entry.step.symbol ? undefined : "external-step"}>{entry.step.label}</span>
                 )}
                 {entry.step.repeated && <span className="muted" title="ran more than once in a row"> ↻</span>}
               </li>

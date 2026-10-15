@@ -48,7 +48,7 @@ export interface RouteVariant {
 export interface VariantStep {
   /** What pairs a step across variants: the function's symbol key, or the external call. */
   key: string;
-  /** Below the handler, which is depth 0. */
+  /** Below the request's entry: the project code the framework called first is depth 0. */
   depth: number;
   label: string;
   /** Null for a call out of the program (a query, an HTTP call). */
@@ -93,7 +93,9 @@ export function buildRouteMap(run: Run, options: RouteMapOptions = {}): RouteMap
         variants: new Map(),
       };
       groups.set(id, group);
-      const shape = shapeOf(served?.handler ?? span, included, keyOf);
+      // The whole request, not just the handler: authentication, dependencies and renderers
+      // the project wrote run outside it, and a change to them changes the route.
+      const shape = shapeOf(span, included, keyOf);
       const reachedHandler = served?.handler != null;
       const key = `${reachedHandler ? "" : "before handler:"}${shape.map((node) => node.signature).join(",")}`;
       const variant = group.variants.get(key);
@@ -185,13 +187,12 @@ function diffVariants(before: RouteVariant[], after: RouteVariant[]): RouteVaria
   const result: RouteVariantDiff[] = after.map((variant) => {
     const previous = pairs.get(variant) ?? null;
     if (previous !== null) {
-      const [was, now] = [calledIn(previous), calledIn(variant)];
       return {
         variant,
         change: Change.Changed,
         previous,
-        nowCalls: [...now].filter((label) => !was.has(label)),
-        noLongerCalls: [...was].filter((label) => !now.has(label)),
+        nowCalls: callsOnlyIn(variant.steps, previous.steps),
+        noLongerCalls: callsOnlyIn(previous.steps, variant.steps),
         path: align(previous.steps, variant.steps, (step) => step.key).steps.map(({ op, before, after }) => ({ op, step: (after ?? before)! })),
         before: previous.requests.length,
         after: variant.requests.length,
@@ -215,6 +216,7 @@ function pairChanged(added: RouteVariant[], removed: RouteVariant[]): Map<RouteV
   const candidates: { now: RouteVariant; was: RouteVariant; shared: number }[] = [];
   for (const now of added) {
     for (const was of removed) {
+      if (was.reachedHandler !== now.reachedHandler) continue;
       const same = align(was.steps, now.steps, (step) => step.key).steps.filter((aligned) => aligned.op === Op.Same).length;
       const shared = same / Math.max(was.steps.length, now.steps.length, 1);
       if (shared >= CHANGED_VARIANT_MIN_SHARED) candidates.push({ now, was, shared });
@@ -231,8 +233,22 @@ function pairChanged(added: RouteVariant[], removed: RouteVariant[]): Map<RouteV
   return pairs;
 }
 
-function calledIn(variant: RouteVariant): Set<string> {
-  return new Set(variant.steps.map((step) => step.label));
+/**
+ * Functions `these` call that `those` never do, by key: two functions with one short name (a
+ * `serialize` in two modules) are different calls. Shown by label, with the namespace when
+ * the label alone would be ambiguous.
+ */
+function callsOnlyIn(these: VariantStep[], those: VariantStep[]): string[] {
+  const absent = new Set(those.map((step) => step.key));
+  const keysByLabel = new Map<string, Set<string>>();
+  for (const step of [...these, ...those]) keysByLabel.set(step.label, (keysByLabel.get(step.label) ?? new Set()).add(step.key));
+  const names = new Map<string, string>();
+  for (const step of these) {
+    if (absent.has(step.key) || names.has(step.key)) continue;
+    const ambiguous = (keysByLabel.get(step.label)?.size ?? 0) > 1 && step.symbol !== null;
+    names.set(step.key, ambiguous ? `${step.symbol!.namespace}.${step.label}` : step.label);
+  }
+  return [...names.values()];
 }
 
 interface ServedBy {
@@ -245,29 +261,71 @@ interface ServedBy {
  * The route whose handler ran under this request, nearest first. A class-based view (Django
  * REST) registers the class and runs one of its methods, and one class can serve several
  * patterns: the list and the detail, told apart by how many segments the path has. With no
- * handler seen, a pattern that matches the path segment by segment, placeholders matching any
- * one segment. The method isn't checked: a route's group is per method, so a DELETE that a
+ * handler seen, the pattern that matches the path (routeForPath). The method isn't checked: a route's group is per method, so a DELETE that a
  * GET-only route refused is its own group, "never reached the handler".
  */
 function servingRoute(request: Span, path: string, routes: Route[]): ServedBy | null {
+  const found: { span: Span; routes: Route[]; exact: boolean }[] = [];
   for (const span of subtree(request)) {
     if (span.fn.role !== Role.Source) continue;
     const symbol = span.fn.symbol;
-    const candidates = routes.filter((route) => route.handler.equals(symbol.path) || (symbol.ownerType !== null && route.handler.equals(symbol.owner)));
-    if (candidates.length === 0) continue;
+    const exact = routes.filter((route) => route.handler.equals(symbol.path));
+    const owned = symbol.ownerType === null ? [] : routes.filter((route) => route.handler.equals(symbol.owner));
+    if (exact.length > 0) found.push({ span, routes: exact, exact: true });
+    else if (owned.length > 0) found.push({ span, routes: owned, exact: false });
+  }
+  // A view class's own hooks (get_permissions, initial) run before the method that handles
+  // the request: the handler is the registered function itself, else a request-handling method.
+  const chosen =
+    found.find((entry) => entry.exact) ?? found.find((entry) => REQUEST_HANDLER_METHODS.has(entry.span.fn.symbol.name)) ?? found[0];
+  if (chosen !== undefined) {
     const segments = segmentsOf(path).length;
-    const route = candidates.find((candidate) => segmentsOf(readablePattern(candidate.path)).length === segments) ?? candidates[0]!;
-    return { route, handler: span };
+    const route = chosen.routes.find((candidate) => segmentsOf(readablePattern(candidate.path)).length === segments) ?? chosen.routes[0]!;
+    return { route, handler: chosen.span };
   }
   // Refused before its handler ran (authentication, a 404 from the router's own checks).
-  const route = routes.find((candidate) => patternMatches(readablePattern(candidate.path), path));
-  return route === undefined ? null : { route, handler: null };
+  const route = routeForPath(routes, path);
+  return route === null ? null : { route, handler: null };
 }
 
-function patternMatches(pattern: string, path: string): boolean {
+/**
+ * What a class-based view names the method that answers a request: Django's per-verb methods
+ * and Django REST's viewset actions.
+ */
+const REQUEST_HANDLER_METHODS = new Set([
+  "get", "post", "put", "patch", "delete", "head", "options",
+  "list", "create", "retrieve", "update", "partial_update", "destroy",
+]);
+
+/**
+ * The route whose pattern matches a path segment by segment: a placeholder matches one
+ * segment, a trailing "{rest...}" any number. Of several, the most specific (most literal
+ * segments) wins, as in Go's mux; a tie goes to the first listed, as in Django's and
+ * Starlette's ordered tables.
+ */
+export function routeForPath(routes: Route[], path: string): Route | null {
+  let best: { route: Route; literals: number } | null = null;
+  for (const route of routes) {
+    const literals = literalSegmentsMatching(readablePattern(route.path), path);
+    if (literals !== null && (best === null || literals > best.literals)) best = { route, literals };
+  }
+  return best?.route ?? null;
+}
+
+/** How many of the pattern's segments matched literally, or null when it doesn't match. */
+function literalSegmentsMatching(pattern: string, path: string): number | null {
   const want = segmentsOf(pattern);
   const have = segmentsOf(path);
-  return want.length === have.length && want.every((segment, i) => /^\{\w+\}$/.test(segment) || segment === have[i]);
+  let literals = 0;
+  for (let i = 0; i < want.length; i += 1) {
+    const segment = want[i]!;
+    if (/^\{\w+\.\.\.\}$/.test(segment)) return i === want.length - 1 ? literals : null;
+    if (i >= have.length) return null;
+    if (/^\{\w+\}$/.test(segment)) continue;
+    if (segment !== have[i]) return null;
+    literals += 1;
+  }
+  return want.length === have.length ? literals : null;
 }
 
 function* subtree(span: Span): Generator<Span> {
@@ -277,15 +335,17 @@ function* subtree(span: Span): Generator<Span> {
 
 /**
  * One way of writing every framework's patterns, for showing them: FastAPI's and Go's
- * "{slug}", Django's "<int:pk>" and "(?P<slug>…)" regexes with their "^" and "/?" anchors.
+ * "{slug}" (and Go's "{$}" end marker), Django's "<int:pk>" and "(?P<slug>…)" regexes with
+ * their "^", "$" and "/?" anchors.
  */
 export function readablePattern(pattern: string): string {
   return pattern
     .replace(/\(\?P<(\w+)>(?:[^()\\]|\\.|\([^()]*\))*\)/g, "{$1}")
     .replace(/<(?:\w+:)?(\w+)>/g, "{$1}")
     .replace(/\^/g, "")
-    .replace(/\/\?$/, "")
+    .replace(/\{\$\}$/, "")
     .replace(/\$$/, "")
+    .replace(/\/\?$/, "")
     .replace(/\\(.)/g, "$1");
 }
 
@@ -344,6 +404,7 @@ function collapseRepeats(nodes: ShapeNode[]): ShapeNode[] {
     const previous = kept[kept.length - 1];
     if (previous !== undefined && previous.signature === current.signature) {
       previous.repeated = true;
+      mergeRepeats(previous.children, current.children);
       continue;
     }
     kept.push(current);
@@ -372,11 +433,11 @@ function rankVariants(found: { key: string; steps: VariantStep[]; reachedHandler
     (a, b) => Number(b.reachedHandler) - Number(a.reachedHandler) || b.requests.length - a.requests.length || b.steps.length - a.steps.length,
   );
   const main = ranked[0];
-  const mainCalls = new Set(main?.steps.map((step) => step.label));
   return ranked.map((variant) => {
     if (variant === main) return { ...variant, isMain: true, skips: [], adds: [] };
-    const calls = new Set(variant.steps.map((step) => step.label));
-    if (!variant.reachedHandler) return { ...variant, isMain: false, skips: [], adds: [...calls] };
-    return { ...variant, isMain: false, skips: [...mainCalls].filter((label) => !calls.has(label)), adds: [...calls].filter((label) => !mainCalls.has(label)) };
+    const adds = callsOnlyIn(variant.steps, main!.steps);
+    // Told against a path it never got to, it would skip all of it.
+    if (!variant.reachedHandler) return { ...variant, isMain: false, skips: [], adds };
+    return { ...variant, isMain: false, skips: callsOnlyIn(main!.steps, variant.steps), adds };
   });
 }
