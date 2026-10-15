@@ -3,10 +3,12 @@
  * node_modules, so nothing else stops @runshape/trace from importing @runshape/views.
  *
  *   trace  <-  architecture  <-  views  <-  core  <-  webview, extension, cli
+ *                                                     library  <-  cli
  *
  * Each package may import only the packages before it, and lists each one it imports in its
  * package.json. The domain packages import nothing from Node, VS Code or React; the adapters
- * reach the domain only through @runshape/core. The TypeScript recorder stands alone: it writes
+ * reach the domain only through @runshape/core. The library (recordings on disk, git refs) is a
+ * Node adapter of its own, for the CLI and the demo's dev server. The TypeScript recorder stands alone: it writes
  * the trace format, it doesn't share code with the viewer.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -24,7 +26,8 @@ const ALLOWED: Record<string, string[]> = {
   "packages/core": ["trace", "architecture", "views"],
   "packages/webview": ["core"],
   "packages/extension": ["core"],
-  "packages/cli": ["core"],
+  "packages/cli": ["core", "library"],
+  "packages/library": [],
   "recorder-ts": [],
 };
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */

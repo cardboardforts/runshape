@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "runshape-review-md": "dist/runshape-review-md.mjs" },
+  "bin": {
+    "runshape-review-md": "dist/runshape-review-md.mjs",
+    "runshape": "dist/runshape.mjs"
+  },
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc -p ."
   },
-  "dependencies": { "@runshape/core": "0.1.0" }
+  "dependencies": {
+    "@runshape/core": "0.1.0",
+    "@runshape/library": "0.1.0"
+  }
 }
