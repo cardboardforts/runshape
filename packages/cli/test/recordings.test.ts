@@ -12,7 +12,7 @@
  * A real git repository per test; the recorder is the one thing faked: it writes a real
  * fixture recording (go-shop's, five tests) instead of running vitest for a minute.
  */
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +23,8 @@ import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
 const FIXTURE = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "go-shop");
 const NOW = new Date("2026-10-14T12:00:00Z");
+/** Above any pid the OS hands out (macOS and Linux cap well below it). */
+const DEAD_PID = 99_999_999;
 
 class FixtureRecorder implements Recorder {
   readonly recorded: string[] = [];
@@ -65,6 +67,7 @@ describe("runshape record", () => {
       dirty: false,
       recordedAt: NOW.toISOString(),
       recorder: "recorder-go 0.1.0",
+      recorderSource: expect.stringMatching(/^[0-9a-f]{16}$/),
       tests: { total: 5, failed: 0 },
     });
     // A recording directory is itself a traces directory: runshape-review-md and the extension read it.
@@ -103,14 +106,27 @@ describe("runshape record", () => {
     expect(gitIn(root)("rev-parse", "main")).toBe(commits.second);
   });
 
+  test("--fetch records what it fetched, even beside a local branch named like the remote one", async () => {
+    const { root, commits } = repository();
+    const origin = join(mkdtempSync(join(tmpdir(), "runshape-origin-")), "origin");
+    gitIn(root)("clone", "--quiet", "--branch", "main", root, origin);
+    const upstream = commitIn(origin, "Merged upstream");
+    gitIn(root)("remote", "add", "origin", origin);
+    gitIn(root)("branch", "origin/main", commits.first!); // an easy accident: git checkout -b origin/main
+
+    const { lines } = await run(root, ["record", "main", "--fetch"]);
+
+    expect(lines.at(-1)).toBe(`recorded ${upstream.slice(0, 12)}: 5 tests, 0 failed`);
+  });
+
   test("a recording that fails leaves nothing behind, and says why", async () => {
-    const { root } = repository();
+    const { root, commits } = repository();
 
     const { code, lines } = await run(root, ["record", "main"], new FixtureRecorder(true));
 
     expect({ code, last: lines.at(-1), left: existsSync(join(root, ".runshape", "recordings")) ? readdirSync(join(root, ".runshape", "recordings")) : [] }).toEqual({
       code: 1,
-      last: "runshape: recording main failed: vitest crashed",
+      last: `runshape: recording main (${commits.second!.slice(0, 12)} Second) failed: vitest crashed`,
       left: [],
     });
   });
@@ -125,6 +141,34 @@ describe("runshape record", () => {
 });
 
 describe("runshape compare", () => {
+  test("comparing a recording with itself is refused before anything is recorded", async () => {
+    const { root } = repository();
+
+    const same = [await run(root, ["compare", "working", "working"]), await run(root, ["compare", "main", "main"])];
+
+    expect(same.map(({ code, lines, recorder }) => ({ code, lines, recorded: recorder.recorded }))).toEqual([
+      { code: 1, lines: ["runshape: working and working are the same recording: nothing to compare"], recorded: [] },
+      { code: 1, lines: ["runshape: main and main are the same recording: nothing to compare"], recorded: [] },
+    ]);
+  });
+
+  test("a base recorded by another version of the recorder is recorded again, so only the code differs", async () => {
+    // A cached base and a fresh head recorded by different recorders would show the
+    // recorder's change as the branch's.
+    const { root, commits } = repository();
+    await run(root, ["record", "main"]);
+    mkdirSync(join(root, "recorder-ts"));
+    writeFileSync(join(root, "recorder-ts", "runtime.ts"), "changed");
+
+    const { lines, recorder } = await run(root, ["compare", "main"]);
+
+    expect({ recorded: recorder.recorded, first: lines[0] }).toEqual({
+      recorded: [commits.second!.slice(0, 7), "working"],
+      first: `main (${commits.second!.slice(0, 12)} Second) was recorded by another version of recorder-ts: recording it again`,
+    });
+  });
+
+
   test("records what's missing, then links the two: by default against the working tree", async () => {
     const { root, commits } = repository();
     const main = commits.second!.slice(0, 12);
@@ -160,6 +204,28 @@ describe("runshape list", () => {
         "Compare any two: npm run runshape -- compare <base> [<head>], or browse http://localhost:5173/demo/index.html",
       ].join("\n"),
     );
+  });
+
+  test("one recording at a time: a second run waits for no one, it refuses; a lock left by a run that died is taken over", async () => {
+    const { root } = repository();
+    const lock = join(root, ".runshape", "recordings", ".lock");
+    mkdirSync(join(root, ".runshape", "recordings"), { recursive: true });
+    writeFileSync(lock, String(process.pid)); // this very process: alive
+    const refused = await run(root, ["record", "main"]);
+    writeFileSync(lock, String(DEAD_PID));
+    // An interrupted run's half-written recording, hidden, ~100 MB: cleared by the next run.
+    mkdirSync(join(root, ".runshape", "recordings", ".incoming-0123456789ab"));
+    const recovered = await run(root, ["record", "main"]);
+
+    expect({
+      refused: refused.lines,
+      recovered: recovered.lines.at(-1)?.startsWith("recorded "),
+      left: readdirSync(join(root, ".runshape", "recordings")).filter((name) => name.startsWith(".")),
+    }).toEqual({
+      refused: [`runshape: another recording is running (process ${process.pid}); if it isn't, delete ${lock}`],
+      recovered: true,
+      left: [],
+    });
   });
 
   test("forget deletes a recording; an id that isn't one is an error", async () => {

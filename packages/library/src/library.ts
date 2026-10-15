@@ -16,6 +16,8 @@ export interface RecordingMetadata {
   dirty: boolean;
   recordedAt: string;
   recorder: string;
+  /** A hash of the recorder's source when it recorded: recordings by different recorders differ for that alone. */
+  recorderSource: string;
   tests: { total: number; failed: number };
 }
 
@@ -51,6 +53,9 @@ export const METADATA_FILE = "recording.json";
 const RECORDING_ID_LENGTH = 12;
 /** A directory still being written; renamed into place when its recording is complete. */
 export const INCOMING_PREFIX = ".incoming-";
+
+/** A recording's folder name: a commit's first hex digits, or the working tree's. */
+export const RECORDING_ID = new RegExp(`^([0-9a-f]{${RECORDING_ID_LENGTH}}|${WORKING_TREE_ID})$`);
 
 export function recordingIdFor(commit: string): string {
   return commit.slice(0, RECORDING_ID_LENGTH);
@@ -98,19 +103,27 @@ export class RecordingLibrary {
     const recordings: RecordingMetadata[] = [];
     const problems: string[] = [];
     for (const name of names) {
-      // Hidden: a recording still being written (INCOMING_PREFIX), or not a recording at all.
-      if (name.startsWith(".")) continue;
+      // Hidden ones are still being written (INCOMING_PREFIX); other names aren't recordings.
+      if (!RECORDING_ID.test(name)) continue;
       let text: string;
       try {
         text = await readFile(join(this.directory, name, METADATA_FILE), "utf8");
       } catch {
         continue; // not a recording: a stray directory or file
       }
+      let metadata: RecordingMetadata;
       try {
-        recordings.push(JSON.parse(text) as RecordingMetadata);
+        metadata = JSON.parse(text) as RecordingMetadata;
       } catch (error) {
         problems.push(`${name}: ${METADATA_FILE} can't be read (${error instanceof Error ? error.message : String(error)})`);
+        continue;
       }
+      // The folder is the id: anything that acts on a recording (forget, a link) uses it.
+      if (metadata.id !== name) {
+        problems.push(`${name}: ${METADATA_FILE} says it is ${JSON.stringify(metadata.id)}`);
+        continue;
+      }
+      recordings.push(metadata);
     }
     recordings.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
     return { recordings, problems };
@@ -120,7 +133,8 @@ export class RecordingLibrary {
     const [branch, commit, status] = await Promise.all([
       this.git.run(["symbolic-ref", "--quiet", "--short", "HEAD"]).then((name) => name.trim(), () => null),
       this.git.run(["rev-parse", "HEAD"]),
-      this.git.run(["status", "--porcelain", "--untracked-files=no"]),
+      // Untracked files count: a new test file not added yet still runs.
+      this.git.run(["status", "--porcelain"]),
     ]);
     return { branch, commit: commit.trim(), dirty: status.trim() !== "" };
   }

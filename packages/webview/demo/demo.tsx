@@ -78,12 +78,15 @@ function demoHost(params: URLSearchParams): Host {
   const app = params.get("app") ?? "django";
   const listeners = new Set<(response: UiResponse) => void>();
   const emit = (response: UiResponse) => listeners.forEach((listener) => listener(response));
-  const head = params.get("head") ?? params.get("recording");
   const selfLabel = app.startsWith("self:") ? app.slice("self:".length) : null;
+  const pair = comparedPair(params);
+  const single = params.get("recording");
   const traces: TraceFiles =
-    head !== null
-      ? libraryTraces(head, params.get("base"))
-      : { readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) };
+    pair !== null
+      ? libraryTraces(pair.head, pair.base)
+      : single !== null
+        ? libraryTraces(single, null)
+        : { readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) };
   // Fixtures named "<app>-<change>" (django-feed-fix, fastapi-slug-refactor) share the app's source.
   const baseApp = app.split("-")[0] ?? app;
   const readFixtureSource = fixtureReader(baseApp, sourceFiles, "source/");
@@ -121,10 +124,17 @@ function demoHost(params: URLSearchParams): Host {
   };
 }
 
-/** What the URL asks to open; with nothing asked, the list of what there is. */
+/** ?base=…&head=…: both, or it isn't a comparison. */
+function comparedPair(params: URLSearchParams): { base: string; head: string } | null {
+  const base = params.get("base");
+  const head = params.get("head");
+  return base !== null && head !== null ? { base, head } : null;
+}
+
+/** What the URL asks to open; with nothing (or half a comparison) asked, the list of what there is. */
 function Demo() {
   const params = new URLSearchParams(location.search);
-  if (!params.has("app") && !params.has("recording") && !params.has("head")) {
+  if (!params.has("app") && !params.has("recording") && comparedPair(params) === null) {
     const examples = Object.keys(traceFiles)
       .map((path) => path.match(/fixtures\/([^/]+)\/latest\.json$/)?.[1])
       .filter((name) => name !== undefined);

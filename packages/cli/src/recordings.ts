@@ -1,7 +1,7 @@
 // npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] | forget <id>
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { loadLatestRun, Outcome } from "@runshape/core";
@@ -54,18 +54,27 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         return 0;
       case "record":
         if (names.length === 0) throw new UsageError(`record what? ${USAGE}`);
-        for (const name of names) await recordings.ensure(name);
+        await recordings.exclusively(async () => {
+          for (const name of names) await recordings.ensure(await recordings.plan(name, { fetch: true }));
+        });
         return 0;
       case "compare": {
         if (names.length < 1 || names.length > 2) throw new UsageError(`compare <base> [<head>]\n${USAGE}`);
-        const base = await recordings.ensure(names[0]!);
-        const head = await recordings.ensure(names[1] ?? WORKING_TREE_ID);
-        dependencies.print(`open ${DEMO_URL}?base=${base}&head=${head} (npm run dev -w packages/webview)`);
+        const [baseName, headName = WORKING_TREE_ID] = names as [string, string?];
+        await recordings.exclusively(async () => {
+          // --fetch is for the base ("the latest main"): the head is usually yours.
+          const base = await recordings.plan(baseName, { fetch: true });
+          const head = await recordings.plan(headName, { fetch: false });
+          if (base.id === head.id) throw new RecordingError(`${baseName} and ${headName} are the same recording: nothing to compare`);
+          await recordings.ensure(base, { sameRecorder: true });
+          await recordings.ensure(head, { sameRecorder: true });
+          dependencies.print(`open ${DEMO_URL}?base=${base.id}&head=${head.id} (npm run dev -w packages/webview)`);
+        });
         return 0;
       }
       case "forget":
         if (names.length !== 1) throw new UsageError(`forget <id>\n${USAGE}`);
-        await recordings.forget(names[0]!);
+        await recordings.exclusively(() => recordings.forget(names[0]!));
         return 0;
       default:
         throw new UsageError(`unknown command ${command}\n${USAGE}`);
@@ -84,6 +93,22 @@ const USAGE = "usage: npm run runshape -- list | record <ref|working>... [--fetc
 
 class RecordingError extends Error {}
 
+/** What a name will record as, worked out before anything is recorded. */
+interface Plan {
+  id: string;
+  /** How the name reads in messages: "main (ca63db8816d7 Routes: …)". */
+  label: string;
+  target: RecordTarget;
+  summary: CommitSummary;
+  tree: { branch: string | null; dirty: boolean };
+}
+
+/** Taken while recording or forgetting, so two runs can't write over each other's recordings. */
+const LOCK_FILE = ".lock";
+/** The recorder's own source, hashed into each recording: its tests don't change what it records. */
+const RECORDER_DIRECTORY = "recorder-ts";
+const RECORDER_SOURCE_SKIPPED = new Set(["node_modules", "test"]);
+
 class Recordings {
   private readonly library: RecordingLibrary;
   private readonly git: GitCli;
@@ -96,31 +121,60 @@ class Recordings {
     this.library = new RecordingLibrary(join(dependencies.root, ".runshape", "recordings"), this.git);
   }
 
-  /**
-   * The recording of `name`, made now if there isn't one. A commit is recorded once; the working
-   * tree every time it's asked for, since it changes under you.
-   */
-  async ensure(name: string): Promise<string> {
-    const { print } = this.dependencies;
+  /** Runs `work` holding the library's lock, taking over a lock whose process is gone. */
+  async exclusively(work: () => Promise<void>): Promise<void> {
+    await mkdir(this.library.directory, { recursive: true });
+    const lock = join(this.library.directory, LOCK_FILE);
+    try {
+      await writeFile(lock, String(process.pid), { flag: "wx" });
+    } catch {
+      const holder = Number((await readFile(lock, "utf8").catch(() => "")).trim());
+      if (Number.isInteger(holder) && holder > 0 && isRunning(holder)) {
+        throw new RecordingError(`another recording is running (process ${holder}); if it isn't, delete ${lock}`);
+      }
+      await writeFile(lock, String(process.pid));
+    }
+    try {
+      await this.clearInterrupted();
+      await work();
+    } finally {
+      await rm(lock, { force: true });
+    }
+  }
+
+  /** What `name` names: "working", or a branch, tag or commit (fetched from origin first with --fetch). */
+  async plan(name: string, { fetch }: { fetch: boolean }): Promise<Plan> {
     if (name === WORKING_TREE_ID) {
       const working = await this.library.workingTree();
       const summary = await this.library.resolve("HEAD");
-      print(`recording the working tree (${working.branch ?? "detached"}${working.dirty ? ", with uncommitted changes" : ""})…`);
-      await this.make(WORKING_TREE_ID, { kind: "working" }, summary, { branch: working.branch, dirty: working.dirty }, "the working tree");
-      return WORKING_TREE_ID;
+      const where = `${working.branch ?? "detached"}${working.dirty ? ", with uncommitted changes" : ""}`;
+      return { id: WORKING_TREE_ID, label: `the working tree (${where})`, target: { kind: "working" }, summary, tree: { branch: working.branch, dirty: working.dirty } };
     }
-    const ref = this.options.fetch ? await this.fetched(name) : name;
+    const ref = fetch && this.options.fetch ? await this.fetched(name) : name;
     const summary = await this.library.resolve(ref);
     const id = recordingIdFor(summary.commit);
-    const label = `${ref} (${id} ${summary.subject})`;
-    const recorded = (await this.library.recordings()).recordings.some((r) => r.id === id);
-    if (recorded && !this.options.again) {
-      print(`${label} is recorded already; record it again with --again`);
-      return id;
+    const shown = ref.replace(/^refs\/remotes\//, "");
+    return { id, label: `${shown} (${id} ${summary.subject})`, target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } };
+  }
+
+  /**
+   * The planned recording, made now if there isn't one. A commit is recorded once; the working
+   * tree every time, since it changes under you. With `sameRecorder` (compare), a commit
+   * recorded by another version of the recorder is recorded again.
+   */
+  async ensure(plan: Plan, { sameRecorder = false } = {}): Promise<void> {
+    const { print } = this.dependencies;
+    const existing = (await this.library.recordings()).recordings.find((r) => r.id === plan.id);
+    if (existing && plan.id !== WORKING_TREE_ID && !this.options.again) {
+      if (!sameRecorder || existing.recorderSource === (await this.recorderSource())) {
+        print(`${plan.label} is recorded already; record it again with --again`);
+        return;
+      }
+      print(`${plan.label} was recorded by another version of ${RECORDER_DIRECTORY}: recording it again`);
+    } else {
+      print(`recording ${plan.label}…`);
     }
-    print(`recording ${label}…`);
-    await this.make(id, { kind: "commit", commit: summary.commit }, summary, { branch: null, dirty: false }, ref);
-    return id;
+    await this.make(plan);
   }
 
   async list(): Promise<void> {
@@ -135,20 +189,48 @@ class Recordings {
     this.dependencies.print(`forgot ${recording.id} (${recording.subject})`);
   }
 
-  /** Fetches the branch from origin and names origin's copy: local branches stay as they are. */
+  /**
+   * Fetches the branch from origin and names origin's copy in full: a local branch that
+   * happens to be called "origin/main" would win the short name. Local branches stay as they are.
+   */
   private async fetched(name: string): Promise<string> {
     const branch = name.startsWith(`${REMOTE}/`) ? name.slice(REMOTE.length + 1) : name;
     this.dependencies.print(`fetching ${branch} from ${REMOTE}…`);
-    await this.git.run(["fetch", "--quiet", REMOTE, "--end-of-options", branch]);
-    return `${REMOTE}/${branch}`;
+    await this.git.run(["fetch", "--quiet", REMOTE, "--end-of-options", `refs/heads/${branch}:refs/remotes/${REMOTE}/${branch}`]);
+    return `refs/remotes/${REMOTE}/${branch}`;
+  }
+
+  /** Half-written recordings an interrupted run left: nothing else writes while the lock is held. */
+  private async clearInterrupted(): Promise<void> {
+    for (const name of await readdir(this.library.directory)) {
+      if (name.startsWith(INCOMING_PREFIX) || name.startsWith(REPLACED_PREFIX)) await rm(join(this.library.directory, name), { recursive: true, force: true });
+    }
+  }
+
+  /** The recorder's source as it is now: what recorded a recording made now. */
+  private async recorderSource(): Promise<string> {
+    const hash = createHash("sha256");
+    const directory = join(this.dependencies.root, RECORDER_DIRECTORY);
+    const walk = async (relative: string): Promise<void> => {
+      const entries = await readdir(join(directory, relative), { withFileTypes: true }).catch(() => []);
+      for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+        if (RECORDER_SOURCE_SKIPPED.has(entry.name)) continue;
+        const path = join(relative, entry.name);
+        if (entry.isDirectory()) await walk(path);
+        else if (entry.isFile()) hash.update(path).update("\0").update(await readFile(join(directory, path))).update("\0");
+      }
+    };
+    await walk("");
+    return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
   }
 
   /** Records into a directory of its own, and moves it into place only once it's complete. */
-  private async make(id: string, target: RecordTarget, summary: CommitSummary, tree: { branch: string | null; dirty: boolean }, what: string): Promise<void> {
+  private async make(plan: Plan): Promise<void> {
+    const { id, target, summary, tree } = plan;
     const incoming = join(this.library.directory, `${INCOMING_PREFIX}${id}`);
-    await rm(incoming, { recursive: true, force: true });
     await mkdir(incoming, { recursive: true });
     try {
+      const recorderSource = await this.recorderSource();
       await this.dependencies.recorder.record(target, incoming);
       const run = await loadLatestRun({ readText: (path) => readFile(join(incoming, path), "utf8") });
       const metadata: RecordingMetadata = {
@@ -160,16 +242,46 @@ class Recordings {
         dirty: tree.dirty,
         recordedAt: this.dependencies.now().toISOString(),
         recorder: run.recorderVersion ?? "unknown",
+        recorderSource,
         tests: { total: run.scenarios.length, failed: run.scenarios.filter((s) => FAILING.has(s.outcome)).length },
       };
       await writeFile(join(incoming, METADATA_FILE), `${JSON.stringify(metadata, null, 2)}\n`);
-      await rm(join(this.library.directory, id), { recursive: true, force: true });
-      await rename(incoming, join(this.library.directory, id));
+      await this.replace(id, incoming);
       this.dependencies.print(`recorded ${id}: ${metadata.tests.total} tests, ${metadata.tests.failed} failed`);
     } catch (error) {
       await rm(incoming, { recursive: true, force: true });
-      throw new RecordingError(`recording ${what} failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new RecordingError(`recording ${plan.label} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /** The old recording is set aside, not deleted, until the new one is in place. */
+  private async replace(id: string, incoming: string): Promise<void> {
+    const final = join(this.library.directory, id);
+    const replaced = join(this.library.directory, `${REPLACED_PREFIX}${id}`);
+    const hadOne = await rename(final, replaced).then(() => true, () => false);
+    try {
+      await rename(incoming, final);
+    } catch (error) {
+      if (hadOne) await rename(replaced, final);
+      throw error;
+    }
+    if (hadOne) await rm(replaced, { recursive: true, force: true });
+  }
+}
+
+/** A recording being replaced, kept until its replacement is in place. */
+const REPLACED_PREFIX = ".replaced-";
+/** Enough of the recorder's source hash to tell two versions apart. */
+const RECORDER_SOURCE_DIGITS = 16;
+
+/** Whether a process exists: signal 0 checks without sending anything. */
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it exists, it's someone else's.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 

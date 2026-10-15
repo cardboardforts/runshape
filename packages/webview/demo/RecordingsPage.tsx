@@ -152,7 +152,8 @@ function Library({ overview }: { overview: LibraryOverview }) {
 /** Pick a base and a head among the recordings; main and the working tree by default. */
 function ComparePicker({ recordings, refs }: { recordings: RecordingMetadata[]; refs: RefSummary[] }) {
   const [base, setBase] = useState(() => defaultBase(recordings, refs));
-  const [head, setHead] = useState(() => recordings.find((r) => r.id === "working")?.id ?? recordings[0]!.id);
+  // The working tree, else the newest recording that isn't the base.
+  const [head, setHead] = useState(() => recordings.find((r) => r.id === "working")?.id ?? recordings.find((r) => r.id !== base)?.id ?? base);
   const option = (recording: RecordingMetadata) => (
     <option key={recording.id} value={recording.id}>
       {[recording.id === "working" ? "working tree" : recording.id.slice(0, 7), ...namesFor(recording, refs).filter((name) => !name.startsWith("working tree"))].join(" · ")} — {recording.subject}

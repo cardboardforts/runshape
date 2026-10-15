@@ -29,6 +29,8 @@ export function repository(): { root: string; commits: Record<string, string> } 
   const root = mkdtempSync(join(tmpdir(), "runshape-library-"));
   const git = gitIn(root);
   git("init", "--quiet", "--initial-branch=main");
+  // As Runshape's own .gitignore has it: recordings aren't changes to the tree.
+  writeFileSync(join(root, ".git", "info", "exclude"), ".runshape/\n");
   const commit = (subject: string) => commitIn(root, subject);
   const first = commit("First");
   git("update-ref", "refs/remotes/origin/main", first);

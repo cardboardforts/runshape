@@ -4,6 +4,10 @@ import { execFileSync } from "node:child_process";
 import { runRecordings } from "./recordings";
 import { ShellRecorder } from "./shell-recorder";
 
+// Ctrl-C reaches the recorder too, which stops; this process then cleans up its half-written
+// recording and the lock instead of dying with them in place.
+process.on("SIGINT", () => console.log("runshape: stopping…"));
+
 const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 process.exitCode = await runRecordings(process.argv.slice(2), {
   root,

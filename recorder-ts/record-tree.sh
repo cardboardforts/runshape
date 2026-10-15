@@ -16,6 +16,9 @@ WORKTREE="$REPO/.runshape/worktrees/$(basename "$OUT")"
 
 cleanup() {
   [ -d "$WORKTREE" ] && git -C "$REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+  # A run killed outright leaves git a worktree whose folder may be gone since: forget it, or
+  # adding it again fails ("missing but already registered worktree").
+  git -C "$REPO" worktree prune >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 cleanup

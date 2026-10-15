@@ -210,10 +210,16 @@ Accepted risks:
   at least half the longer path in order (`CHANGED_VARIANT_MIN_SHARED`).
 - Recordings kept per commit (`npm run runshape`, packages/library): only the TypeScript
   recorder (Runshape's own tests) records into them so far; Python's `runshape-review` and Go's
-  recorder still keep their own latest/previous pair. A commit's recording is made by this
-  checkout's recorder, so one made before a recorder change isn't re-recorded unless asked
-  (`--again`). Nothing prunes old recordings yet (`forget` deletes one). The demo's dev server
-  reads .runshape/recordings and runs `git` for the list (local only, vite's default host).
+  recorder still keep their own latest/previous pair. Each recording stores a hash of the
+  recorder's source; `compare` records the base again when it was made by another version, so
+  only the code under test differs (`record` alone keeps what's there; `--again` forces).
+  One run at a time: a second one refuses while `.runshape/recordings/.lock` names a live
+  process. A recording is written beside the library and moved into place when complete; an
+  interrupted one is cleared by the next run. `--fetch` fetches a branch (not a tag or a
+  commit) and, on compare, only the base. Untracked files count as uncommitted changes (a new
+  test file runs). Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
+  server reads .runshape/recordings and runs `git` for the list (local only; vite's host check
+  and CORS apply before its routes).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before

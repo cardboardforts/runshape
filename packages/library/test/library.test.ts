@@ -24,7 +24,7 @@ function recordAt(library: string, metadata: RecordingMetadata): void {
 }
 
 function metadata(id: string, commit: string, subject: string, recordedAt: string, extra: Partial<RecordingMetadata> = {}): RecordingMetadata {
-  return { id, commit, subject, committedAt: "2026-10-01T10:00:00Z", branch: null, dirty: false, recordedAt, recorder: "recorder-ts", tests: { total: 3, failed: 0 }, ...extra };
+  return { id, commit, subject, committedAt: "2026-10-01T10:00:00Z", branch: null, dirty: false, recordedAt, recorder: "recorder-ts", recorderSource: "0123456789abcdef", tests: { total: 3, failed: 0 }, ...extra };
 }
 
 describe("RecordingLibrary", () => {
@@ -57,23 +57,39 @@ describe("RecordingLibrary", () => {
     const directory = join(root, ".runshape", "recordings");
     // Its metadata written, then interrupted before it was moved into place.
     recordAt(directory, metadata(".incoming-abc", commits.first!, "First", "2026-10-02T09:00:00Z"));
-    mkdirSync(join(directory, "broken"), { recursive: true });
-    writeFileSync(join(directory, "broken", "recording.json"), "{not json");
+    const broken = commits.second!.slice(0, 12);
+    mkdirSync(join(directory, broken), { recursive: true });
+    writeFileSync(join(directory, broken, "recording.json"), "{not json");
+    // The folder name is the recording's id: metadata claiming another (a path, say) isn't
+    // believed, or forgetting it would delete wherever it points (second-model review).
+    recordAt(directory, metadata("aaaaaaaaaaaa", commits.first!, "First", "2026-10-02T09:00:00Z"));
+    writeFileSync(join(directory, "aaaaaaaaaaaa", "recording.json"), JSON.stringify(metadata("../../victim", commits.first!, "First", "2026-10-02T09:00:00Z")));
+    recordAt(directory, metadata("notes", commits.first!, "First", "2026-10-02T09:00:00Z"));
 
     const overview = await new RecordingLibrary(directory, new GitCli(root)).overview();
 
-    expect({ recordings: overview.recordings, problems: overview.problems }).toEqual({
+    expect({ recordings: overview.recordings, problems: [...overview.problems].sort() }).toEqual({
       recordings: [],
-      problems: [expect.stringMatching(/^broken: recording.json can't be read/)],
+      problems: [
+        `${broken}: recording.json can't be read (Expected property name or '}' in JSON at position 1 (line 1 column 2))`,
+        'aaaaaaaaaaaa: recording.json says it is "../../victim"',
+      ],
     });
   });
 
   test("with no recordings directory yet, there's nothing recorded and every tip is recordable", async () => {
     const { root } = repository();
 
+    // A new file not added yet is still in the tree the tests run against.
+    writeFileSync(join(root, "new.test.ts"), "");
+
     const overview = await new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root)).overview();
 
-    expect({ recordings: overview.recordings.length, unrecorded: overview.refs.filter((ref) => ref.recordingId === null).length }).toEqual({ recordings: 0, unrecorded: 3 });
+    expect({ recordings: overview.recordings.length, unrecorded: overview.refs.filter((ref) => ref.recordingId === null).length, dirty: overview.working.dirty }).toEqual({
+      recordings: 0,
+      unrecorded: 3,
+      dirty: true,
+    });
   });
 
   test("a ref resolves to its commit; a name git doesn't know is an error that says so", async () => {
