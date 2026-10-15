@@ -380,10 +380,10 @@ func scenarioIndex(runDirectory string) ([]scenarioEntry, error) {
 	index := []scenarioEntry{}
 	for _, name := range names {
 		var scenario struct {
-			Nodeid         string  `json:"nodeid"`
-			Outcome        string  `json:"outcome"`
-			DurationUs     int64   `json:"durationUs"`
-			Events         []any   `json:"events"`
+			Nodeid         string   `json:"nodeid"`
+			Outcome        string   `json:"outcome"`
+			DurationUs     int64    `json:"durationUs"`
+			Events         []any    `json:"events"`
 			RecorderErrors []string `json:"recorderErrors"`
 		}
 		data, err := os.ReadFile(filepath.Join(runDirectory, "scenarios", name))

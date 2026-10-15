@@ -17,7 +17,7 @@ type fakeT struct{ failed bool }
 func (f fakeT) Name() string   { return "TestSample" }
 func (f fakeT) Failed() bool   { return f.failed }
 func (f fakeT) Skipped() bool  { return false }
-func (f fakeT) Cleanup(func())  {}
+func (f fakeT) Cleanup(func()) {}
 
 type service struct{ calls int }
 
@@ -99,12 +99,13 @@ func TestRecordsTheCallTreeObjectsAndClosuresLines(t *testing.T) {
 		"  Service.Place on Service#1 [11 12] thread=false",
 		"    check [21] thread=false",
 		"    check [21] thread=false",
-		// On the goroutine Place started: under Place, which was running when it was created.
-		"    work [] thread=true",
+		// The goroutine was started by the test's closure, not by a recorded function, so it
+		// hangs off the test (record_test's probe server shows a handler's goroutine under it).
+		"  work [] thread=true",
 		"  Service.Place on Service#1 [11 12] thread=false",
 		"    check [21] thread=false",
 		"    check [21] thread=false",
-		"    work [] thread=true",
+		"  work [] thread=true",
 	}
 	if lines := describe(got); !reflect.DeepEqual(lines, want) {
 		t.Errorf("tree:\n got %q\nwant %q", lines, want)

@@ -171,10 +171,15 @@ Accepted risks:
   share one scenario slot and aren't recorded reliably;
   each line is recorded once per call, and a caller's first 50 calls of a function are kept
   (recorderErrors says what was left out).
-- Recording a running Go program (`runshape-go run`): a request is a scenario from its outermost
-  handler's entry to its return, so work it hands to a goroutine that outlives it is cut off;
-  what runs between requests is one background scenario, written when the recorder stops the
-  program (SIGUSR1, then SIGTERM; a program that handles SIGUSR1 itself conflicts).
+- Recording a running Go program (`runshape-go run`, not on Windows): a request is a scenario
+  from its outermost net/http handler's entry to its return; work it hands to a goroutine is
+  the request's while the call that started it is open, and background after (so is a loop
+  started at startup). Handlers that aren't `(http.ResponseWriter, *http.Request)` (some
+  frameworks') never start a request scenario: everything lands in startup and background.
+  Background is capped like any caller (50 calls of a function between flushes) and is written
+  when the recorder stops the program (SIGUSR1, which conflicts with a program's own use of it)
+  or when main returns; work during shutdown after that, and everything after an os.Exit, is
+  lost. Each request writes a file: heavy traffic means many files (no cap yet).
 - The Go recorder (recorder-go/): a goroutine's first call hangs off what its creator was
   running, read from the "created by" line of its stack, so one created by code that isn't
   recorded (an HTTP server's connection goroutine) hangs off the test, and a call that

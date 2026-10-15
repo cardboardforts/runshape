@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -17,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -107,6 +105,8 @@ type scenarioState struct {
 	finished bool
 	// request is set on a process's request scenario: it ends when its first frame returns.
 	request bool
+	// panicked is set when a request's handler panicked out of its owner frame.
+	panicked bool
 }
 
 func (s *scenarioState) now() int64 { return time.Since(s.started).Microseconds() }
@@ -127,6 +127,9 @@ type recorder struct {
 	background *scenarioState
 	startedUp  bool
 	requests   int
+	// mainThread is the program's main goroutine: main.main returning there ends the program.
+	mainThread uint64
+	flushed    func()
 }
 
 func newRecorder(limits Limits) *recorder {
@@ -143,15 +146,12 @@ func init() {
 		return
 	}
 	global.startProcess(func(s scenarioFile) { write(directory, s) })
-	flushes := make(chan os.Signal, 1)
-	signal.Notify(flushes, syscall.SIGUSR1)
-	go func() {
-		for range flushes {
-			global.flush()
-			// Tells runshape-go the background is written: it waits for this file.
-			_ = os.WriteFile(filepath.Join(directory, "flushed"), nil, 0o644)
-		}
-	}()
+	// Tells runshape-go the background is written: it waits for this file.
+	global.flushed = func() { _ = os.WriteFile(filepath.Join(directory, "flushed"), nil, 0o644) }
+	onFlushSignal(func() {
+		global.flush()
+		global.flushed()
+	})
 }
 
 // Enter opens a frame for the table's index-th function, called on recv (a pointer receiver, or
@@ -272,7 +272,8 @@ func (r *recorder) startProcess(sink func(scenarioFile)) {
 	defer r.mu.Unlock()
 	r.process = true
 	r.sink = sink
-	r.background = r.newScenario("process::startup", "process", "startup", goroutineID())
+	r.mainThread = goroutineID()
+	r.background = r.newScenario("process::startup", "process", "startup", r.mainThread)
 }
 
 // flush writes the background scenario, if anything ran in it: a running program has no end
@@ -280,6 +281,10 @@ func (r *recorder) startProcess(sink func(scenarioFile)) {
 func (r *recorder) flush() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.flushLocked()
+}
+
+func (r *recorder) flushLocked() {
 	if !r.process || r.background == nil || r.background.nextSpan == rootSpan+1 {
 		return
 	}
@@ -337,8 +342,13 @@ func (r *recorder) enterAt(id int, recv any, method, path string) *Frame {
 // place is the scenario a call on this goroutine goes in, its caller's span, and whether the
 // call starts a request scenario of its own. Called with r.mu held.
 func (r *recorder) place(thread uint64, method, path string) (*scenarioState, int, bool) {
-	// Calls under a recorded call belong where it does.
+	// Calls under a recorded call belong where it does; in a running program, a call under a
+	// frame of a scenario already written (a loop started at startup, work a finished request
+	// left running) is background work.
 	if open := r.openIn[thread]; open != nil && len(open.stacks[thread]) > 0 {
+		if open.finished && r.process {
+			return r.background, rootSpan, false
+		}
 		frames := open.stacks[thread]
 		return open, frames[len(frames)-1].span, false
 	}
@@ -348,10 +358,11 @@ func (r *recorder) place(thread uint64, method, path string) (*scenarioState, in
 		}
 		if !r.known[thread] {
 			r.known[thread] = true
-			if creator, ok := goroutineCreator(); ok {
-				if cs := r.openIn[creator]; cs != nil && len(cs.stacks[creator]) > 0 {
-					frames := cs.stacks[creator]
-					return cs, frames[len(frames)-1].span, false
+			if creator, function, ok := goroutineCreator(); ok {
+				if cs := r.openIn[creator]; cs != nil && !cs.finished {
+					if frame := r.creatorFrame(cs.stacks[creator], function); frame != nil {
+						return cs, frame.span, false
+					}
 				}
 			}
 		}
@@ -386,10 +397,20 @@ func serving(stack []*Frame) bool {
 	return false
 }
 
-// Exit closes the frame; deferred by the instrumented function, so it runs on panics too.
+// Exit closes the frame; deferred by the instrumented function, so it runs on panics too. A
+// request's handler panicking marks its scenario failed; the panic carries on (http.Server
+// recovers it, as it would have).
 func (f *Frame) Exit() {
 	if f.s == nil {
 		return
+	}
+	if f.owner {
+		if p := recover(); p != nil {
+			f.r.mu.Lock()
+			f.s.panicked = true
+			f.r.mu.Unlock()
+			defer panic(p)
+		}
 	}
 	f.r.mu.Lock()
 	defer f.r.mu.Unlock()
@@ -412,7 +433,20 @@ func (f *Frame) Exit() {
 		delete(f.s.lines, f.span)
 	}
 	if f.owner && !f.s.finished {
-		f.r.sink(f.r.finish(f.s, "passed"))
+		outcome := "passed"
+		if f.s.panicked {
+			outcome = "failed"
+		}
+		f.r.sink(f.r.finish(f.s, outcome))
+	}
+	// main returning (or panicking) ends the program: write what ran outside requests now.
+	if f.r.process && f.thread == f.r.mainThread {
+		if sym := f.r.registry[f.fn].Symbol; sym.Name == "main" && len(sym.Container) == 0 {
+			f.r.flushLocked()
+			if f.r.flushed != nil {
+				f.r.flushed()
+			}
+		}
 	}
 }
 
@@ -451,15 +485,36 @@ func (r *recorder) outermostParent(s *scenarioState, thread uint64) int {
 		return rootSpan
 	}
 	r.known[thread] = true
-	creator, ok := goroutineCreator()
+	creator, function, ok := goroutineCreator()
 	if !ok {
 		return rootSpan
 	}
-	if frames := s.stacks[creator]; len(frames) > 0 {
-		return frames[len(frames)-1].span
+	if frame := r.creatorFrame(s.stacks[creator], function); frame != nil {
+		return frame.span
 	}
 	return rootSpan
 }
+
+// creatorFrame is the open frame of the function whose go statement created a goroutine (its
+// "created by" name, with closures' .funcN taken off), or nil when that call has returned (or
+// isn't recorded): the goroutine's work isn't part of whatever its creator does next.
+func (r *recorder) creatorFrame(frames []*Frame, function string) *Frame {
+	base := goWrapper.ReplaceAllString(function, "")
+	for i := len(frames) - 1; i >= 0; i-- {
+		sym := r.registry[frames[i].fn].Symbol
+		if !strings.HasSuffix(base, "."+sym.Name) {
+			continue
+		}
+		if owner := sym.OwnerType; owner != nil && !strings.Contains(base, *owner+").") && !strings.Contains(base, "."+*owner+".") {
+			continue
+		}
+		return frames[i]
+	}
+	return nil
+}
+
+// goWrapper matches what Go appends to the name of a closure or go-statement wrapper.
+var goWrapper = regexp.MustCompile(`(\.(func|gowrap)\d+)+$`)
 
 func (r *recorder) admits(s *scenarioState, parent, fn int) bool {
 	if r.isFull(s) {
@@ -547,11 +602,11 @@ func goroutineID() uint64 {
 }
 
 // createdBy is the line a goroutine's stack ends with: "created by main.f in goroutine 7".
-var createdBy = regexp.MustCompile(`created by .* in goroutine (\d+)`)
+var createdBy = regexp.MustCompile(`created by (\S+) in goroutine (\d+)`)
 
 // goroutineCreator is the id of the goroutine that created the current one, read on a
 // goroutine's first recorded call only. The line is last, so the buffer grows until it fits.
-func goroutineCreator() (uint64, bool) {
+func goroutineCreator() (uint64, string, bool) {
 	var buffer []byte
 	for size := 16 * 1024; size <= 4*1024*1024; size *= 4 {
 		buffer = make([]byte, size)
@@ -563,10 +618,10 @@ func goroutineCreator() (uint64, bool) {
 	}
 	match := createdBy.FindSubmatch(buffer)
 	if match == nil {
-		return 0, false
+		return 0, "", false
 	}
-	id, err := strconv.ParseUint(string(match[1]), 10, 64)
-	return id, err == nil
+	id, err := strconv.ParseUint(string(match[2]), 10, 64)
+	return id, string(match[1]), err == nil
 }
 
 func write(directory string, scenario scenarioFile) {

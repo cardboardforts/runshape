@@ -29,10 +29,10 @@ func TestRecordsTheExampleShop(t *testing.T) {
 	}
 
 	var manifest struct {
-		Version   int    `json:"version"`
-		Language  string `json:"language"`
-		Runtime   string `json:"runtime"`
-		Catalog   []struct {
+		Version  int    `json:"version"`
+		Language string `json:"language"`
+		Runtime  string `json:"runtime"`
+		Catalog  []struct {
 			File   string `json:"file"`
 			Symbol struct {
 				Container []string `json:"container"`
@@ -244,8 +244,14 @@ func TestRecordsTheProbeModule(t *testing.T) {
 	}
 	read(t, filepath.Join(out, "run", "manifest.json"), &framework)
 	// wiring registers server.Index: server's function, not wiring's own Index method.
-	if routes := framework.Framework.Routes; len(routes) != 1 || strings.Join(routes[0].Handler, ".") != "example.com.probe.server.Index" {
-		t.Errorf("routes %+v", routes)
+	index := ""
+	for _, route := range framework.Framework.Routes {
+		if route.Path == "/index" {
+			index = strings.Join(route.Handler, ".")
+		}
+	}
+	if index != "example.com.probe.server.Index" {
+		t.Errorf("/index is handled by %q (routes %+v)", index, framework.Framework.Routes)
 	}
 
 	catalogued := map[string][]int{}
@@ -389,5 +395,86 @@ func TestRecordsTheRunningShop(t *testing.T) {
 				t.Errorf("%s: missing %q in\n%s", nodeid, line, strings.Join(trees[nodeid], "\n"))
 			}
 		}
+	}
+}
+
+// The second-model review's probes of a running program (testdata/probe/cmd/server), driven
+// over one keep-alive connection: work a request waits for is the request's; work it leaves
+// running isn't the next request's; a panicking request failed; a loop started at startup is
+// background; and when main returns, the program's tail is written.
+func TestRecordsTheRunningProbeServer(t *testing.T) {
+	out := t.TempDir()
+	module, _ := filepath.Abs(filepath.Join("testdata", "probe"))
+	recorder, _ := filepath.Abs("..")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	client := &http.Client{Transport: &http.Transport{MaxConnsPerHost: 1}}
+	get := func(path string) {
+		if response, err := client.Get("http://" + address + path); err == nil {
+			_, _ = io.Copy(io.Discard, response.Body)
+			response.Body.Close()
+		}
+	}
+	drive := func() error {
+		for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+			if conn, err := net.Dial("tcp", address); err == nil {
+				conn.Close()
+				break
+			} else if time.Now().After(deadline) {
+				return err
+			}
+		}
+		for _, path := range []string{"/spawn", "/spawnlater", "/slow", "/panic"} {
+			get(path)
+		}
+		time.Sleep(100 * time.Millisecond) // the loop ticks
+		get("/quit")
+		return nil
+	}
+	err = RecordProcess(ProcessOptions{
+		Options: Options{Module: module, Out: out, Run: "run", RecorderModule: recorder},
+		Package: "./cmd/server", Env: []string{"PROBE_ADDR=" + address}, Drive: drive, Output: io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest struct {
+		Scenarios []struct {
+			Nodeid  string `json:"nodeid"`
+			File    string `json:"file"`
+			Outcome string `json:"outcome"`
+		} `json:"scenarios"`
+	}
+	read(t, filepath.Join(out, "run", "manifest.json"), &manifest)
+	helpers := map[string]int{}
+	ticks := map[string]int{}
+	outcomes := map[string]string{}
+	for _, s := range manifest.Scenarios {
+		name := strings.TrimPrefix(s.Nodeid, "process::")
+		outcomes[name] = s.Outcome
+		var recorded scenario
+		read(t, filepath.Join(out, "run", s.File), &recorded)
+		for _, line := range recorded.tree() {
+			switch strings.TrimSpace(line) {
+			case "work.Helper":
+				helpers[name]++
+			case "work.Tick":
+				ticks[name]++
+			}
+		}
+	}
+	if want := map[string]int{"GET /spawn #1": 1, "GET /slow #3": 1, "background": 1}; !reflect.DeepEqual(helpers, want) {
+		t.Errorf("Helper calls by scenario %v, want %v (spawnlater's goroutine ran during /slow: it's background)", helpers, want)
+	}
+	if outcomes["GET /panic #4"] != "failed" {
+		t.Errorf("the panicking request is %q, want failed (outcomes %v)", outcomes["GET /panic #4"], outcomes)
+	}
+	if ticks["background"] == 0 {
+		t.Errorf("the loop's ticks after the first request aren't in background: %v", ticks)
 	}
 }

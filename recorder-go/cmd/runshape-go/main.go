@@ -16,7 +16,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/cardboardforts/runshape/recorder-go/record"
@@ -58,13 +57,14 @@ func main() {
 	fmt.Printf("runshape-go: recorded %s in %s\n", module, filepath.Join(*out, *run))
 }
 
-// untilInterrupted is the traffic a person sends by hand: it returns at Ctrl-C.
+// untilInterrupted is the traffic a person sends by hand: it returns at Ctrl-C (or when the
+// terminal closes). Later signals are swallowed while the program is stopped, so the recorder
+// isn't killed half way and the program left running.
 func untilInterrupted() error {
 	fmt.Fprintln(os.Stderr, "runshape-go: recording; send the program traffic, then press Ctrl-C to stop")
-	interrupted := make(chan os.Signal, 1)
-	signal.Notify(interrupted, os.Interrupt, syscall.SIGTERM)
+	interrupted := make(chan os.Signal, 4)
+	signal.Notify(interrupted, stopSignals...)
 	<-interrupted
-	signal.Stop(interrupted)
 	return nil
 }
 
