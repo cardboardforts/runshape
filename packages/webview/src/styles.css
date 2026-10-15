@@ -916,3 +916,125 @@ button {
 .timeline-external rect {
   fill: var(--zone-external);
 }
+
+/* ---- routes ---- */
+
+.listing-switch {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.listing-switch button {
+  flex: 1;
+  background: none;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.listing-switch button[aria-pressed="true"] {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border-color: var(--button-bg);
+}
+
+.routes > ul,
+.routes .variants {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.routes > ul > li {
+  margin-bottom: 12px;
+}
+
+.routes > ul > li.unchanged {
+  opacity: 0.6;
+}
+
+.route-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.variant {
+  border-left: 2px solid var(--border);
+  padding: 4px 0 4px 8px;
+  margin-bottom: 4px;
+  border-radius: 0 4px 4px 0;
+}
+
+.variant.selected {
+  border-left-color: var(--focus);
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+}
+
+.variant-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  align-items: baseline;
+}
+
+.variant-count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.variant-how {
+  overflow-wrap: anywhere;
+}
+
+.variant-requests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.request-chip.selected {
+  text-decoration: underline;
+}
+
+.variant-requests .replay-button {
+  margin: 0;
+}
+
+.variant-path summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.variant-path ol {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.variant-path .mark {
+  display: inline-block;
+  width: 1em;
+}
+
+.external-step {
+  color: var(--zone-external);
+}
+
+.variant-path li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.variant-path li .link {
+  font: inherit;
+}

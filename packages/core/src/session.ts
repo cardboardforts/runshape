@@ -13,6 +13,7 @@ import { buildTimeline } from "@runshape/views";
 import { detectMoves, diffExecution, diffFunctionExecution, mergeReplays, Moves } from "@runshape/views";
 import { aggregateWiring, buildObjectGraph } from "@runshape/views";
 import { buildReview } from "@runshape/views";
+import { buildRouteMap, diffRouteMaps } from "@runshape/views";
 import { diffRuns } from "@runshape/views";
 import { buildSystemGraph } from "@runshape/views";
 
@@ -192,6 +193,14 @@ export class ViewerSession {
           type: "diff",
           diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile, moves: this.moves() }),
           review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, moves: this.moves() }),
+        };
+      }
+      case "routes": {
+        if (request.compare && this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
+        return {
+          type: "routes",
+          routes: buildRouteMap(this.run, { phases: request.phases }),
+          diff: request.compare && this.baseline !== null ? diffRouteMaps(this.baseline, this.run, { phases: request.phases, moves: this.moves() }) : null,
         };
       }
       case "setZone": {

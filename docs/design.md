@@ -192,6 +192,16 @@ Accepted risks:
   that function returns; Fuzz and Example functions run but aren't scenarios; a recorded call
   costs about 3 µs (a mutex and a stack read), so hot loops slow down a lot even past the
   per-caller limit.
+- Routes (`packages/views/src/routes.ts`): a request belongs to the route whose handler ran
+  under it; one that never reached a handler joins the route whose pattern matches its path
+  segment by segment (placeholders `{x}`, `<x>`, `(?P<x>…)` match one segment; a regex
+  pattern that matches across segments won't), else it's grouped by its literal path. A
+  class registered for several patterns picks the one with as many segments as the path, the
+  first on a tie. A variant is the shape of the project code a request ran (framework code is
+  see-through; consecutive identical calls are one step, so a loop's length doesn't matter);
+  two requests that took one shape but answered differently (the response status isn't
+  recorded) are one variant. A changed variant is a new shape paired with a gone one sharing
+  at least half the longer path in order (`CHANGED_VARIANT_MIN_SHARED`).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before

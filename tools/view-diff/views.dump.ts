@@ -83,6 +83,9 @@ test("dump every view", async () => {
     }
     await ask("function not in the catalog", { type: "function", module: "nowhere", qualname: "nothing", symbol: JSON.stringify([["nowhere"], [], "nothing"]) });
     for (const { nodeid } of run.scenarios) await ask(`objects ${nodeid}`, { type: "objects", scenarioId: nodeid });
+    await ask("routes", { type: "routes", phases, compare: false });
+    await ask("routes all-phases", { type: "routes", phases: PHASE_SETS.all, compare: false });
+    if (baseline) await ask("routes compare", { type: "routes", phases, compare: true });
     await ask("detectArchitecture", { type: "detectArchitecture" });
     await ask("adviseArchitecture", { type: "adviseArchitecture" });
     await ask("adopt the model's proposal", { type: "adoptArchitecture", style: "hexagonal", from: "model" });

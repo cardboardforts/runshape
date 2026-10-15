@@ -13,7 +13,7 @@ import { describe, expect, test } from "vitest";
 
 import { loadLatestRun, Run, TraceFiles } from "@runshape/trace";
 import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Scenario, Span, SymbolKind } from "@runshape/trace";
-import { buildReview, Change, detectMoves, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "../src";
+import { buildReview, Change, detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "../src";
 import { fixtureFiles } from "../../trace/test/fixtures";
 
 const FROM = "app.services.articles";
@@ -91,14 +91,16 @@ describe("moved code", () => {
     );
   });
 
-  test("a pure move compares as unchanged, test by test and box by box, and the review says what moved", async () => {
+  test("a pure move compares as unchanged, test by test, box by box and route by route, and the review says what moved", async () => {
     const { base, head } = await baseAndMoved();
 
     const diff = diffRuns(base, head);
     const review = buildReview(base, head);
+    const routes = diffRouteMaps(base, head, { moves: detectMoves(base, head) });
 
     expect(diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).map((scenario) => scenario.name)).toEqual([]);
     expect(diff.nodes.filter((node) => node.change === Change.Added || node.change === Change.Removed).map((node) => node.id)).toEqual([]);
+    expect(routes.routes.filter((route) => route.change !== Change.Unchanged).map((route) => route.label)).toEqual([]);
     // A namespace that moved whole is one line; a function that moved on its own would be its own.
     expect(review.moved).toEqual([`${FROM} -> ${TO} (5 functions)`]);
   });

@@ -35,6 +35,24 @@ record that.
   - Open: Python and TypeScript have no process mode; request paths carry ids (`/orders/ord-1`),
     so grouping needs the route pattern, and recording real traffic raises what's safe to keep
     (only method and path are recorded today).
+- **Taken up (2026-10-14): the route view.** The sidebar's Routes tab groups requests by the
+  route that served them (read from the handler they reached, so ids in paths don't matter),
+  and a route's requests by the shape of the code they ran. Each variant is told against the
+  route's main path by what it calls at all: go-shop's refused order "skips
+  MemoryRepository.Save", the malformed one "skips Service.Place, Order.Problems,
+  MemoryRepository.Save", Django's anonymous POST "never reached the handler". In compare mode
+  a new shape that mostly follows a gone one is one variant changed (the slug refactor: "now
+  calls ensure_slug_available, _normalize_title", marked in place as a diff hunk), which is
+  idea 4's question answered at one level: change is shown per way through a route, not per
+  test. What it showed:
+  - Unit-test recordings group too (Django: 24 requests, 9 routes); what a route did differently
+    is legible without opening a call tree. The main path reads best with real traffic, where
+    "most taken" means something; with tests it's whichever path the tests repeat.
+  - Without the response status, "refused" is inferred from what didn't run. Recording the
+    status (and nothing else of the response) would name variants by their outcome.
+  - Next questions: whether the graph should draw a route's variants as one picture (the main
+    path solid, variants as branches off it); whether routes are the right first view for a
+    program with real traffic, ahead of the test list.
 
 ## 2. A Kubernetes / Terraform view of how it runs in production
 
@@ -66,7 +84,7 @@ zoom through:
 
 ## 4. Better ways to visualize change
 
-How should change be highlighted?
+How should change be highlighted? (First step taken: the route view, under idea 1.)
 
 - **Already there:** compare mode marks boxes and edges added, removed or changed; replay merges
   both runs' hops; the review ranks tests (now failing, silently changed, …) and lists moved code;

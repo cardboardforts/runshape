@@ -25,6 +25,8 @@ import {
   ReplayStep,
   ReviewCategory,
   ReviewSummary,
+  RouteMap,
+  RouteMapDiff,
   RunDiff,
   RunSummary,
   SystemGraph,
@@ -42,6 +44,7 @@ import { ReplayBar } from "./components/ReplayBar";
 import { ScenarioDiffPanel } from "./components/ScenarioDiffPanel";
 import { FunctionExecutionPanel } from "./components/ExecutionDiffView";
 import { ScenarioList } from "./components/ScenarioList";
+import { RoutesPanel } from "./components/RoutesPanel";
 import type { Host } from "./host";
 import { layoutGraph, Positioned } from "./layout";
 import { zoneClass, zoneColor } from "./zone-style";
@@ -110,13 +113,17 @@ export function App({ host }: { host: Host }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [detection, setDetection] = useState<{ candidates: ArchitectureCandidate[] | null } | null>(null);
   const [modelAdvice, setModelAdvice] = useState<ModelAdvice>({ kind: "idle" });
-  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined }>({
+  /** The sidebar lists tests, or the requests they sent grouped by route. */
+  const [listing, setListing] = useState<"tests" | "routes">("tests");
+  const [routeMap, setRouteMap] = useState<{ routes: RouteMap; diff: RouteMapDiff | null } | null>(null);
+  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined; listing: "tests" | "routes" }>({
     phases: TEST_BODY_ONLY,
     grouping: INITIAL_GROUPING,
     compare: false,
     style: undefined,
+    listing: "tests",
   });
-  viewOptions.current = { phases: includeSetup ? WITH_SETUP : TEST_BODY_ONLY, grouping, compare, style: drawStyle };
+  viewOptions.current = { phases: includeSetup ? WITH_SETUP : TEST_BODY_ONLY, grouping, compare, style: drawStyle, listing };
 
   // In compare mode the canvas shows the union of both recordings. Memoised only so the
   // layout effect below sees a stable object, not a new one every render.
@@ -156,11 +163,14 @@ export function App({ host }: { host: Host }) {
             setExecution(null);
             setExecutionFn(null);
             setObjectGraph(null);
-            const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
+            setRouteMap(null);
+            const { phases, grouping: currentGrouping, compare: comparing, style, listing: currentListing } = viewOptions.current;
             host.post({ type: "graph", phases, grouping: currentGrouping, style });
-            if (comparing && response.summary.baselineCreatedAt !== null) {
+            const canCompare = comparing && response.summary.baselineCreatedAt !== null;
+            if (canCompare) {
               host.post({ type: "diff", phases, grouping: currentGrouping, style });
             }
+            if (currentListing === "routes") host.post({ type: "routes", phases, compare: canCompare });
             if (response.summary.baselineCreatedAt === null) setCompare(false);
           }
           runLoaded.current = true;
@@ -186,6 +196,9 @@ export function App({ host }: { host: Host }) {
         case "diff":
           setDiff(response.diff);
           setReview(response.review);
+          break;
+        case "routes":
+          setRouteMap({ routes: response.routes, diff: response.diff });
           break;
         case "rulesChanged": {
           setRuleCount(response.count);
@@ -298,6 +311,7 @@ export function App({ host }: { host: Host }) {
   const requestViews = (nextPhases: Phase[], nextGrouping: Grouping, comparing: boolean, style = drawStyle) => {
     setReplay(null);
     host.post({ type: "graph", phases: nextPhases, grouping: nextGrouping, style });
+    if (listing === "routes") requestRoutes(nextPhases, comparing);
     if (comparing) {
       // Every compare view depends on the options; none may outlive them.
       setDiff(null);
@@ -322,10 +336,19 @@ export function App({ host }: { host: Host }) {
     setDrawStyle(next);
     requestViews(phases, grouping, compare, next);
   };
+  const requestRoutes = (nextPhases: Phase[], comparing: boolean) => {
+    setRouteMap(null); // never show routes worked out for other options
+    host.post({ type: "routes", phases: nextPhases, compare: comparing });
+  };
+  const showListing = (next: "tests" | "routes") => {
+    setListing(next);
+    if (next === "routes") requestRoutes(phases, compare);
+  };
   const toggleCompare = () => {
     const next = !compare;
     setCompare(next);
     setReplay(null);
+    if (listing === "routes") requestRoutes(phases, next);
     if (next) {
       setDiff(null); // never show a diff computed for other view options
       host.post({ type: "diff", phases, grouping, style: drawStyle });
@@ -454,14 +477,35 @@ export function App({ host }: { host: Host }) {
             </ul>
           </details>
         )}
-        <ScenarioList
-          scenarios={summary.scenarios}
-          selected={selected}
-          review={reviewCategories}
-          onSelect={selectScenario}
-          onReplay={startReplay}
-          onTimeline={openTimeline}
-        />
+        <div className="listing-switch" role="group" aria-label="List by">
+          <button type="button" aria-pressed={listing === "tests"} onClick={() => showListing("tests")}>
+            Tests
+          </button>
+          <button type="button" aria-pressed={listing === "routes"} onClick={() => showListing("routes")}>
+            Routes
+          </button>
+        </div>
+        {listing === "tests" ? (
+          <ScenarioList
+            scenarios={summary.scenarios}
+            selected={selected}
+            review={reviewCategories}
+            onSelect={selectScenario}
+            onReplay={startReplay}
+            onTimeline={openTimeline}
+          />
+        ) : routeMap === null ? (
+          <p className="muted">Grouping requests by route…</p>
+        ) : (
+          <RoutesPanel
+            routes={routeMap.routes}
+            diff={routeMap.diff}
+            selected={selected}
+            onSelect={selectScenario}
+            onReplay={startReplay}
+            onOpenFunction={(symbol) => openFunction({ symbol })}
+          />
+        )}
         <Legend ruleCount={ruleCount} profile={displayed?.profile ?? null} />
       </aside>
 

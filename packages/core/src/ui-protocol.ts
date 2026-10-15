@@ -12,6 +12,7 @@ import type { ReplayStep } from "@runshape/views";
 import type { RunDiff } from "@runshape/views";
 import type { ComponentWiring, ObjectGraph } from "@runshape/views";
 import type { ReviewSummary } from "@runshape/views";
+import type { RouteMap, RouteMapDiff } from "@runshape/views";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "@runshape/views";
 import type { SystemGraph } from "@runshape/views";
 import type { Timeline } from "@runshape/views";
@@ -27,6 +28,8 @@ export type UiRequest =
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "timeline"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
+  /** Requests by route and the ways through the code they took; with `compare`, how those changed. */
+  | { type: "routes"; phases: Phase[]; compare: boolean }
   /** Rank the styles against this recording. */
   | { type: "detectArchitecture" }
   /** Ask a language model which style the app follows and how its packages map to zones. */
@@ -55,6 +58,7 @@ export type UiResponse =
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
   | { type: "timeline"; timeline: Timeline }
   | { type: "diff"; diff: RunDiff; review: ReviewSummary }
+  | { type: "routes"; routes: RouteMap; diff: RouteMapDiff | null }
   | { type: "rulesChanged"; count: number; style: string }
   | { type: "architecture"; candidates: ArchitectureCandidate[] }
   | { type: "architectureAdvice"; style: string; reason: string; confidence: string; rules: { match: string; zone: string }[] }

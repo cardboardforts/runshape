@@ -53,3 +53,32 @@ describe("naming functions on the wire", () => {
     expect(responses).toEqual(malformed.map(() => ({ type: "error", message: "a function is asked for by the symbol key a view gave it" })));
   });
 });
+
+describe("the route view on the wire", () => {
+  test("routes come with how they changed in compare mode, and alone otherwise", async () => {
+    const session = await refactorSession();
+
+    const alone = await session.handle({ type: "routes", phases: [Phase.Call], compare: false });
+    const compared = await session.handle({ type: "routes", phases: [Phase.Call], compare: true });
+    if (alone?.type !== "routes" || compared?.type !== "routes") throw new Error(`expected routes, got ${alone?.type} and ${compared?.type}`);
+
+    expect({
+      routes: alone.routes.routes.map((route) => `${route.label} ×${route.requestCount}`),
+      diffWhenAlone: alone.diff,
+      changed: compared.diff?.routes.filter((route) => route.change !== "unchanged").map((route) => route.label),
+    }).toEqual({
+      routes: ["POST /api/articles ×2", "GET /api/articles/feed ×1", "POST /api/users ×1"],
+      diffWhenAlone: null,
+      changed: ["POST /api/articles"],
+    });
+  });
+
+  test("comparing with no earlier recording is an error, not an empty diff", async () => {
+    const session = new ViewerSession(await loadLatestRun(fixtureFiles("go-shop-running")), { sources: { readLines: async () => null } });
+
+    expect(await session.handle({ type: "routes", phases: [Phase.Call], compare: true })).toEqual({
+      type: "error",
+      message: "There is no earlier recording to compare with yet.",
+    });
+  });
+});

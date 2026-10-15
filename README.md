@@ -27,6 +27,10 @@ the onion it is (or isn't).
 - **Compare.** Re-record after a change (yours or an AI agent's) and see which journeys now
   behave differently: new and lost hops, SQL that appeared or vanished, lines that started or
   stopped running, outcomes that flipped.
+- **Routes.** The sidebar's Routes tab groups requests by the route that served them, and a
+  route's requests by the way they went through the code: `POST /orders` placed, refused
+  ("skips MemoryRepository.Save"), malformed. In compare mode a route's ways read as new,
+  gone, or changed ("now calls ensure_slug_available"), the changed steps marked in place.
 
 Status: first vertical slice, Python (Django, FastAPI) only. See [docs/design.md](docs/design.md)
 for decisions, limits, the threat model and what's next.
@@ -38,6 +42,7 @@ npm install                    # npm 11 (see packageManager); `npx npm@11 instal
 npm run dev -w packages/webview
 # open http://localhost:5173/demo/index.html?app=django   (or ?app=fastapi)
 #   ?app=django-feed-fix has two recordings (before/after a routing fix): tick "Compare"
+#   ?app=go-shop-running is a Go program's real traffic: open the Routes tab
 ```
 
 The demo renders real recordings of the two example apps, checked in under
