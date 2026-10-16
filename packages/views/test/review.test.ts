@@ -102,3 +102,16 @@ describe("reviewCategoryOf", () => {
     `);
   });
 });
+
+describe("a new test has no base to differ from", () => {
+  test("so its lines aren't listed as 'different lines run': every line it ran is new", async () => {
+    // Two different apps' tests: every head test is new. Listing "different lines run in …
+    // and 128 more" for each said nothing and filled every PR comment.
+    const base = await loadLatestRun(fixtureFiles("go-shop"));
+    const head = await loadLatestRun(fixtureFiles("go-shop-running"));
+
+    const added = buildReview(base, head).items.filter((item) => item.outcomeBefore === null);
+
+    expect({ added: added.length, listingLines: added.filter((item) => item.changedPaths.length > 0).map((item) => item.name) }).toEqual({ added: 7, listingLines: [] });
+  });
+});

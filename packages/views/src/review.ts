@@ -111,7 +111,8 @@ export function buildReview(
       queriesAdded: scenario.statementsAdded,
       queriesRemoved: scenario.statementsRemoved,
       // A function that is new or gone already says its lines changed.
-      changedPaths: scenario.functionsChanged.map((fn) => fn.symbol.path).filter((name) => !newCalls.includes(name) && !goneCalls.includes(name)),
+      // A new test has no base to differ from: every line it ran is new, so none is news.
+      changedPaths: before === undefined ? [] : scenario.functionsChanged.map((fn) => fn.symbol.path).filter((name) => !newCalls.includes(name) && !goneCalls.includes(name)),
       weight:
         newCalls.length * 3 + goneCalls.length * 3 + scenario.statementsAdded.length * 2 + scenario.statementsRemoved.length * 2 +
         scenario.functionsChanged.length + movedCalls,
