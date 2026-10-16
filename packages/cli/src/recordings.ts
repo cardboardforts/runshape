@@ -62,6 +62,8 @@ export interface Recorder {
 /** Port: the open pull requests asking for the person's review (gh in pull-requests.ts). */
 export interface PullRequests {
   requestingMyReview(limit: number): Promise<PullRequestSummary[]>;
+  /** Where they're listed from, to fetch them from: in a fork workflow that's not origin. */
+  repository(): Promise<string>;
 }
 
 export interface RecordingsDependencies {
@@ -112,6 +114,9 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         return 0;
       case "record":
         if (names.length === 0) throw new UsageError(`record what? ${USAGE}`);
+        if (flags.has("--sandbox") && names.includes(WORKING_TREE_ID)) {
+          throw new UsageError("--sandbox records commits: the working tree is yours, recorded on this machine without it");
+        }
         await recordings.exclusively(async () => {
           for (const name of names) await recordings.ensure(await recordings.plan(name, { fetch: true }));
         });
@@ -238,7 +243,7 @@ class Recordings {
     }
     const ref = fetch && this.options.fetch ? await this.fetched(name) : name;
     const summary = await this.library.resolve(ref);
-    const id = recordingIdFor(summary.commit);
+    const id = recordingIdFor(summary.commit, this.options.sandbox);
     const shown = ref.replace(/^refs\/remotes\//, "");
     return { id, label: `${shown} (${id} ${summary.subject})`, target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } };
   }
@@ -248,6 +253,7 @@ class Recordings {
    * review when its ref isn't how a person would say it (a pull request's).
    */
   async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string }): Promise<Compared> {
+    await this.sandboxIfUntrusted(headName);
     // --fetch is for the base ("the latest main"): the head is usually yours.
     const head = await this.plan(headName, { fetch: false });
     const tip = await this.plan(baseName, { fetch: true });
@@ -262,6 +268,25 @@ class Recordings {
   }
 
   /**
+   * Someone else's code is never run here without being asked: a pull request's ref, or a commit
+   * only ever recorded in the sandbox, is compared in the sandbox (both sides, so they compare).
+   */
+  private async sandboxIfUntrusted(headName: string): Promise<void> {
+    if (this.options.sandbox || headName === WORKING_TREE_ID) return;
+    if (headName.startsWith(PULL_REQUEST_REFS)) {
+      this.dependencies.print(`${headName} is a pull request's: comparing in the sandbox`);
+      this.options.sandbox = true;
+      return;
+    }
+    const commit = (await this.library.resolve(headName)).commit;
+    const ids = new Set((await this.library.recordings()).recordings.map((r) => r.id));
+    if (ids.has(recordingIdFor(commit, true)) && !ids.has(recordingIdFor(commit))) {
+      this.dependencies.print(`${headName} was recorded in the sandbox (${recordingIdFor(commit, true)}): comparing in the sandbox`);
+      this.options.sandbox = true;
+    }
+  }
+
+  /**
    * Each pull request fetched (GitHub's refs/pull/<n>/head, so forks too), recorded in the
    * sandbox and reviewed against where it left its base, explained if asked. One that fails is
    * noted and the rest go on. Writes .runshape/reviews/requested.json for the morning page;
@@ -269,20 +294,23 @@ class Recordings {
    */
   async reviewPullRequests(requested: PullRequestSummary[], explain: ModelChoice | null): Promise<number> {
     const entries: RequestedReview[] = [];
+    const repository = await this.dependencies.pullRequests.repository();
     for (const pr of requested) {
       const name = `#${pr.number} ${pr.title}`;
       const entry: RequestedReview = { ...pr, head: pr.headRefOid, review: null, explained: false, problem: null, summary: null };
       entries.push(entry);
       try {
-        const headRef = `refs/runshape/pr/${pr.number}`;
-        const baseRef = `refs/remotes/${REMOTE}/${pr.baseRefName}`;
+        const headRef = `${PULL_REQUEST_REFS}${pr.number}`;
+        // Its base as the repository it's listed in has it (in a fork workflow, origin is the fork).
+        const baseRef = `refs/runshape/base/${pr.baseRefName}`;
         try {
-          await this.git.run(["fetch", "--quiet", REMOTE, "--end-of-options", `+refs/pull/${pr.number}/head:${headRef}`, `+refs/heads/${pr.baseRefName}:${baseRef}`]);
+          await this.git.run(["fetch", "--quiet", repository, "--end-of-options", `+refs/pull/${pr.number}/head:${headRef}`, `+refs/heads/${pr.baseRefName}:${baseRef}`]);
         } catch (error) {
           throw new RecordingError(`fetching it failed: ${error instanceof Error ? error.message : String(error)}`);
         }
         const compared = await this.compare(baseRef, headRef, { againstTip: false, headAsked: name, baseAsked: pr.baseRefName });
         entry.head = compared.head.summary.commit;
+        if (entry.head !== pr.headRefOid) this.dependencies.print(`${name}: its head moved since it was listed; reviewed ${entry.head.slice(0, 7)}`);
         entry.review = basename(compared.review.directory);
         entry.summary = reviewSummary(compared.review.bundle);
         if (explain !== null) {
@@ -295,16 +323,21 @@ class Recordings {
         }
         this.dependencies.print(`${name}: reviewed${entry.explained ? " and explained" : entry.problem ? `; ${entry.problem}` : ""}`);
       } catch (error) {
-        if (!(error instanceof RecordingError || error instanceof GitError)) throw error;
-        entry.problem = error.message;
-        this.dependencies.print(`${name}: failed: ${error.message}`);
+        // Whatever stopped this one, the rest go on.
+        entry.problem = error instanceof Error ? error.message : String(error);
+        this.dependencies.print(`${name}: failed: ${entry.problem}`);
       }
+      // Written after each, so a run cut short still lists what it got to.
+      await this.writeRequested(entries, requested.length);
     }
+    return entries.filter((entry) => entry.review === null).length;
+  }
+
+  private async writeRequested(entries: RequestedReview[], of: number): Promise<void> {
     const index: RequestedReviews = { format: "runshape-requested-reviews", version: 1, createdAt: this.dependencies.now().toISOString(), pullRequests: entries };
     const reviews = join(this.dependencies.root, ".runshape", "reviews");
     await mkdir(reviews, { recursive: true });
-    await writeFile(join(reviews, REQUESTED_REVIEWS_FILE), `${JSON.stringify(index, null, 2)}\n`);
-    return entries.filter((entry) => entry.review === null).length;
+    await writeFile(join(reviews, REQUESTED_REVIEWS_FILE), `${JSON.stringify({ ...index, complete: entries.length === of }, null, 2)}\n`);
   }
 
   /**
@@ -356,6 +389,10 @@ class Recordings {
       if (!sameRecorder || (existing.recorderSource === (await this.recorderSource()) && madeIn === recorder.environment)) {
         print(`${plan.label} is recorded already; record it again with --again`);
         return;
+      }
+      // Never from the sandbox to here: that would run code it was sandboxed for on this machine.
+      if (madeIn.startsWith("docker:") && recorder.environment === HOST_ENVIRONMENT) {
+        throw new RecordingError(`${plan.label} was recorded in the sandbox; recording it here would run its code unsandboxed: compare with --sandbox`);
       }
       if (madeIn !== recorder.environment) print(`${plan.label} was recorded elsewhere (${madeIn}): recording it again in ${recorder.environment}`);
       else print(`${plan.label} was recorded by another version of ${RECORDER_DIRECTORY}: recording it again`);
@@ -505,8 +542,18 @@ class Recordings {
   /** The container for commits with --sandbox (the working tree is always recorded here). */
   private async recorderFor(target: RecordTarget): Promise<Recorder> {
     if (!this.options.sandbox || target.kind === "working") return this.dependencies.recorder;
-    this.sandboxRecorder ??= this.dependencies.sandbox(await this.recorderSource());
+    this.sandboxRecorder ??= this.dependencies.sandbox(await this.sandboxVersion());
     return this.sandboxRecorder;
+  }
+
+  /** What the sandbox image is built from, as HEAD commits it: the recorder, the lockfile, what's left out. */
+  private async sandboxVersion(): Promise<string> {
+    const hash = createHash("sha256");
+    for (const path of SANDBOX_IMAGE_SOURCES) {
+      // A path HEAD doesn't have is part of the version too: absent.
+      hash.update(path).update("\0").update(await this.git.run(["rev-parse", `HEAD:${path}`]).catch(() => "absent")).update("\0");
+    }
+    return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
   }
 
   /**
@@ -663,6 +710,12 @@ function sha256(text: string): string {
 
 /** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+
+/** What the sandbox image is built from: a change to any of them, in HEAD, builds a new one. */
+const SANDBOX_IMAGE_SOURCES = ["recorder-ts", "package-lock.json", ".dockerignore"];
+
+/** Where review-requests keeps each PR's head: refs a person wouldn't make, read as someone else's code. */
+const PULL_REQUEST_REFS = "refs/runshape/pr/";
 
 /** Where a recording was made when its metadata doesn't say (made before it did). */
 const HOST_ENVIRONMENT = "host";

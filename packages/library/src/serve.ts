@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 
 import { RecordingLibrary } from "./library";
@@ -17,8 +17,11 @@ export async function serveLibraryFile(directory: string, relativePath: string):
   const target = resolve(root, relativePath);
   if (!target.startsWith(root + sep)) return { status: 404, body: "" };
   try {
+    // Where it really is, links followed: a link a sandboxed recording left can't serve a file outside.
+    const [realRoot, realTarget] = await Promise.all([realpath(root), realpath(target)]);
+    if (!realTarget.startsWith(realRoot + sep)) return { status: 404, body: "" };
     // A directory fails to read like a missing file: no listings.
-    return { status: 200, body: await readFile(target, "utf8") };
+    return { status: 200, body: await readFile(realTarget, "utf8") };
   } catch {
     return { status: 404, body: "" };
   }
@@ -58,7 +61,8 @@ export async function handleLibraryRequest(library: RecordingLibrary, url: strin
       return NOT_FOUND;
     }
     const file = await serveLibraryFile(directory, relativePath);
-    // A review's Markdown reads as text in the browser; everything else kept is JSON.
+    // Only what's meant to be read: a review's Markdown (as text), and JSON. Not logs.
+    if (!/\.(md|json)$/.test(relativePath)) return NOT_FOUND;
     return file.status === 200 ? { status: 200, contentType: relativePath.endsWith(".md") ? "text/markdown; charset=utf-8" : "application/json", body: file.body } : NOT_FOUND;
   }
   return NOT_FOUND;

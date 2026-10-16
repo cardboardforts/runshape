@@ -6,6 +6,16 @@ import type { PullRequests, PullRequestSummary } from "./recordings";
 const FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid,isCrossRepository,updatedAt";
 
 export class GhPullRequests implements PullRequests {
+  /** The repository gh lists from (its default for this checkout), as a URL git can fetch. */
+  repository(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(this.command, ["repo", "view", "--json", "url", "--jq", ".url"], { cwd: this.root, encoding: "utf8" }, (error, stdout, stderr) => {
+        if (error) reject(new Error(`gh repo view: ${stderr.trim() || error.message}`));
+        else resolve(`${stdout.trim()}.git`);
+      });
+    });
+  }
+
   constructor(
     private readonly root: string,
     private readonly command = "gh",
@@ -16,8 +26,12 @@ export class GhPullRequests implements PullRequests {
     return new Promise((resolve, reject) => {
       execFile(this.command, args, { cwd: this.root, encoding: "utf8" }, (error, stdout, stderr) => {
         if (error) return reject(new Error(`gh pr list: ${stderr.trim() || error.message}`));
-        const listed = JSON.parse(stdout) as (Omit<PullRequestSummary, "author"> & { author: { login: string } | null })[];
-        resolve(listed.map((pr) => ({ ...pr, author: pr.author?.login ?? "unknown" })));
+        try {
+          const listed = JSON.parse(stdout) as (Omit<PullRequestSummary, "author"> & { author: { login: string } | null })[];
+          resolve(listed.map((pr) => ({ ...pr, author: pr.author?.login ?? "unknown" })));
+        } catch (parseError) {
+          reject(new Error(`gh pr list answered something other than JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`));
+        }
       });
     });
   }

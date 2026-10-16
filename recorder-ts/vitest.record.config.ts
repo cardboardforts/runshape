@@ -6,6 +6,8 @@
 //                    revision keeps them)
 //   RUNSHAPE_OUT     the traces directory (default: <target>/.runshape/traces)
 //   RUNSHAPE_RUN     the run's directory name (default: the time)
+//   RUNSHAPE_CACHE   where Vite and vitest keep their caches (default: the target's node_modules);
+//                    the sandbox mounts the target read-only and points this at /tmp
 // npm run self-review sets these to record a base commit and the working tree.
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -38,8 +40,11 @@ process.env.RUNSHAPE_TARGET = target;
 process.env.RUNSHAPE_INCLUDE = include.join(",");
 process.env.RUNSHAPE_OUT ??= join(target, ".runshape", "traces");
 
+const cache = process.env.RUNSHAPE_CACHE;
+
 export default defineConfig({
   root: target,
+  ...(cache ? { cacheDir: join(cache, "vite") } : {}),
   resolve: { alias },
   plugins: [runshapeInstrument(target, include)],
   test: {
@@ -51,5 +56,6 @@ export default defineConfig({
     // One test file at a time, so scenario files are written in the order the tests ran.
     fileParallelism: false,
     testTimeout: 120_000,
+    ...(cache ? { fsModuleCachePath: join(cache, "vitest") } : {}),
   },
 });

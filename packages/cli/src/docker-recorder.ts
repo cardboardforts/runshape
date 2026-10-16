@@ -1,8 +1,8 @@
-// Records a commit in a container: someone else's (or an agent's) tests get the commit and an
-// output folder, and nothing else of this machine. docs/design.md's threat model says why each
-// flag is here; docker-recorder.test.ts pins them.
+// Records a commit in a container: someone else's (or an agent's) tests get the commit,
+// read-only, and an output folder, and nothing else of this machine. docs/design.md's threat
+// model says why each step is here; docker-recorder.test.ts pins them.
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { lstat, readdir, readFile, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { Recorder, RecordTarget } from "./recordings";
@@ -22,96 +22,181 @@ export interface CommandRunner {
 /** One commit's install and tests: past this, something's stuck (and gets killed). */
 const RECORDING_TIMEOUT_MS = 20 * 60_000;
 const INSTALL_TIMEOUT_MS = 10 * 60_000;
-/** The user the recorder image runs as (node:*-slim's `node`): never root. */
-const SANDBOX_USER = "1000:1000";
 const IMAGE_NAME = "runshape-recorder";
-const VITE_TEMP = `/runshape/node_modules/.vite-temp:rw,uid=1000,gid=1000,size=64m`;
+/** No file a recording writes is this big, nor the recording as a whole: past it, it's filling the disk. */
+const MAX_FILE_BYTES = 1024 ** 3;
+const MAX_RECORDING_BYTES = 2 * 1024 ** 3;
+/** The only place lockfile entries may come from: anything else (git, a tarball URL, a path) can run code at install. */
+const NPM_REGISTRY = "https://registry.npmjs.org/";
 
-/** Every container, install and recording alike: no root, no capabilities, nothing writable but /tmp and what's mounted. */
-const HARDENING = [
-  "--rm",
-  "--user", SANDBOX_USER,
-  "--cap-drop", "ALL",
-  "--security-opt", "no-new-privileges",
-  "--read-only",
-  "--tmpfs", "/tmp:rw,exec,size=1g",
-  "--memory", "4g",
-  "--pids-limit", "1024",
-  "-e", "HOME=/tmp",
-];
+export class SandboxRefusal extends Error {}
 
 export class DockerRecorder implements Recorder {
   readonly environment: string;
   private readonly image: string;
+  /** The host user: bind-mounted folders stay writable on Linux, and nothing runs as root. */
+  private readonly user: string;
 
   constructor(
     private readonly root: string,
-    /** A hash of the recorder's source and lockfile: a new one builds a new image. */
-    recorderVersion: string,
+    /** A hash of what the image is built from, in HEAD (recordings.ts sandboxVersion). */
+    imageVersion: string,
     private readonly commands: CommandRunner = new SpawnedCommands(),
+    user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
   ) {
-    this.image = `${IMAGE_NAME}:${recorderVersion}`;
+    this.image = `${IMAGE_NAME}:${imageVersion}`;
     this.environment = `docker:${this.image}`;
+    this.user = user;
   }
 
   async record(target: RecordTarget, outDirectory: string): Promise<void> {
-    if (target.kind === "working") throw new Error("--sandbox records commits; the working tree is yours, recorded on this machine without it");
+    if (target.kind === "working") throw new SandboxRefusal("--sandbox records commits; the working tree is yours, recorded on this machine without it");
     await this.ensureImage();
     const name = basename(outDirectory);
     const worktree = join(this.root, ".runshape", "worktrees", `sandbox-${name}`);
-    await this.git(["worktree", "prune"]);
+    await this.cleanUp(worktree);
     await this.git(["worktree", "add", "--detach", "--quiet", worktree, target.commit]);
+    let failure: unknown = null;
     try {
-      // Dependencies: network to fetch them, only the commit mounted, no install scripts run.
+      // The commit's own npm settings could name a program to run as git, or a registry: gone.
+      await rm(join(worktree, ".npmrc"), { force: true });
+      await refuseUnregisteredPackages(worktree);
+      // Dependencies: network to fetch them, only the commit mounted, npm's config pinned, no scripts run.
       await this.docker(
-        ["run", "--name", `runshape-install-${name}`, ...HARDENING, "--network", "bridge", "-v", `${worktree}:/target`, "--workdir", "/target", this.image, "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+        [
+          "run", "--name", `runshape-install-${name}`, ...this.hardening(), "--network", "bridge",
+          "-e", "npm_config_userconfig=/tmp/no-user-npmrc", "-e", "npm_config_globalconfig=/tmp/no-global-npmrc",
+          "-e", "npm_config_ignore_scripts=true", "-e", "npm_config_git=/usr/bin/git",
+          "-v", `${worktree}:/target`, "--workdir", "/target", this.image, "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
+        ],
         INSTALL_TIMEOUT_MS,
         "installing the commit's dependencies",
       );
-      // The tests: no network at all, the commit and the output folder.
+      // The tests: no network at all, the commit read-only, the output folder.
       const script = [
         "node_modules/.bin/vitest run --config recorder-ts/vitest.record.config.ts --reporter=default --reporter=json --outputFile.json=/out/run.vitest.json > /out/run.log 2>&1",
         "node recorder-ts/vitest-problems.mjs /out/run/manifest.json /out/run.vitest.json && echo '{\"run\":\"run\"}' > /out/latest.json",
       ].join("; ");
       await this.docker(
         [
-          "run", "--name", `runshape-record-${name}`, ...HARDENING, "--network", "none",
-          "-v", `${worktree}:/target`, "-v", `${outDirectory}:/out`,
-          "-e", "RUNSHAPE_TARGET=/target", "-e", "RUNSHAPE_OUT=/out", "-e", "RUNSHAPE_RUN=run",
+          "run", "--name", `runshape-record-${name}`, ...this.hardening(), "--network", "none",
+          "-v", `${worktree}:/target:ro`, "-v", `${outDirectory}:/out`,
           // Vite bundles its config next to its install: the one place in the read-only image it writes.
-          "--tmpfs", VITE_TEMP,
+          "--tmpfs", `/runshape/node_modules/.vite-temp:rw,uid=${this.uid()},gid=${this.gid()},size=64m`,
+          "-e", "RUNSHAPE_TARGET=/target", "-e", "RUNSHAPE_OUT=/out", "-e", "RUNSHAPE_RUN=run",
+          // Vite's and vitest's caches would go in the commit's node_modules, which is read-only.
+          "-e", "RUNSHAPE_CACHE=/tmp/runshape-cache",
           "--workdir", "/runshape", this.image, "sh", "-c", script,
         ],
         RECORDING_TIMEOUT_MS,
         "the recording",
       );
-      // Failing tests are recorded like passing ones; a recording with no manifest is not.
-      if (!existsSync(join(outDirectory, "run", "manifest.json"))) throw new Error(`no recording was written (its log: ${join(outDirectory, "run.log")})`);
+      // The container has exited: what it left is checked before anything on this machine reads or writes there.
+      await assertPlainFiles(outDirectory);
+      await lstat(join(outDirectory, "run", "manifest.json")).catch(() => {
+        throw new Error(`no recording was written (its log: ${join(outDirectory, "run.log")})`);
+      });
+    } catch (error) {
+      failure = error;
+      throw error;
     } finally {
-      await this.git(["worktree", "remove", "--force", worktree]);
+      try {
+        await this.cleanUp(worktree);
+      } catch (cleanup) {
+        // A cleanup that fails mustn't hide why the recording failed.
+        if (failure === null) throw cleanup;
+      }
     }
   }
 
+  private hardening(): string[] {
+    return [
+      "--rm",
+      "--user", this.user,
+      "--cap-drop", "ALL",
+      "--security-opt", "no-new-privileges",
+      "--read-only",
+      "--tmpfs", "/tmp:rw,exec,size=1g",
+      "--memory", "4g",
+      "--pids-limit", "1024",
+      // Per file, on every filesystem including the mounted ones: a test can't write one file to fill the disk.
+      "--ulimit", `fsize=${MAX_FILE_BYTES}`,
+      "-e", "HOME=/tmp",
+    ];
+  }
+
+  private uid(): string {
+    return this.user.split(":")[0]!;
+  }
+
+  private gid(): string {
+    return this.user.split(":")[1]!;
+  }
+
+  /** Built from HEAD as committed (git archive): nothing uncommitted or untracked gets into it. */
   private async ensureImage(): Promise<void> {
     if ((await this.commands.run("docker", ["image", "inspect", this.image])).code === 0) return;
-    const built = await this.commands.run("docker", ["build", "--tag", this.image, "--file", join(this.root, "recorder-ts", "sandbox", "Dockerfile"), this.root]);
-    if (built.code !== 0) throw new Error(`building the recorder image failed: ${built.output.trim().split("\n").slice(-5).join("\n")}`);
+    const script = 'git -C "$1" archive --format=tar HEAD | docker build --tag "$2" --file recorder-ts/sandbox/Dockerfile -';
+    const built = await this.commands.run("sh", ["-c", script, "sh", this.root, this.image]);
+    if (built.code !== 0) throw new Error(`building the recorder image failed: ${lastLines(built.output)}`);
   }
 
   private async docker(args: string[], timeoutMs: number, what: string): Promise<void> {
+    const container = args[2]!;
+    // One left by a run that was killed outright would make this name taken.
+    await this.commands.run("docker", ["rm", "--force", container]);
     const result = await this.commands.run("docker", args, { timeoutMs });
     if (result.signal !== null) {
       // The docker client stopping doesn't stop its container.
-      await this.commands.run("docker", ["kill", args[2]!]);
-      throw new Error(`${what === "the recording" ? "the recording" : what} ran out of time (${timeoutMs / 60_000} minutes) and was stopped`);
+      await this.commands.run("docker", ["kill", container]);
+      throw new Error(`${what} ran out of time (${timeoutMs / 60_000} minutes) and was stopped`);
     }
-    if (result.code !== 0) throw new Error(`${what} failed (exit ${result.code}): ${result.output.trim().split("\n").slice(-5).join("\n")}`);
+    if (result.code !== 0) throw new Error(`${what} failed (exit ${result.code}): ${lastLines(result.output)}`);
+  }
+
+  /** Removes the worktree even if the commit's tests broke its .git file, which `git worktree remove` would refuse. */
+  private async cleanUp(worktree: string): Promise<void> {
+    await rm(worktree, { recursive: true, force: true });
+    await this.git(["worktree", "prune"]);
   }
 
   private async git(args: string[]): Promise<void> {
     const result = await this.commands.run("git", ["-C", this.root, ...args]);
     if (result.code !== 0) throw new Error(`git ${args.join(" ")}: ${result.output.trim()}`);
   }
+}
+
+/** A lockfile entry from anywhere but the registry (git, a URL, a path) can run code as npm installs it. */
+async function refuseUnregisteredPackages(worktree: string): Promise<void> {
+  const text = await readFile(join(worktree, "package-lock.json"), "utf8").catch(() => null);
+  if (text === null) throw new SandboxRefusal("the commit has no package-lock.json: its dependencies can't be installed as locked");
+  const lock = JSON.parse(text) as { packages?: Record<string, { resolved?: string; link?: boolean }> };
+  const outside = Object.entries(lock.packages ?? {})
+    .filter(([path, entry]) => path !== "" && !entry.link && entry.resolved !== undefined && !entry.resolved.startsWith(NPM_REGISTRY))
+    .map(([path, entry]) => `${path} (${entry.resolved})`);
+  if (outside.length > 0) throw new SandboxRefusal(`its lockfile installs from outside the npm registry, which can run code at install: ${outside.slice(0, 3).join(", ")}`);
+}
+
+/**
+ * Every entry the recording left is a plain file or folder, and they add up to a sane size: a
+ * link would turn the host's next write or read there into one somewhere else.
+ */
+export async function assertPlainFiles(directory: string): Promise<void> {
+  let total = 0;
+  const walk = async (path: string): Promise<void> => {
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      const full = join(path, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else if (entry.isFile()) total += (await lstat(full)).size;
+      else throw new SandboxRefusal(`the recording left ${full.slice(directory.length + 1)}, which isn't a plain file (a link?): not used`);
+      if (total > MAX_RECORDING_BYTES) throw new SandboxRefusal(`the recording wrote over ${MAX_RECORDING_BYTES / 1024 ** 3} GB: not used`);
+    }
+  };
+  await walk(directory);
+}
+
+function lastLines(output: string): string {
+  return output.trim().split("\n").slice(-5).join("\n");
 }
 
 /** Keeps the last of what a command printed, and shows it as it goes: an image build takes minutes. */
@@ -123,7 +208,8 @@ class SpawnedCommands implements CommandRunner {
       const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], timeout: options.timeoutMs });
       let output = "";
       const keep = (chunk: Buffer) => {
-        if (command === "docker" && args[0] !== "image") process.stderr.write(chunk);
+        const quiet = (command === "docker" && ["image", "rm", "kill"].includes(args[0]!)) || command === "git";
+        if (!quiet) process.stderr.write(chunk);
         output = (output + chunk.toString()).slice(-KEPT_OUTPUT);
       };
       child.stdout.on("data", keep);

@@ -43,6 +43,7 @@ export function scheduleInstructions(root: string): string[] {
     `Its output goes to ${root}/.runshape/reviews/nightly.log. To stop it:`,
     `  launchctl bootout gui/$(id -u)/${JOB_LABEL}`,
     "It records in Docker: Docker Desktop has to be running (its settings can start it at login).",
+    "Install it from a clone kept for it: it runs this checkout's runshape, so not one where someone's PR may be checked out.",
   ];
 }
 

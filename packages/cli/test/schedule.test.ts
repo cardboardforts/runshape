@@ -35,6 +35,7 @@ test("the instructions say where to put it and how to start it, and --at must be
     "Its output goes to /Users/me/code/shop/.runshape/reviews/nightly.log. To stop it:",
     "  launchctl bootout gui/$(id -u)/com.runshape.review-requests",
     "It records in Docker: Docker Desktop has to be running (its settings can start it at login).",
+    "Install it from a clone kept for it: it runs this checkout's runshape, so not one where someone's PR may be checked out.",
   ]);
   expect(() => launchdJob({ root: "/r", at: "25:00", path: "/bin" })).toThrowError("--at takes a time of day, like 03:00");
 });

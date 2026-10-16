@@ -68,7 +68,7 @@ async function run(
     chosen.push(choice);
     return model;
   };
-  const pullRequests = { requestingMyReview: async () => requested };
+  const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
   const code = await runRecordings(argv, { root, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
   return { code, lines, recorder, model, chosen, sandbox };
 }
@@ -445,37 +445,55 @@ describe("runshape compare", () => {
 describe("--sandbox: commits recorded in a container", () => {
   // Someone else's code, or an agent's, recorded unattended: docker-recorder.ts says what the
   // container gets. Here, which recordings go there and what that means for comparing.
-  test("record --sandbox records in the container, and the recording says where it was made", async () => {
+  test("a commit recorded in the sandbox is a recording of its own, beside one made here: neither replaces the other", async () => {
+    // One id per commit made each run flip it between the two places, re-recording it each time.
     const { root, commits } = repository();
     const id = commits.second!.slice(0, 12);
 
-    const { recorder, sandbox } = await run(root, ["record", "main", "--sandbox"]);
+    const sandboxed = await run(root, ["record", "main", "--sandbox"]);
+    const here = await run(root, ["record", "main"]);
+    const again = await run(root, ["record", "main", "--sandbox"]);
 
-    expect({ host: recorder.recorded, sandbox: sandbox.recorded, environment: metadataOf(root, id).environment }).toEqual({
-      host: [],
-      sandbox: [commits.second!.slice(0, 7)],
-      environment: "docker:runshape-recorder:test",
-    });
+    expect({
+      sandbox: sandboxed.sandbox.recorded,
+      host: here.recorder.recorded,
+      againRecorded: again.sandbox.recorded,
+      environments: [metadataOf(root, `${id}-sandbox`).environment, metadataOf(root, id).environment],
+    }).toEqual({ sandbox: [commits.second!.slice(0, 7)], host: [commits.second!.slice(0, 7)], againRecorded: [], environments: ["docker:runshape-recorder:test", "host"] });
   });
 
-  test("compare --sandbox records a side made on this machine again in the container: both sides from one place", async () => {
+  test("a pull request's head is compared in the sandbox even when --sandbox isn't said (second-model review)", async () => {
+    // After the night's run, comparing a PR's ref by hand mustn't run its code on this machine.
     const { root, commits } = repository();
-    await run(root, ["record", "main"]);
+    gitIn(root)("update-ref", "refs/runshape/pr/7", commits.third!);
 
-    const { lines, sandbox } = await run(root, ["compare", "main", "feature", "--sandbox"]);
+    const { recorder, sandbox, lines } = await run(root, ["compare", "main", "refs/runshape/pr/7"]);
 
-    expect({ sandbox: sandbox.recorded, said: lines[0] }).toEqual({
+    expect({ host: recorder.recorded, sandbox: sandbox.recorded, said: lines[0] }).toEqual({
+      host: [],
       sandbox: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
-      said: `main (${commits.second!.slice(0, 12)} Second) was recorded elsewhere (host): recording it again in docker:runshape-recorder:test`,
+      said: "refs/runshape/pr/7 is a pull request's: comparing in the sandbox",
     });
   });
 
-  test("compare --sandbox compares commits: the working tree is yours, recorded on this machine", async () => {
+  test("a commit only ever recorded in the sandbox is compared there again, not re-run here", async () => {
+    const { root, commits } = repository();
+    await run(root, ["record", "feature", "--sandbox"]);
+
+    const { recorder, lines } = await run(root, ["compare", "main", "feature"]);
+
+    expect({ host: recorder.recorded, said: lines[0] }).toEqual({ host: [], said: `feature was recorded in the sandbox (${commits.third!.slice(0, 12)}-sandbox): comparing in the sandbox` });
+  });
+
+  test("--sandbox compares and records commits: the working tree is yours, recorded on this machine", async () => {
     const { root } = repository();
 
-    const { code, lines } = await run(root, ["compare", "main", "--sandbox"]);
+    const results = [await run(root, ["compare", "main", "--sandbox"]), await run(root, ["record", "working", "--sandbox"])];
 
-    expect({ code, lines }).toEqual({ code: 1, lines: ["runshape: --sandbox compares commits: name the head (the working tree is yours, recorded on this machine without it)"] });
+    expect(results.map(({ code, lines }) => [code, lines[0]])).toEqual([
+      [1, "runshape: --sandbox compares commits: name the head (the working tree is yours, recorded on this machine without it)"],
+      [1, "runshape: --sandbox records commits: the working tree is yours, recorded on this machine without it"],
+    ]);
   });
 });
 
@@ -529,11 +547,11 @@ describe("runshape review-requests: every open PR that asks for your review", ()
       sandbox: [commits.second!.slice(0, 7), prHead.slice(0, 7)],
       summary: [`#7 Teach orders to refuse: reviewed`, `#8 A PR whose head is gone: failed: fetching it failed`],
       index: [
-        { number: 7, head: prHead.slice(0, 7), review: `${commits.second!.slice(0, 12)}..${prHead.slice(0, 12)}`, problem: null },
+        { number: 7, head: prHead.slice(0, 7), review: `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`, problem: null },
         { number: 8, head: "0000000", review: null, problem: "fetching it failed" },
       ],
     });
-    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${prHead.slice(0, 12)}`, "review.json"), "utf8"));
+    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`, "review.json"), "utf8"));
     expect(bundle.head.asked).toBe("#7 Teach orders to refuse");
   });
 

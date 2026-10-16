@@ -7,7 +7,7 @@
  *
  * Tested against a real git repository made for each test, not a fake git.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -119,6 +119,19 @@ describe("serveLibraryFile", () => {
     expect(
       await Promise.all([`${id}/latest.json`, `${id}/run/manifest.json`, `${id}/../secret.txt`, "../secret.txt", `${id}/run/nothing.json`, `${id}/run`].map(served)),
     ).toEqual(['200 {"run":"run"}', "200 {}", "404 ", "404 ", "404 ", "404 "]);
+  });
+});
+
+describe("a link inside a recording (second-model review)", () => {
+  test("isn't served when it leads outside the recordings: the dev server would hand out any file", async () => {
+    const { root, commits } = repository();
+    const directory = join(root, ".runshape", "recordings");
+    const id = commits.second!.slice(0, 12);
+    recordAt(directory, metadata(id, commits.second!, "Second", "2026-10-02T09:00:00Z"));
+    writeFileSync(join(root, ".runshape", "secret.json"), '{"token": "not yours"}');
+    symlinkSync("../../secret.json", join(directory, id, "leak.json"));
+
+    expect((await serveLibraryFile(directory, `${id}/leak.json`)).status).toBe(404);
   });
 });
 

@@ -119,11 +119,14 @@ const RECORDING_ID_LENGTH = 12;
 /** A directory still being written; renamed into place when its recording is complete. */
 export const INCOMING_PREFIX = ".incoming-";
 
-/** A recording's folder name: a commit's first hex digits, or the working tree's. */
-export const RECORDING_ID = new RegExp(`^([0-9a-f]{${RECORDING_ID_LENGTH}}|${WORKING_TREE_ID})$`);
+/** Marks a commit's recording made in the sandbox: one of its own, beside one made on this machine. */
+export const SANDBOX_SUFFIX = "-sandbox";
 
-export function recordingIdFor(commit: string): string {
-  return commit.slice(0, RECORDING_ID_LENGTH);
+/** A recording's folder name: a commit's first hex digits (and the sandbox's mark), or the working tree's. */
+export const RECORDING_ID = new RegExp(`^([0-9a-f]{${RECORDING_ID_LENGTH}}(${SANDBOX_SUFFIX})?|${WORKING_TREE_ID})$`);
+
+export function recordingIdFor(commit: string, sandboxed = false): string {
+  return `${commit.slice(0, RECORDING_ID_LENGTH)}${sandboxed ? SANDBOX_SUFFIX : ""}`;
 }
 
 /** A project's recordings (.runshape/recordings) and the git refs they could be compared against. */
@@ -135,7 +138,12 @@ export class RecordingLibrary {
 
   async overview(): Promise<LibraryOverview> {
     const [{ recordings, problems }, refs, working, requested] = await Promise.all([this.recordings(), this.refLines(), this.workingTree(), this.requestedReviews()]);
-    const committed = new Map(recordings.filter((r) => r.id !== WORKING_TREE_ID).map((r) => [r.commit, r.id]));
+    // A commit recorded both here and in the sandbox: its branches point at the one made here.
+    const committed = new Map<string, string>();
+    for (const r of recordings) {
+      if (r.id === WORKING_TREE_ID) continue;
+      if (!committed.has(r.commit) || !r.id.endsWith(SANDBOX_SUFFIX)) committed.set(r.commit, r.id);
+    }
     return {
       working,
       recordings,
