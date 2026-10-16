@@ -74,7 +74,7 @@ describe("DockerRecorder", () => {
     const { root, out, worktree, commands, recorder } = setup({
       answer: (command, args) => {
         if (args[0] === "image") return { code: 1, signal: null, output: "No such image" };
-        if (command === "docker" && args.includes("bridge")) npmrcAtInstall = existsSync(join(worktree, ".npmrc"));
+        if (command === "docker" && args.includes("ci")) npmrcAtInstall = existsSync(join(worktree, ".npmrc"));
         return undefined;
       },
     });
@@ -92,14 +92,26 @@ describe("DockerRecorder", () => {
         ["docker", "image", "inspect", "runshape-recorder:0123456789abcdef"],
         // Only what HEAD commits goes into the image: nothing untracked, nothing uncommitted.
         ["sh", "-c", 'git -C "$1" archive --format=tar HEAD | docker build --tag "$2" --file recorder-ts/sandbox/Dockerfile -', "sh", "<root>", "runshape-recorder:0123456789abcdef"],
+        // Leftovers of a run killed outright: none here (the fake docker lists nothing).
+        ["docker", "ps", "--all", "--format", "{{.Names}}"],
+        ["docker", "network", "ls", "--format", "{{.Name}}"],
         ["git", "-C", "<root>", "worktree", "prune"],
         ["git", "-C", "<root>", "worktree", "add", "--detach", "--quiet", tree, "c0ffee0000000000000000000000000000000000"],
+        // The install's network: internal (no route out), its only other member the registry proxy.
+        ["docker", "network", "create", "--internal", "-o", "com.docker.network.bridge.inhibit_ipv4=true", "runshape-install-.incoming-abc"],
+        ["docker", "run", "--detach", "--name", "runshape-proxy-.incoming-abc", ...hardening, "--network", "bridge", "--workdir", "/runshape", "runshape-recorder:0123456789abcdef", "node", "recorder-ts/sandbox/registry-proxy.mjs"],
+        ["docker", "network", "connect", "runshape-install-.incoming-abc", "runshape-proxy-.incoming-abc"],
         ["docker", "rm", "--force", "runshape-install-.incoming-abc"],
         [
-          "docker", "run", "--name", "runshape-install-.incoming-abc", ...hardening, "--network", "bridge",
+          "docker", "run", "--name", "runshape-install-.incoming-abc", ...hardening, "--network", "runshape-install-.incoming-abc",
           "-e", "npm_config_userconfig=/tmp/no-user-npmrc", "-e", "npm_config_globalconfig=/tmp/no-global-npmrc", "-e", "npm_config_ignore_scripts=true", "-e", "npm_config_git=/usr/bin/git",
+          "-e", "npm_config_proxy=http://runshape-proxy-.incoming-abc:3128", "-e", "npm_config_https_proxy=http://runshape-proxy-.incoming-abc:3128",
+          "-e", "HTTPS_PROXY=http://runshape-proxy-.incoming-abc:3128", "-e", "HTTP_PROXY=http://runshape-proxy-.incoming-abc:3128",
           "-v", `${tree}:/target`, "--workdir", "/target", "runshape-recorder:0123456789abcdef", "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
         ],
+        ["docker", "rm", "--force", "runshape-install-.incoming-abc"],
+        ["docker", "rm", "--force", "runshape-proxy-.incoming-abc"],
+        ["docker", "network", "rm", "runshape-install-.incoming-abc"],
         ["docker", "rm", "--force", "runshape-record-.incoming-abc"],
         [
           "docker", "run", "--name", "runshape-record-.incoming-abc", ...hardening, "--network", "none",
@@ -241,6 +253,31 @@ describe("DockerRecorder", () => {
     expect(await recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message)).toBe(
       "its lockfile installs from outside the npm registry, which can run code at install: node_modules/p/node_modules/q (no resolved URL)",
     );
+  });
+
+  test("a package that says no source must say a plain name too: npm builds the fetch from name@version (sixth review)", async () => {
+    const urlName = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/x": { name: "http://127.0.0.1:8765/x.tgz#", version: "1.0.0", inBundle: true } } });
+    const { out, recorder } = setup({ lock: urlName });
+
+    expect(await recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message)).toBe(
+      "its lockfile installs from outside the npm registry, which can run code at install: node_modules/x (no resolved URL)",
+    );
+  });
+
+  test("what a run killed outright left (an install still running, its proxy, their network) is removed before recording", async () => {
+    const leftovers = { containers: "runshape-install-.incoming-old\nrunshape-proxy-.incoming-old\nsomeone-elses\n", networks: "bridge\nrunshape-install-.incoming-old\n" };
+    const { out, commands, recorder } = setup({
+      answer: (command, args) =>
+        args[0] === "ps" ? { code: 0, signal: null, output: leftovers.containers } : args[0] === "network" && args[1] === "ls" ? { code: 0, signal: null, output: leftovers.networks } : undefined,
+    });
+
+    await recorder.record({ kind: "commit", commit: "c0ffee" }, out);
+
+    expect(commands.calls.filter((call) => call.join(" ").includes(".incoming-old")).map((call) => call.join(" "))).toEqual([
+      "docker rm --force runshape-install-.incoming-old",
+      "docker rm --force runshape-proxy-.incoming-old",
+      "docker network rm runshape-install-.incoming-old",
+    ]);
   });
 
   test("a host user that's root still records as an unprivileged one", () => {

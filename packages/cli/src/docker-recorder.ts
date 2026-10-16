@@ -30,6 +30,12 @@ const MAX_RECORDING_BYTES = 2 * 1024 ** 3;
 const NPM_REGISTRY = "https://registry.npmjs.org/";
 /** node:*-slim's `node` user: for a host that runs as root. */
 const UNPRIVILEGED_USER = "1000:1000";
+/** Containers runshape starts: any still there when a run begins was left by one killed outright. */
+const LEFTOVER_PREFIXES = ["runshape-install-", "runshape-proxy-", "runshape-record-"];
+/** Where recorder-ts/sandbox/registry-proxy.mjs listens. */
+const PROXY_PORT = 3128;
+/** A package's name as npm allows it: anything else in `name` (a URL) is somewhere npm would fetch from. */
+const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 /** A version and nothing else (semver): anything more (a URL, a git spec) is somewhere npm would fetch from. */
 const PLAIN_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 /** npm 7+ lockfiles list every package with where it comes from; older ones don't. */
@@ -58,6 +64,7 @@ export class DockerRecorder implements Recorder {
   async record(target: RecordTarget, outDirectory: string): Promise<void> {
     if (target.kind === "working") throw new SandboxRefusal("--sandbox records commits; the working tree is yours, recorded on this machine without it");
     await this.ensureImage();
+    await this.sweepLeftovers();
     const name = basename(outDirectory);
     const worktree = join(this.root, ".runshape", "worktrees", `sandbox-${name}`);
     await this.cleanUp(worktree);
@@ -67,17 +74,21 @@ export class DockerRecorder implements Recorder {
       // The commit's own npm settings could name a program to run as git, or a registry: gone.
       await rm(join(worktree, ".npmrc"), { force: true });
       await refuseUnregisteredPackages(worktree);
-      // Dependencies: network to fetch them, only the commit mounted, npm's config pinned, no scripts run.
-      await this.docker(
-        [
-          "run", "--name", `runshape-install-${name}`, ...this.hardening(), "--network", "bridge",
-          "-e", "npm_config_userconfig=/tmp/no-user-npmrc", "-e", "npm_config_globalconfig=/tmp/no-global-npmrc",
-          "-e", "npm_config_ignore_scripts=true", "-e", "npm_config_git=/usr/bin/git",
-          "-v", `${worktree}:/target`, "--workdir", "/target", this.image, "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
-        ],
-        INSTALL_TIMEOUT_MS,
-        "installing the commit's dependencies",
-      );
+      // Dependencies: only the commit mounted, npm's config pinned, no scripts run, and no way
+      // out but the registry proxy: whatever the lockfile says, nothing else can be fetched.
+      await this.withRegistryOnlyNetwork(name, async (network, proxy) => {
+        await this.docker(
+          [
+            "run", "--name", `runshape-install-${name}`, ...this.hardening(), "--network", network,
+            "-e", "npm_config_userconfig=/tmp/no-user-npmrc", "-e", "npm_config_globalconfig=/tmp/no-global-npmrc",
+            "-e", "npm_config_ignore_scripts=true", "-e", "npm_config_git=/usr/bin/git",
+            "-e", `npm_config_proxy=${proxy}`, "-e", `npm_config_https_proxy=${proxy}`, "-e", `HTTPS_PROXY=${proxy}`, "-e", `HTTP_PROXY=${proxy}`,
+            "-v", `${worktree}:/target`, "--workdir", "/target", this.image, "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
+          ],
+          INSTALL_TIMEOUT_MS,
+          "installing the commit's dependencies",
+        );
+      });
       // The tests: no network at all, the commit read-only, the output folder.
       const script = [
         "node_modules/.bin/vitest run --config recorder-ts/vitest.record.config.ts --reporter=default --reporter=json --outputFile.json=/out/run.vitest.json > /out/run.log 2>&1",
@@ -113,6 +124,46 @@ export class DockerRecorder implements Recorder {
         if (failure === null) throw cleanup;
       }
     }
+  }
+
+  /**
+   * An internal network (no route anywhere) whose one other member is the registry proxy, which
+   * alone also sits on a network with a way out; both removed afterwards.
+   */
+  private async withRegistryOnlyNetwork(name: string, install: (network: string, proxy: string) => Promise<void>): Promise<void> {
+    const network = `runshape-install-${name}`;
+    const proxyName = `runshape-proxy-${name}`;
+    // inhibit_ipv4: the bridge gets no address of its own, so the network's gateway isn't this
+    // machine answering (sshd, a dev database); --internal alone leaves that reachable.
+    await this.checked(["network", "create", "--internal", "-o", "com.docker.network.bridge.inhibit_ipv4=true", network], "making the install's network");
+    try {
+      await this.checked(
+        ["run", "--detach", "--name", proxyName, ...this.hardening(), "--network", "bridge", "--workdir", "/runshape", this.image, "node", "recorder-ts/sandbox/registry-proxy.mjs"],
+        "starting the registry proxy",
+      );
+      await this.checked(["network", "connect", network, proxyName], "connecting the registry proxy");
+      await install(network, `http://${proxyName}:${PROXY_PORT}`);
+    } finally {
+      await this.commands.run("docker", ["rm", "--force", `runshape-install-${name}`]);
+      await this.commands.run("docker", ["rm", "--force", proxyName]);
+      await this.commands.run("docker", ["network", "rm", network]);
+    }
+  }
+
+  /**
+   * What a run killed outright left (an install still running, a proxy, the network they held):
+   * nothing else records while the lock is held, so every one of them is a leftover.
+   */
+  private async sweepLeftovers(): Promise<void> {
+    const containers = (await this.commands.run("docker", ["ps", "--all", "--format", "{{.Names}}"])).output.split("\n").map((n) => n.trim());
+    for (const container of containers.filter((n) => LEFTOVER_PREFIXES.some((prefix) => n.startsWith(prefix)))) await this.commands.run("docker", ["rm", "--force", container]);
+    const networks = (await this.commands.run("docker", ["network", "ls", "--format", "{{.Name}}"])).output.split("\n").map((n) => n.trim());
+    for (const network of networks.filter((n) => n.startsWith("runshape-install-"))) await this.commands.run("docker", ["network", "rm", network]);
+  }
+
+  private async checked(args: string[], what: string): Promise<void> {
+    const result = await this.commands.run("docker", args);
+    if (result.code !== 0) throw new Error(`${what} failed: ${lastLines(result.output)}`);
   }
 
   private hardening(): string[] {
@@ -179,7 +230,7 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   }
   const text = await readFile(join(worktree, "package-lock.json"), "utf8").catch(() => null);
   if (text === null) throw new SandboxRefusal("the commit has no package-lock.json: its dependencies can't be installed as locked");
-  const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; version?: string; link?: boolean; inBundle?: boolean }> };
+  const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; name?: string; version?: string; link?: boolean; inBundle?: boolean }> };
   // Without `packages` npm resolves dependencies itself, past anything checked here.
   if ((lock.lockfileVersion ?? 0) < MIN_LOCKFILE_VERSION || typeof lock.packages !== "object" || lock.packages === null) {
     throw new SandboxRefusal("its lockfile isn't one npm 7+ writes (lockfileVersion 2 or 3, with packages): its dependencies can't be checked before installing");
@@ -198,9 +249,10 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   const outside = Object.entries(lock.packages)
     .filter(([path, entry]) => {
       if (path === "" || entry.link) return false;
-      // Without a source of its own npm fetches name@version: the version must be a plain one,
-      // or it's a URL npm goes to. A workspace's folder: linked to, no node_modules anywhere in it.
-      const plain = entry.resolved === undefined && (entry.version === undefined || PLAIN_VERSION.test(entry.version));
+      // Without a source of its own npm fetches name@version: both must be plain, or they spell a
+      // URL npm goes to. A workspace's folder: linked to, no node_modules anywhere in it.
+      const plain =
+        entry.resolved === undefined && (entry.version === undefined || PLAIN_VERSION.test(entry.version)) && (entry.name === undefined || PACKAGE_NAME.test(entry.name));
       if (plain && linked.has(path) && !path.split("/").includes("node_modules")) return false;
       if (plain && entry.inBundle) return false;
       return entry.resolved === undefined || !entry.resolved.startsWith(NPM_REGISTRY);
