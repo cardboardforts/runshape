@@ -4,7 +4,19 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { ArchitectureSnapshot, buildPlacements, loadLatestRun, Outcome, RULES_FILE, Run, ZoneRules, ZoneRulesError, ZoneSource } from "@runshape/core";
+import {
+  ArchitectureSnapshot,
+  buildPlacements,
+  buildReviewBundle,
+  loadLatestRun,
+  Outcome,
+  reviewBundleMarkdown,
+  RULES_FILE,
+  Run,
+  ZoneRules,
+  ZoneRulesError,
+  ZoneSource,
+} from "@runshape/core";
 import {
   ARCHITECTURE_FILE,
   ArchitectureSummary,
@@ -72,6 +84,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
           if (base.id === head.id) throw new RecordingError(`${baseName} and ${headName} are the same recording: nothing to compare`);
           await recordings.ensure(base, { sameRecorder: true });
           await recordings.ensure(head, { sameRecorder: true });
+          dependencies.print(`review: ${await recordings.writeReview({ asked: baseName, plan: base }, { asked: headName, plan: head })}`);
           dependencies.print(`open ${DEMO_URL}?base=${base.id}&head=${head.id} (npm run dev -w packages/webview)`);
         });
         return 0;
@@ -197,6 +210,46 @@ class Recordings {
       print(`recording ${plan.label}…`);
     }
     await this.make(plan);
+  }
+
+  /**
+   * Saves the comparison as a review bundle beside the recordings (.runshape/reviews/<base>..<head>):
+   * review.json for tools, review.md to read or post. Returns the Markdown's path, relative to the project.
+   */
+  async writeReview(base: { asked: string; plan: Plan }, head: { asked: string; plan: Plan }): Promise<string> {
+    const [baseRun, headRun] = await Promise.all([this.runOf(base.plan.id), this.runOf(head.plan.id)]);
+    const [baseRules, headRules] = await Promise.all([this.rulesOf(base.plan.id), this.rulesOf(head.plan.id)]);
+    const side = ({ asked, plan }: { asked: string; plan: Plan }) => ({ asked, recording: plan.id, commit: plan.summary.commit, subject: plan.summary.subject });
+    const bundle = buildReviewBundle({
+      base: baseRun,
+      head: headRun,
+      baseSide: side(base),
+      headSide: side(head),
+      // Unknown on either side, both use head's (or none): otherwise every base rule reads as removed.
+      baseRules: headRules === null ? null : baseRules,
+      rules: headRules ?? ZoneRules.none(),
+      createdAt: this.dependencies.now().toISOString(),
+    });
+    const relative = join(".runshape", "reviews", `${base.plan.id}..${head.plan.id}`);
+    const directory = join(this.dependencies.root, relative);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, REVIEW_JSON), `${JSON.stringify(bundle, null, 2)}\n`);
+    await writeFile(join(directory, REVIEW_MARKDOWN), reviewBundleMarkdown(bundle));
+    return join(relative, REVIEW_MARKDOWN);
+  }
+
+  private runOf(id: string): Promise<Run> {
+    const directory = join(this.library.directory, id);
+    return loadLatestRun({ readText: (path) => readFile(join(directory, path), "utf8") });
+  }
+
+  /** The rules a kept recording was made with: its runshape.json, none if it had none; null for one made before zones were kept. */
+  private async rulesOf(id: string): Promise<ZoneRules | null> {
+    const recording = (await this.library.recordings()).recordings.find((r) => r.id === id);
+    if (recording?.architecture === undefined) return null;
+    const text = await readFile(join(this.library.directory, id, RULES_FILE), "utf8").catch(() => null);
+    if (text === null || recording.architecture.problem !== null) return ZoneRules.none();
+    return ZoneRules.parse(text.replace(/^\uFEFF/, ""));
   }
 
   async list(): Promise<void> {
@@ -339,6 +392,10 @@ interface CommittedRules {
   /** Why the text couldn't be used; the rules are then none, and every zone inferred. */
   problem: string | null;
 }
+
+/** A comparison's bundle (docs/review-bundle.md) and its Markdown. */
+const REVIEW_JSON = "review.json";
+const REVIEW_MARKDOWN = "review.md";
 
 /** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);

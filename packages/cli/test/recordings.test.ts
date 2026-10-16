@@ -280,6 +280,39 @@ describe("runshape compare", () => {
     });
   });
 
+  test("a comparison is saved as a review: JSON for tools, Markdown to read or post", async () => {
+    const { root, commits } = repository();
+    const base = commits.second!.slice(0, 12);
+
+    const { lines } = await run(root, ["compare", "main"]);
+
+    const directory = join(root, ".runshape", "reviews", `${base}..working`);
+    const bundle = JSON.parse(readFileSync(join(directory, "review.json"), "utf8"));
+    expect({
+      said: lines.at(-2),
+      bundle: `${bundle.format} v${bundle.version}: ${bundle.base.asked} ${bundle.base.recording} -> ${bundle.head.asked} ${bundle.head.recording}, rules known ${bundle.baseRulesKnown}`,
+      markdown: readFileSync(join(directory, "review.md"), "utf8").split("\n")[0],
+    }).toEqual({
+      said: `review: ${join(".runshape", "reviews", `${base}..working`, "review.md")}`,
+      bundle: `runshape-review v1: main ${base} -> working working, rules known true`,
+      markdown: "## Behaviour changes (Runshape)",
+    });
+  });
+
+  test("a head recorded before zones were kept: neither side's rules are known, so none read as removed", async () => {
+    const { root, commits } = repository();
+    const head = commits.third!.slice(0, 12);
+    await run(root, ["record", "feature"]);
+    const file = join(root, ".runshape", "recordings", head, "recording.json");
+    const { architecture: _dropped, ...older } = JSON.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, JSON.stringify(older));
+
+    await run(root, ["compare", "main", "feature"]);
+
+    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${head}`, "review.json"), "utf8"));
+    expect(bundle.baseRulesKnown).toBe(false);
+  });
+
   test("comparing a recording with itself is refused before anything is recorded", async () => {
     const { root } = repository();
 

@@ -102,6 +102,7 @@ any two can be compared:
 npm run runshape -- list                    # what's recorded, which branch tips aren't yet
 npm run runshape -- compare main --fetch    # fetch main, record where your branch left it and your working tree
                                             # (--tip: main's newest commit instead of the fork point)
+# each compare also saves .runshape/reviews/<base>..<head>/review.md (and review.json, docs/review-bundle.md)
 npm run runshape -- record <branch|commit|working> [--fetch] [--again]
 npm run runshape -- forget <id>             # each recording is ~100 MB
 ```
