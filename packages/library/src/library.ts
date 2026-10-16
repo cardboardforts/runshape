@@ -18,6 +18,8 @@ export interface RecordingMetadata {
   recorder: string;
   /** A hash of the recorder's source when it recorded: recordings by different recorders differ for that alone. */
   recorderSource: string;
+  /** Where it was recorded: "host", or "docker:<image>" (`--sandbox`); absent means host. */
+  environment?: string;
   tests: { total: number; failed: number };
   /** The commit's runshape.json applied to this recording (placements in architecture.json); absent from recordings made before it was kept. */
   architecture?: ArchitectureSummary;

@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 
 import { chooseModel } from "./models";
+import { DockerRecorder } from "./docker-recorder";
 import { runRecordings } from "./recordings";
 import { ShellRecorder } from "./shell-recorder";
 
@@ -13,6 +14,7 @@ const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "
 process.exitCode = await runRecordings(process.argv.slice(2), {
   root,
   recorder: new ShellRecorder(root),
+  sandbox: (recorderVersion) => new DockerRecorder(root, recorderVersion),
   print: (line) => console.log(line),
   now: () => new Date(),
   models: (choice) => chooseModel(choice, process.env),

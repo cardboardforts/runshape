@@ -1,0 +1,12 @@
+# The recorder image (recorder-ts/sandbox/Dockerfile) gets the source and the lockfile; never
+# recordings, other checkouts, local builds or secrets.
+**/node_modules
+.runshape
+.git
+**/dist
+**/out
+examples
+.vscode-test
+**/.env
+**/.env.*
+*.vsix

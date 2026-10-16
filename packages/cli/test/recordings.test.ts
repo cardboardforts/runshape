@@ -29,7 +29,10 @@ const DEAD_PID = 99_999_999;
 
 class FixtureRecorder implements Recorder {
   readonly recorded: string[] = [];
-  constructor(private readonly fails = false) {}
+  constructor(
+    private readonly fails = false,
+    readonly environment = "host",
+  ) {}
 
   async record(target: RecordTarget, outDirectory: string): Promise<void> {
     this.recorded.push(target.kind === "working" ? "working" : target.commit.slice(0, 7));
@@ -51,15 +54,15 @@ class FakeModel implements LanguageModel {
   }
 }
 
-async function run(root: string, argv: string[], recorder = new FixtureRecorder(), model = new FakeModel()) {
+async function run(root: string, argv: string[], recorder = new FixtureRecorder(), model = new FakeModel(), sandbox = new FixtureRecorder(false, "docker:runshape-recorder:test")) {
   const lines: string[] = [];
   const chosen: string[] = [];
   const models = async (choice: string) => {
     chosen.push(choice);
     return model;
   };
-  const code = await runRecordings(argv, { root, recorder, print: (line) => lines.push(line), now: () => NOW, models });
-  return { code, lines, recorder, model, chosen };
+  const code = await runRecordings(argv, { root, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models });
+  return { code, lines, recorder, model, chosen, sandbox };
 }
 
 const metadataOf = (root: string, id: string) => JSON.parse(readFileSync(join(root, ".runshape", "recordings", id, "recording.json"), "utf8"));
@@ -87,6 +90,7 @@ describe("runshape record", () => {
       recordedAt: NOW.toISOString(),
       recorder: "recorder-go 0.1.0",
       recorderSource: expect.stringMatching(/^[0-9a-f]{16}$/),
+      environment: "host",
       tests: { total: 5, failed: 0 },
       // No runshape.json at that commit: every zone inferred, in the default style.
       architecture: { style: "hexagonal", rules: 0, declared: 0, inferred: 9, problem: null },
@@ -427,6 +431,43 @@ describe("runshape compare", () => {
       recorded: ["working"],
       link: `open http://localhost:5173/demo/index.html?base=${main}&head=working (npm run dev -w packages/webview)`,
     });
+  });
+});
+
+describe("--sandbox: commits recorded in a container", () => {
+  // Someone else's code, or an agent's, recorded unattended: docker-recorder.ts says what the
+  // container gets. Here, which recordings go there and what that means for comparing.
+  test("record --sandbox records in the container, and the recording says where it was made", async () => {
+    const { root, commits } = repository();
+    const id = commits.second!.slice(0, 12);
+
+    const { recorder, sandbox } = await run(root, ["record", "main", "--sandbox"]);
+
+    expect({ host: recorder.recorded, sandbox: sandbox.recorded, environment: metadataOf(root, id).environment }).toEqual({
+      host: [],
+      sandbox: [commits.second!.slice(0, 7)],
+      environment: "docker:runshape-recorder:test",
+    });
+  });
+
+  test("compare --sandbox records a side made on this machine again in the container: both sides from one place", async () => {
+    const { root, commits } = repository();
+    await run(root, ["record", "main"]);
+
+    const { lines, sandbox } = await run(root, ["compare", "main", "feature", "--sandbox"]);
+
+    expect({ sandbox: sandbox.recorded, said: lines[0] }).toEqual({
+      sandbox: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
+      said: `main (${commits.second!.slice(0, 12)} Second) was recorded elsewhere (host): recording it again in docker:runshape-recorder:test`,
+    });
+  });
+
+  test("compare --sandbox compares commits: the working tree is yours, recorded on this machine", async () => {
+    const { root } = repository();
+
+    const { code, lines } = await run(root, ["compare", "main", "--sandbox"]);
+
+    expect({ code, lines }).toEqual({ code: 1, lines: ["runshape: --sandbox compares commits: name the head (the working tree is yours, recorded on this machine without it)"] });
   });
 });
 

@@ -8,6 +8,7 @@ import {
   ArchitectureSnapshot,
   buildPlacements,
   buildReviewBundle,
+  byCodeUnit,
   ChangeContext,
   CommitMessage,
   explainChange,
@@ -46,6 +47,8 @@ export type RecordTarget = { kind: "commit"; commit: string } | { kind: "working
 
 /** Port: records one target's tests into a directory, leaving latest.json and its run there. */
 export interface Recorder {
+  /** Where it records ("host", "docker:<image>"): recordings made in different places differ for that alone. */
+  readonly environment: string;
   record(target: RecordTarget, outDirectory: string): Promise<void>;
 }
 
@@ -53,6 +56,8 @@ export interface RecordingsDependencies {
   /** The project's root: its git repository, and where .runshape/recordings lives. */
   root: string;
   recorder: Recorder;
+  /** Records commits in a container (`--sandbox`), given the recorder's version (docker-recorder.ts). */
+  sandbox: (recorderVersion: string) => Recorder;
   print: (line: string) => void;
   now: () => Date;
   /** The language model `--explain` asks: claude -p, the Anthropic API (models.ts), or a fake in tests. */
@@ -72,7 +77,12 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   const flags = new Set(flagValues.keys());
   const [command = "list", ...names] = argv.filter((arg) => !arg.startsWith("--"));
   const unknownFlags = [...flags].filter((flag) => !KNOWN_FLAGS.has(flag));
-  const recordings = new Recordings(dependencies, { fetch: flags.has("--fetch"), again: flags.has("--again"), explainAgain: flags.has("--explain-again") });
+  const recordings = new Recordings(dependencies, {
+    fetch: flags.has("--fetch"),
+    again: flags.has("--again"),
+    explainAgain: flags.has("--explain-again"),
+    sandbox: flags.has("--sandbox"),
+  });
   const againstTip = flags.has("--tip");
   try {
     if (unknownFlags.length > 0) throw new UsageError(`unknown option ${unknownFlags.join(", ")}\n${USAGE}`);
@@ -95,6 +105,10 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
       case "compare": {
         if (names.length < 1 || names.length > 2) throw new UsageError(`compare <base> [<head>]\n${USAGE}`);
         const [baseName, headName = WORKING_TREE_ID] = names as [string, string?];
+        // Both sides from one place: the working tree is recorded here, so a sandboxed base wouldn't compare.
+        if (flags.has("--sandbox") && headName === WORKING_TREE_ID) {
+          throw new UsageError("--sandbox compares commits: name the head (the working tree is yours, recorded on this machine without it)");
+        }
         await recordings.exclusively(async () => {
           // --fetch is for the base ("the latest main"): the head is usually yours.
           const head = await recordings.plan(headName, { fetch: false });
@@ -126,7 +140,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox"]);
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
   "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] [--explain[=claude|api]] | forget <id>";
@@ -154,10 +168,11 @@ const RECORDER_SOURCE_SKIPPED = new Set(["node_modules", "test"]);
 class Recordings {
   private readonly library: RecordingLibrary;
   private readonly git: GitCli;
+  private sandboxRecorder: Recorder | null = null;
 
   constructor(
     private readonly dependencies: RecordingsDependencies,
-    private readonly options: { fetch: boolean; again: boolean; explainAgain: boolean },
+    private readonly options: { fetch: boolean; again: boolean; explainAgain: boolean; sandbox: boolean },
   ) {
     this.git = new GitCli(dependencies.root);
     this.library = new RecordingLibrary(join(dependencies.root, ".runshape", "recordings"), this.git);
@@ -243,11 +258,14 @@ class Recordings {
     const { print } = this.dependencies;
     const existing = (await this.library.recordings()).recordings.find((r) => r.id === plan.id);
     if (existing && plan.id !== WORKING_TREE_ID && !this.options.again) {
-      if (!sameRecorder || existing.recorderSource === (await this.recorderSource())) {
+      const recorder = await this.recorderFor(plan.target);
+      const madeIn = existing.environment ?? HOST_ENVIRONMENT;
+      if (!sameRecorder || (existing.recorderSource === (await this.recorderSource()) && madeIn === recorder.environment)) {
         print(`${plan.label} is recorded already; record it again with --again`);
         return;
       }
-      print(`${plan.label} was recorded by another version of ${RECORDER_DIRECTORY}: recording it again`);
+      if (madeIn !== recorder.environment) print(`${plan.label} was recorded elsewhere (${madeIn}): recording it again in ${recorder.environment}`);
+      else print(`${plan.label} was recorded by another version of ${RECORDER_DIRECTORY}: recording it again`);
     } else {
       print(`recording ${plan.label}…`);
     }
@@ -391,12 +409,24 @@ class Recordings {
   }
 
   /** The recorder's source as it is now: what recorded a recording made now. */
+  /** The container for commits with --sandbox (the working tree is always recorded here). */
+  private async recorderFor(target: RecordTarget): Promise<Recorder> {
+    if (!this.options.sandbox || target.kind === "working") return this.dependencies.recorder;
+    this.sandboxRecorder ??= this.dependencies.sandbox(await this.recorderSource());
+    return this.sandboxRecorder;
+  }
+
+  /**
+   * The recorder as it is now, and what the sandbox image is built from: its source, and the
+   * lockfile its dependencies come from. In code-unit order: the same on every machine.
+   */
   private async recorderSource(): Promise<string> {
     const hash = createHash("sha256");
+    hash.update(await readFile(join(this.dependencies.root, "package-lock.json")).catch(() => Buffer.alloc(0))).update("\0");
     const directory = join(this.dependencies.root, RECORDER_DIRECTORY);
     const walk = async (relative: string): Promise<void> => {
       const entries = await readdir(join(directory, relative), { withFileTypes: true }).catch(() => []);
-      for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      for (const entry of entries.sort((a, b) => byCodeUnit(a.name, b.name))) {
         if (RECORDER_SOURCE_SKIPPED.has(entry.name)) continue;
         const path = join(relative, entry.name);
         if (entry.isDirectory()) await walk(path);
@@ -414,9 +444,10 @@ class Recordings {
     await mkdir(incoming, { recursive: true });
     try {
       const recorderSource = await this.recorderSource();
+      const recorder = await this.recorderFor(target);
       const rules = await this.rulesAt(target);
       if (rules.problem !== null) this.dependencies.print(`${RULES_FILE} at ${plan.label} is invalid, so every zone is inferred: ${rules.problem}`);
-      await this.dependencies.recorder.record(target, incoming);
+      await recorder.record(target, incoming);
       const run = await loadLatestRun({ readText: (path) => readFile(join(incoming, path), "utf8") });
       const architecture = await this.keepArchitecture(incoming, run, rules);
       const metadata: RecordingMetadata = {
@@ -429,6 +460,7 @@ class Recordings {
         recordedAt: this.dependencies.now().toISOString(),
         recorder: run.recorderVersion ?? "unknown",
         recorderSource,
+        environment: recorder.environment,
         tests: { total: run.scenarios.length, failed: run.scenarios.filter((s) => FAILING.has(s.outcome)).length },
         architecture,
       };
@@ -521,6 +553,9 @@ function sha256(text: string): string {
 
 /** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+
+/** Where a recording was made when its metadata doesn't say (made before it did). */
+const HOST_ENVIRONMENT = "host";
 
 /** A recording being replaced, kept until its replacement is in place. */
 const REPLACED_PREFIX = ".replaced-";

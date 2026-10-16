@@ -5,6 +5,8 @@ import { Recorder, RecordTarget } from "./recordings";
 
 /** Records with the TypeScript recorder's script (recorder-ts/record-tree.sh), its output passed through. */
 export class ShellRecorder implements Recorder {
+  readonly environment = "host";
+
   constructor(private readonly root: string) {}
 
   record(target: RecordTarget, outDirectory: string): Promise<void> {
