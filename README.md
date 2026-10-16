@@ -112,6 +112,9 @@ npm run runshape -- review-requests [--explain] [--limit=N]
 # where it left its base, explained if asked; .runshape/reviews/requested.json lists them,
 # and /demo/index.html shows them first: what needs looking at in each, and the way in
 npm run runshape -- schedule [--at=03:00]   # prints a launchd job that runs it nightly, to install
+npm run runshape -- readmes [--write]       # a guide in each source folder's README.md: its zone, each file's
+                                            # classes and entry points, and questions (code that doesn't fit,
+                                            # mixes kinds, or never runs); only between runshape markers
 npm run runshape -- record <branch|commit|working> [--fetch] [--again] [--sandbox]
 # --sandbox records commits in a Docker container: no network, non-root, only the commit and
 # the output mounted (for code you didn't write: someone's PR, an agent's branch). Needs Docker.

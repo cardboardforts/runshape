@@ -8,6 +8,7 @@ export * from "@runshape/views";
 export * from "./architecture";
 export * from "./architecture-advice";
 export * from "./explainer";
+export * from "./folder-readme";
 export * from "./language-model";
 export * from "./review-bundle";
 export * from "./session";

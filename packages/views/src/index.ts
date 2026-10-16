@@ -5,6 +5,7 @@ export * from "./align";
 export * from "./architecture-diff";
 export * from "./component-view";
 export * from "./execution-diff";
+export * from "./folder-guide";
 export * from "./function-ref";
 export * from "./function-view";
 export * from "./moves";

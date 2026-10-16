@@ -128,6 +128,16 @@ function doesn't fit the folder's theme". Those findings prompt refactoring deci
   - Whether "doesn't fit here" findings become proposed zone rules or review questions (they
     look like the Architecture tab's "needs a decision" and "moved with behaviour" lists).
   - Which folders get one (packages and their src/, not every leaf).
+- **Taken up (2026-10-16):** `npm run runshape -- readmes [--write]` keeps a guide in each source
+  folder's README.md, between markers (a README without them is someone's own, left alone):
+  the folder's main zone, each file's zone, classes and entry points (functions called from
+  outside the file, by other files or tests: its interface as used, helpers left out), files
+  with no functions of their own, and questions: a file in another zone than the folder, one
+  holding two zones, calls against the style, code no test ran. Mechanical, from the working
+  tree's recording (views/folder-guide.ts, core/folder-readme.ts); no model yet. On Runshape it
+  found the one untested source file (cli's shell-recorder.ts); with every zone inferred (no
+  runshape.json) it can't yet ask "does this belong here?" of Runshape's own code.
+  Next: a runshape.json for Runshape (the zone-placement pass), and the folder prose from a model.
 - **First evaluation (2026-10-16):** the skeleton (files, classes, zones and why) comes from
   placements with no model involved; only the plain-language prose needs one. Placements
   cover what the recorded tests ran, so a folder's untested files would be missing from its

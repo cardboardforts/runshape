@@ -1,11 +1,12 @@
 // npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, join, sep } from "node:path";
 
 import {
   ArchitectureSnapshot,
+  buildFolderGuides,
   buildPlacements,
   buildReviewBundle,
   byCodeUnit,
@@ -15,7 +16,9 @@ import {
   Explanation,
   explanationInputs,
   explanationMarkdown,
+  folderGuideMarkdown,
   LanguageModel,
+  mergeIntoReadme,
   loadLatestRun,
   ReviewBundle,
   Outcome,
@@ -153,6 +156,9 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         });
         return failed > 0 ? 1 : 0;
       }
+      case "readmes":
+        await recordings.exclusively(() => recordings.readmes(flags.has("--write")));
+        return 0;
       case "schedule": {
         const at = flagValues.get("--at") ?? DEFAULT_SCHEDULE_TIME;
         dependencies.print(launchdJob({ root: dependencies.root, at, path: process.env.PATH ?? "/usr/bin:/bin" }).trimEnd());
@@ -175,14 +181,14 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write"]);
 /** Before anyone's at work, after most of a day's pushes. */
 const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
-  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | schedule [--at=HH:MM] | forget <id>";
+  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] | schedule [--at=HH:MM] | forget <id>";
 
 class RecordingError extends Error {}
 
@@ -577,6 +583,48 @@ class Recordings {
     }
   }
 
+  /**
+   * A guide to each source folder the working tree's tests run code in, kept in its README.md
+   * between markers (folder-readme.ts): what would change, and the questions each raises.
+   * Written only with --write.
+   */
+  async readmes(write: boolean): Promise<void> {
+    await this.refuseCheckedOutPullRequest();
+    const [working] = await this.place([await this.plan(WORKING_TREE_ID, { fetch: false })], { workingHead: true });
+    await this.ensure(working!);
+    const run = await this.runOf(WORKING_TREE_ID);
+    const rules = (await this.rulesOf(WORKING_TREE_ID)) ?? ZoneRules.none();
+    const snapshot = buildPlacements(run, rules);
+    const listed = await this.git.run(["ls-files", "--cached", "--others", "--exclude-standard"]);
+    const sources = listed.split("\n").filter((file) => SOURCE_FILE.test(file));
+    const context = { commit: working!.summary.commit, style: snapshot.style, rules: snapshot.rules.length };
+    let questions = 0;
+    let folders = 0;
+    for (const guide of buildFolderGuides(run, snapshot, sources, rules)) {
+      const directory = join(this.dependencies.root, guide.folder);
+      if (!(await stat(directory).then((s) => s.isDirectory(), () => false))) continue;
+      const file = join(directory, README_FILE);
+      const relative = guide.folder === "" ? README_FILE : `${guide.folder}/${README_FILE}`;
+      // Only a plain file inside the project, however the recording names the folder.
+      if (!(await insideProject(this.dependencies.root, directory)) || (await lstat(file).then((s) => !s.isFile(), () => false))) {
+        this.dependencies.print(`${relative}: skipped: not a plain file inside the project`);
+        continue;
+      }
+      folders += 1;
+      const existing = await readFile(file, "utf8").catch(() => null);
+      const merged = mergeIntoReadme(existing, folderGuideMarkdown(guide, context), guide.folder);
+      if (merged.status === "skipped") {
+        this.dependencies.print(`${relative}: skipped: it's someone's own (add <!-- runshape:begin --> and <!-- runshape:end --> to keep a guide in it)`);
+      } else {
+        if (write && merged.status !== "unchanged") await writeFile(file, merged.text);
+        this.dependencies.print(`${relative}: ${write || merged.status === "unchanged" ? merged.status : `would ${merged.status === "created" ? "create" : "update"}`}`);
+      }
+      for (const question of guide.questions) this.dependencies.print(`  ? ${question}`);
+      questions += guide.questions.length;
+    }
+    this.dependencies.print(`${questions} question${questions === 1 ? "" : "s"} in ${folders} folder${folders === 1 ? "" : "s"}.${write ? "" : " Nothing written: --write writes them."}`);
+  }
+
   async list(): Promise<void> {
     const overview = await this.library.overview();
     for (const line of listing(overview)) this.dependencies.print(line);
@@ -791,6 +839,16 @@ function sha256(text: string): string {
 
 /** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+
+/** Whether a folder, links resolved, is the project or inside it. */
+async function insideProject(root: string, directory: string): Promise<boolean> {
+  const [project, folder] = await Promise.all([realpath(root), realpath(directory)]);
+  return folder === project || folder.startsWith(`${project}${sep}`);
+}
+
+/** The files a folder guide lists: source in the languages recorded, tests left out by the guide. */
+const SOURCE_FILE = /\.(py|go|[cm]?[jt]sx?)$/;
+const README_FILE = "README.md";
 
 /** Where the person names their branch of merged code, when origin's HEAD doesn't. */
 const TRUSTED_BRANCH_CONFIG = "runshape.trustedBranch";
