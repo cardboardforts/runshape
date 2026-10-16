@@ -35,7 +35,8 @@ export const LIBRARY_ROUTE = "/__runshape/";
 
 /**
  * The demo's dev-server routes, free of any server framework: the overview at
- * /__runshape/library, and recordings' files under /__runshape/recordings/. Null for any other URL.
+ * /__runshape/library, recordings' files under /__runshape/recordings/ and reviews' under
+ * /__runshape/reviews/. Null for any other URL.
  */
 export async function handleLibraryRequest(library: RecordingLibrary, url: string): Promise<LibraryResponse | null> {
   const path = url.split("?")[0]!;
@@ -48,15 +49,17 @@ export async function handleLibraryRequest(library: RecordingLibrary, url: strin
       return { status: 500, contentType: "text/plain", body: error instanceof Error ? error.message : String(error) };
     }
   }
-  if (route.startsWith("recordings/")) {
+  for (const [prefix, directory] of [["recordings/", library.directory], ["reviews/", library.reviewsDirectory]] as const) {
+    if (!route.startsWith(prefix)) continue;
     let relativePath: string;
     try {
-      relativePath = decodeURIComponent(route.slice("recordings/".length));
+      relativePath = decodeURIComponent(route.slice(prefix.length));
     } catch {
       return NOT_FOUND;
     }
-    const file = await serveLibraryFile(library.directory, relativePath);
-    return file.status === 200 ? { status: 200, contentType: "application/json", body: file.body } : NOT_FOUND;
+    const file = await serveLibraryFile(directory, relativePath);
+    // A review's Markdown reads as text in the browser; everything else kept is JSON.
+    return file.status === 200 ? { status: 200, contentType: relativePath.endsWith(".md") ? "text/markdown; charset=utf-8" : "application/json", body: file.body } : NOT_FOUND;
   }
   return NOT_FOUND;
 }

@@ -109,7 +109,9 @@ npm run runshape -- compare main --explain  # and asks a model why it changed, f
                                             # --explain-again asks again without recording again)
 npm run runshape -- review-requests [--explain] [--limit=N]
 # every open PR asking for your review (gh): fetched, recorded in the sandbox, reviewed against
-# where it left its base, explained if asked; .runshape/reviews/requested.json lists them
+# where it left its base, explained if asked; .runshape/reviews/requested.json lists them,
+# and /demo/index.html shows them first: what needs looking at in each, and the way in
+npm run runshape -- schedule [--at=03:00]   # prints a launchd job that runs it nightly, to install
 npm run runshape -- record <branch|commit|working> [--fetch] [--again] [--sandbox]
 # --sandbox records commits in a Docker container: no network, non-root, only the commit and
 # the output mounted (for code you didn't write: someone's PR, an agent's branch). Needs Docker.

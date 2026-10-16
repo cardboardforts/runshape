@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { Git, GitError } from "./git";
 
@@ -49,6 +49,52 @@ export interface RefSummary {
   recordingId: string | null;
 }
 
+/** An open pull request, as GitHub lists it. */
+export interface PullRequestSummary {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  baseRefName: string;
+  headRefName: string;
+  headRefOid: string;
+  /** From a fork: its branch isn't on origin, but GitHub's refs/pull/<n>/head is. */
+  isCrossRepository: boolean;
+  updatedAt: string;
+}
+
+/** What a morning's list shows of a review before it's opened. */
+export interface ReviewHighlights {
+  nowFailing: number;
+  silentChanges: number;
+  newTests: number;
+  /** Rules added, removed or changed, and placements they made or unmade. */
+  decided: number;
+  needsDecision: number;
+  routesChanged: number;
+}
+
+/** A pull request in requested.json: what it is, and what came of reviewing it. */
+export interface RequestedReview extends PullRequestSummary {
+  /** The commit reviewed: the fetched head, which may be newer than the listed one. */
+  head: string;
+  /** Its review's folder under .runshape/reviews ("<base>..<head>"); null when it couldn't be reviewed. */
+  review: string | null;
+  explained: boolean;
+  problem: string | null;
+  summary: ReviewHighlights | null;
+}
+
+/** .runshape/reviews/requested.json, as `review-requests` writes it. */
+export interface RequestedReviews {
+  format: "runshape-requested-reviews";
+  version: 1;
+  createdAt: string;
+  pullRequests: RequestedReview[];
+}
+
+export const REQUESTED_REVIEWS_FILE = "requested.json";
+
 export interface LibraryOverview {
   working: { branch: string | null; commit: string; dirty: boolean };
   /** Newest first. */
@@ -56,6 +102,8 @@ export interface LibraryOverview {
   refs: RefSummary[];
   /** Directories that look like recordings but couldn't be read. */
   problems: string[];
+  /** The last `review-requests` run's list; null before one has run. */
+  requested: RequestedReviews | null;
 }
 
 export interface CommitSummary {
@@ -86,14 +134,25 @@ export class RecordingLibrary {
   ) {}
 
   async overview(): Promise<LibraryOverview> {
-    const [{ recordings, problems }, refs, working] = await Promise.all([this.recordings(), this.refLines(), this.workingTree()]);
+    const [{ recordings, problems }, refs, working, requested] = await Promise.all([this.recordings(), this.refLines(), this.workingTree(), this.requestedReviews()]);
     const committed = new Map(recordings.filter((r) => r.id !== WORKING_TREE_ID).map((r) => [r.commit, r.id]));
     return {
       working,
       recordings,
       refs: refs.map((ref) => ({ ...ref, current: ref.kind === "branch" && ref.name === working.branch, recordingId: committed.get(ref.commit) ?? null })),
       problems,
+      requested,
     };
+  }
+
+  /** Where comparisons' reviews are kept, beside the recordings. */
+  get reviewsDirectory(): string {
+    return join(dirname(this.directory), "reviews");
+  }
+
+  async requestedReviews(): Promise<RequestedReviews | null> {
+    const text = await readFile(join(this.reviewsDirectory, REQUESTED_REVIEWS_FILE), "utf8").catch(() => null);
+    return text === null ? null : (JSON.parse(text) as RequestedReviews);
   }
 
   /** The commit a branch, tag or hash names. */

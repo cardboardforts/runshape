@@ -38,9 +38,16 @@ import {
   RecordingLibrary,
   RecordingMetadata,
   recordingIdFor,
+  REQUESTED_REVIEWS_FILE,
+  RequestedReview,
+  RequestedReviews,
+  ReviewHighlights,
   WORKING_TREE_ID,
 } from "@runshape/library";
+export type { PullRequestSummary } from "@runshape/library";
+import type { PullRequestSummary } from "@runshape/library";
 import type { ModelChoice } from "./models";
+import { launchdJob, scheduleInstructions } from "./schedule";
 
 /** What to record: a commit (checked out on its own, the working tree untouched) or the working tree as it is. */
 export type RecordTarget = { kind: "commit"; commit: string } | { kind: "working" };
@@ -50,20 +57,6 @@ export interface Recorder {
   /** Where it records ("host", "docker:<image>"): recordings made in different places differ for that alone. */
   readonly environment: string;
   record(target: RecordTarget, outDirectory: string): Promise<void>;
-}
-
-/** An open pull request, as GitHub lists it. */
-export interface PullRequestSummary {
-  number: number;
-  title: string;
-  url: string;
-  author: string;
-  baseRefName: string;
-  headRefName: string;
-  headRefOid: string;
-  /** From a fork: its branch isn't on origin, but GitHub's refs/pull/<n>/head is. */
-  isCrossRepository: boolean;
-  updatedAt: string;
 }
 
 /** Port: the open pull requests asking for the person's review (gh in pull-requests.ts). */
@@ -150,6 +143,12 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         });
         return failed > 0 ? 1 : 0;
       }
+      case "schedule": {
+        const at = flagValues.get("--at") ?? DEFAULT_SCHEDULE_TIME;
+        dependencies.print(launchdJob({ root: dependencies.root, at, path: process.env.PATH ?? "/usr/bin:/bin" }).trimEnd());
+        for (const line of scheduleInstructions(dependencies.root)) dependencies.print(line);
+        return 0;
+      }
       case "forget":
         if (names.length !== 1) throw new UsageError(`forget <id>\n${USAGE}`);
         await recordings.exclusively(() => recordings.forget(names[0]!));
@@ -166,12 +165,14 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at"]);
+/** Before anyone's at work, after most of a day's pushes. */
+const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
-  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | forget <id>";
+  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | schedule [--at=HH:MM] | forget <id>";
 
 class RecordingError extends Error {}
 
@@ -299,10 +300,10 @@ class Recordings {
         this.dependencies.print(`${name}: failed: ${error.message}`);
       }
     }
-    const index = { format: "runshape-requested-reviews", version: 1, createdAt: this.dependencies.now().toISOString(), pullRequests: entries };
+    const index: RequestedReviews = { format: "runshape-requested-reviews", version: 1, createdAt: this.dependencies.now().toISOString(), pullRequests: entries };
     const reviews = join(this.dependencies.root, ".runshape", "reviews");
     await mkdir(reviews, { recursive: true });
-    await writeFile(join(reviews, REQUESTED_INDEX), `${JSON.stringify(index, null, 2)}\n`);
+    await writeFile(join(reviews, REQUESTED_REVIEWS_FILE), `${JSON.stringify(index, null, 2)}\n`);
     return entries.filter((entry) => entry.review === null).length;
   }
 
@@ -631,19 +632,7 @@ const REVIEW_MARKDOWN = "review.md";
 const EXPLANATION_JSON = "explanation.json";
 const EXPLANATION_MARKDOWN = "explanation.md";
 
-/** A pull request in requested.json: what it is, and what came of reviewing it. */
-interface RequestedReview extends PullRequestSummary {
-  /** The commit reviewed: the fetched head, which may be newer than the listed one. */
-  head: string;
-  /** Its review's folder under .runshape/reviews; null when it couldn't be reviewed. */
-  review: string | null;
-  explained: boolean;
-  problem: string | null;
-  summary: ReturnType<typeof reviewSummary> | null;
-}
-
-/** What a morning's list shows of a review before it's opened. */
-function reviewSummary(bundle: ReviewBundle) {
+function reviewSummary(bundle: ReviewBundle): ReviewHighlights {
   return {
     nowFailing: bundle.review.counts["now-failing"],
     silentChanges: bundle.review.counts["silent-change"],
@@ -653,8 +642,6 @@ function reviewSummary(bundle: ReviewBundle) {
     routesChanged: bundle.routes.routes.length,
   };
 }
-
-const REQUESTED_INDEX = "requested.json";
 
 interface Compared {
   review: SavedReview;

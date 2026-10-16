@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { LibraryOverview, RecordingMetadata, RefSummary } from "@runshape/library";
+import type { LibraryOverview, RecordingMetadata, RefSummary, RequestedReview, RequestedReviews } from "@runshape/library";
 
 interface Props {
   /** The example recordings checked in as fixtures, by name. */
@@ -58,6 +58,7 @@ function Library({ overview }: { overview: LibraryOverview }) {
   const unrecorded = refs.filter((ref) => ref.recordingId === null);
   return (
     <>
+      <PullRequests requested={overview.requested} />
       <section aria-labelledby="working-heading">
         <h2 id="working-heading">Your working tree</h2>
         <p>
@@ -151,6 +152,93 @@ function Library({ overview }: { overview: LibraryOverview }) {
       )}
     </>
   );
+}
+
+/**
+ * The morning list: the PRs asking for your review, as `review-requests` last left them, what
+ * needs looking at in each before opening it, and the way into each.
+ */
+function PullRequests({ requested }: { requested: RequestedReviews | null }) {
+  if (requested === null) {
+    return (
+      <section aria-labelledby="prs-heading">
+        <h2 id="prs-heading">Pull requests asking for your review</h2>
+        <p className="muted">
+          None reviewed yet. <Command text={`${COMMAND} review-requests --explain`} /> records each in the sandbox, reviews it and explains it.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section aria-labelledby="prs-heading">
+      <h2 id="prs-heading">Pull requests asking for your review</h2>
+      <p className="muted">
+        As of {when(requested.createdAt)} ({requested.pullRequests.length}). Again: <Command text={`${COMMAND} review-requests --explain`} />
+      </p>
+      {requested.pullRequests.length === 0 ? (
+        <p className="muted">None were asking.</p>
+      ) : (
+        <ul className="pull-requests">
+          {requested.pullRequests.map((pr) => (
+            <PullRequestRow key={pr.number} pr={pr} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PullRequestRow({ pr }: { pr: RequestedReview }) {
+  const [base, head] = pr.review?.split("..") ?? [];
+  const highlights = pr.summary === null ? [] : attention(pr.summary);
+  const reviewFile = (file: string) => `/__runshape/reviews/${encodeURIComponent(pr.review ?? "")}/${file}`;
+  return (
+    <li>
+      <div className="pr-head">
+        <a href={pr.url} target="_blank" rel="noreferrer">
+          #{pr.number}
+        </a>{" "}
+        <strong>{pr.title}</strong> <span className="muted">by {pr.author}{pr.isCrossRepository ? ", from a fork" : ""}</span>
+      </div>
+      {pr.review === null ? (
+        <p className="failed">Couldn't be reviewed: {pr.problem}</p>
+      ) : (
+        <>
+          <ul className="attention" aria-label="What needs looking at">
+            {highlights.length === 0 ? <li className="muted">Behaves as before, architecture unchanged.</li> : highlights.map(([text, tone]) => <li key={text} className={tone}>{text}</li>)}
+          </ul>
+          <p className="pr-links">
+            <a href={`?base=${encodeURIComponent(base!)}&head=${encodeURIComponent(head!)}`}>Compare</a> ·{" "}
+            <a href={reviewFile("review.md")} target="_blank" rel="noreferrer">
+              review
+            </a>
+            {pr.explained && (
+              <>
+                {" · "}
+                <a href={reviewFile("explanation.md")} target="_blank" rel="noreferrer">
+                  why it changed (model's account)
+                </a>
+              </>
+            )}
+            {pr.problem && <span className="muted"> · {pr.problem}</span>}
+          </p>
+        </>
+      )}
+    </li>
+  );
+}
+
+/** What a reviewer should look at first, worst first; nothing when nothing changed. */
+function attention(summary: NonNullable<RequestedReview["summary"]>): [string, string][] {
+  const items: [number, string, string][] = [
+    [summary.nowFailing, "now failing", "failed"],
+    [summary.silentChanges, "still passing, run differently", "warn"],
+    [summary.decided, "architecture decisions to approve", "warn"],
+    [summary.needsDecision, "need a zone decision", "warn"],
+    [summary.routesChanged, "routes take a new way", ""],
+    [summary.newTests, "new tests", ""],
+  ];
+  return items.filter(([n]) => n > 0).map(([n, text, tone]) => [`${n} ${text}`, tone]);
 }
 
 /** Pick a base and a head among the recordings; main and the working tree by default. */

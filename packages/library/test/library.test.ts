@@ -152,3 +152,36 @@ describe("handleLibraryRequest (the demo's dev server)", () => {
     expect({ status: response?.status, body: response?.body }).toEqual({ status: 500, body: expect.stringMatching(/^git .*not a git repository/) });
   });
 });
+
+describe("the pull requests' morning list", () => {
+  // review-requests leaves .runshape/reviews/requested.json; the recordings page shows it first.
+  test("the overview carries the latest list of PRs asking for review, and their reviews' files are served", async () => {
+    const { root } = repository();
+    const reviews = join(root, ".runshape", "reviews");
+    mkdirSync(join(reviews, "aaaaaaaaaaaa..bbbbbbbbbbbb"), { recursive: true });
+    writeFileSync(join(reviews, "aaaaaaaaaaaa..bbbbbbbbbbbb", "review.md"), "## Behaviour changes (Runshape)\n");
+    const index = { format: "runshape-requested-reviews", version: 1, createdAt: "2026-10-16T03:00:00Z", pullRequests: [{ number: 7, title: "Teach orders to refuse", review: "aaaaaaaaaaaa..bbbbbbbbbbbb" }] };
+    writeFileSync(join(reviews, "requested.json"), JSON.stringify(index));
+    const library = new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root));
+
+    const overview = await library.overview();
+    const served = await handleLibraryRequest(library, "/__runshape/reviews/aaaaaaaaaaaa..bbbbbbbbbbbb/review.md");
+    const escaped = await handleLibraryRequest(library, "/__runshape/reviews/../recordings/x");
+
+    expect({
+      requested: overview.requested?.pullRequests.map((pr) => `#${pr.number} ${pr.title} -> ${pr.review}`),
+      served: [served?.status, served?.contentType, served?.body],
+      escaped: escaped?.status,
+    }).toEqual({
+      requested: ["#7 Teach orders to refuse -> aaaaaaaaaaaa..bbbbbbbbbbbb"],
+      served: [200, "text/markdown; charset=utf-8", "## Behaviour changes (Runshape)\n"],
+      escaped: 404,
+    });
+  });
+
+  test("before review-requests has run there's no list, which isn't an error", async () => {
+    const { root } = repository();
+
+    expect((await new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root)).overview()).requested).toBeNull();
+  });
+});
