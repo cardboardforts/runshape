@@ -13,7 +13,7 @@ import { buildReviewBundle, reviewBundleMarkdown } from "../src/review-bundle";
 import { fixtureFiles } from "../../trace/test/fixtures";
 
 const CREATED = "2026-10-16T09:00:00Z";
-const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit` });
+const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit`, dirty: false, forkOf: null });
 
 describe("buildReviewBundle", () => {
   test("a refactor: the tests that now run differently, the routes they changed, and an architecture nobody touched", async () => {
@@ -65,8 +65,7 @@ describe("buildReviewBundle", () => {
       ### Routes
 
       - \`POST /api/articles\`: 2 ways changed
-        - now calls \`ensure_slug_available\`, \`_normalize_title\`
-        - now calls \`ensure_slug_available\`, \`_normalize_title\`
+        - now calls \`ensure_slug_available\`, \`_normalize_title\` (2 ways)
       "
     `);
   });
@@ -92,11 +91,50 @@ describe("buildReviewBundle", () => {
     `);
   });
 
+  test("names only: no query text, no request as sent, and unchanged routes counted, not copied (second-model review)", async () => {
+    // A bundle may be stored centrally by commit: a query's text and a request's path (ids,
+    // emails) stay in the recordings on the machine that made them.
+    const files = fixtureFiles("django-feed-fix");
+    const bundle = buildReviewBundle({ base: (await loadPreviousRun(files))!, head: await loadLatestRun(files), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
+    const json = JSON.stringify(bundle);
+
+    expect({
+      queryText: /\b(SELECT|INSERT|UPDATE|DELETE)\b[^"]*\bFROM\b|"articles_article"/.test(json),
+      queries: bundle.review.items.flatMap((item) => item.queriesAdded).slice(0, 2),
+      routesKept: bundle.routes.routes.map((route) => `${route.label}: ${route.change}`),
+      unchangedRoutes: bundle.routes.unchanged,
+      requestLines: json.includes('"line"'),
+    }).toEqual({
+      queryText: false,
+      queries: ["sqlite: SELECT", "sqlite: SELECT"],
+      routesKept: ["GET /api/articles/feed: added", "GET /api/articles/{slug}: removed"],
+      unchangedRoutes: 8,
+      requestLines: false,
+    });
+  });
+
+  test("the base is where the branch left main, and the Markdown says so, not 'main'", async () => {
+    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const fork = { ...side("main", "bbbbbbbbbbbb"), forkOf: { tip: "fedcba9876543210fedcba9876543210fedcba98", commitsSince: 3 } };
+    const dirtyHead = { ...side("working", "working"), dirty: true };
+
+    const markdown = reviewBundleMarkdown(buildReviewBundle({ base: run, head: run, baseSide: fork, headSide: dirtyHead, baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED }));
+
+    expect(markdown.split("\n").find((line) => line.startsWith("Compared"))).toBe(
+      "Compared where this branch left `main` (`0123456` the main commit; `main` has 3 commits since) with the working tree (on `0123456`, with uncommitted changes).",
+    );
+  });
+
   test("when the base's rules aren't known, the bundle and its Markdown say both sides used head's", async () => {
     const run = await loadLatestRun(fixtureFiles("go-shop"));
 
     const bundle = buildReviewBundle({ base: run, head: run, baseSide: side("main", "bbbbbbbbbbbb"), headSide: side("working", "working"), baseRules: null, rules: ZoneRules.none(), createdAt: CREATED });
 
-    expect({ known: bundle.baseRulesKnown, said: reviewBundleMarkdown(bundle).includes("drawn with the current runshape.json") }).toEqual({ known: false, said: true });
+    const markdown = reviewBundleMarkdown(bundle);
+    expect({ known: bundle.baseRulesKnown, said: markdown.includes("drawn with the current runshape.json"), nothing: markdown.includes("No architecture changes.") }).toEqual({
+      known: false,
+      said: true,
+      nothing: true,
+    });
   });
 });

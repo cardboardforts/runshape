@@ -9,6 +9,7 @@ import {
   detectMoves,
   diffArchitecture,
   diffRouteMaps,
+  Op,
   Placement,
   PlacementChange,
   ReviewSummary,
@@ -24,6 +25,35 @@ export interface ReviewSide {
   recording: string;
   commit: string;
   subject: string;
+  /** The working tree had changes `commit` doesn't hold. */
+  dirty: boolean;
+  /** Set when this is where head's branch left the branch asked for, not that branch's newest commit. */
+  forkOf: { tip: string; commitsSince: number } | null;
+}
+
+/** A route that changed, as the bundle keeps it: each way's path once, tests by name, no request as sent. */
+export interface BundleRoute {
+  id: string;
+  label: string;
+  routed: boolean;
+  change: Change;
+  ways: BundleWay[];
+}
+
+export interface BundleWay {
+  change: Change;
+  /** Requests that took it in each recording. */
+  before: number;
+  after: number;
+  isMain: boolean;
+  reachedHandler: boolean;
+  skips: string[];
+  adds: string[];
+  nowCalls: string[];
+  noLongerCalls: string[];
+  /** The tests whose requests took it (the base's, when it's gone). */
+  tests: string[];
+  path: { op: Op; depth: number; label: string }[];
 }
 
 export interface ReviewBundle {
@@ -38,7 +68,8 @@ export interface ReviewBundle {
   baseRulesKnown: boolean;
   review: ReviewSummary;
   architecture: ArchitectureDiff;
-  routes: RouteMapDiff;
+  /** Changed routes in full; unchanged ones only counted (they'd make the bundle as big as the suite). */
+  routes: { routes: BundleRoute[]; unchanged: number };
 }
 
 export const REVIEW_FORMAT = "runshape-review";
@@ -69,10 +100,50 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     head: input.headSide,
     options: BUNDLE_OPTIONS,
     baseRulesKnown: input.baseRules !== null,
-    review: buildReview(base, head, { ...BUNDLE_OPTIONS, rules, baseRules, moves }),
+    review: withoutQueryText(buildReview(base, head, { ...BUNDLE_OPTIONS, rules, baseRules, moves })),
     // Both placed in head's style: a style change is one change, not every class moving.
     architecture: diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves),
-    routes: diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves }),
+    routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),
+  };
+}
+
+/**
+ * A query's system and kind ("sqlite: SELECT"), not its text: a bundle may be stored centrally,
+ * and statements carry table names, literals and whatever else the code put in them.
+ */
+function withoutQueryText(review: ReviewSummary): ReviewSummary {
+  const kind = (query: string) => {
+    const at = query.indexOf(": ");
+    const system = at === -1 ? query : query.slice(0, at);
+    const statement = at === -1 ? "" : query.slice(at + 2).trim();
+    return statement === "" ? system : `${system}: ${statement.split(/\s+/)[0]!.toUpperCase()}`;
+  };
+  return { ...review, items: review.items.map((item) => ({ ...item, queriesAdded: item.queriesAdded.map(kind), queriesRemoved: item.queriesRemoved.map(kind) })) };
+}
+
+function bundleRoutes(diff: RouteMapDiff): ReviewBundle["routes"] {
+  const changed = diff.routes.filter((route) => route.change !== Change.Unchanged);
+  return {
+    routes: changed.map((route) => ({
+      id: route.id,
+      label: route.label,
+      routed: route.routed,
+      change: route.change,
+      ways: route.variants.map(({ variant, change, before, after, nowCalls, noLongerCalls, path }) => ({
+        change,
+        before,
+        after,
+        isMain: variant.isMain,
+        reachedHandler: variant.reachedHandler,
+        skips: variant.skips,
+        adds: variant.adds,
+        nowCalls,
+        noLongerCalls,
+        tests: [...new Set(variant.requests.map((request) => request.scenarioName))],
+        path: path.map(({ op, step }) => ({ op, depth: step.depth, label: step.label })),
+      })),
+    })),
+    unchanged: diff.routes.length - changed.length,
   };
 }
 
@@ -93,7 +164,11 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
 }
 
 function sideText(side: ReviewSide): string {
-  return side.recording === "working" ? `the working tree (on ${code(side.commit.slice(0, 7))})` : `${code(side.asked)} (${code(side.commit.slice(0, 7))} ${side.subject})`;
+  if (side.recording === "working") return `the working tree (on ${code(side.commit.slice(0, 7))}${side.dirty ? ", with uncommitted changes" : ""})`;
+  const commit = `${code(side.commit.slice(0, 7))} ${side.subject}`;
+  if (side.forkOf === null) return `${code(side.asked)} (${commit})`;
+  const since = `${side.forkOf.commitsSince} commit${side.forkOf.commitsSince === 1 ? "" : "s"} since`;
+  return `where this branch left ${code(side.asked)} (${commit}; ${code(side.asked)} has ${since})`;
 }
 
 function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): string[] {
@@ -101,8 +176,12 @@ function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): 
   const placed = (placement: Placement | null) =>
     placement === null ? "—" : `${zone(placement.zone)} (${placement.decidedBy === null ? "inferred" : decider(placement.decidedBy)})`;
   const out = ["### Architecture", ""];
+  let changes = 0;
   if (!baseRulesKnown) out.push("> The base's own runshape.json isn't known: both sides are drawn with the current runshape.json, so only new and gone code shows.", "");
-  if (diff.styleBefore !== diff.styleAfter) out.push(`Style changed: ${diff.styleBefore} → ${diff.styleAfter}.`, "");
+  if (diff.styleBefore !== diff.styleAfter) {
+    out.push(`Style changed: ${diff.styleBefore} → ${diff.styleAfter}.`, "");
+    changes += 1;
+  }
   const rule = (r: ZoneRule) => `${code(r.match)} → ${zone(r.zone)} (${decider(r.by)}): ${r.reason}`;
   const decisions = [
     ...diff.rules.added.map((r) => `- Rule added: ${rule(r)}`),
@@ -111,6 +190,7 @@ function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): 
     ...diff.decided.filter((c) => !isConfirmation(c)).map((c) => `- ${code(c.component)}: ${placed(c.before)} → ${placed(c.after)}`),
   ];
   const confirmations = diff.decided.filter(isConfirmation).length;
+  changes += decisions.length + confirmations + diff.unplaced.length + diff.observed.length + diff.unusedRules.length;
   if (decisions.length > 0 || confirmations > 0) {
     out.push("Decided in this change:", "", ...decisions);
     if (confirmations > 0) out.push(`- …and ${confirmations} now declared where they already were`);
@@ -119,21 +199,24 @@ function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): 
   if (diff.unplaced.length > 0) out.push(`Needs a decision (${diff.unplaced.length}): no rule places it, so its zone is inferred from what it did:`, "", ...diff.unplaced.map((p) => `- ${code(p.component)}: ${zone(p.zone)}? (${p.reason})`), "");
   if (diff.observed.length > 0) out.push(`Moved with behaviour only (${diff.observed.length}), no rule either side:`, "", ...diff.observed.map((c) => `- ${code(c.component)}: ${placed(c.before)} → ${placed(c.after)}`), "");
   if (diff.unusedRules.length > 0) out.push(`Rules that place nothing: ${diff.unusedRules.map(code).join(", ")}`, "");
-  if (out.length === 2) out.push("No architecture changes.", "");
+  if (changes === 0) out.push("No architecture changes.", "");
   return out;
 }
 
-function routesMarkdown(routes: RouteMapDiff): string[] {
-  const changed = routes.routes.filter((route) => route.change !== Change.Unchanged);
-  if (changed.length === 0) return [];
+function routesMarkdown(routes: ReviewBundle["routes"]): string[] {
+  if (routes.routes.length === 0) return [];
   const out = ["### Routes", ""];
-  for (const route of changed) {
-    const counts = [Change.Added, Change.Removed, Change.Changed].map((change) => [change, route.variants.filter((v) => v.change === change).length] as const).filter(([, n]) => n > 0);
+  for (const route of routes.routes) {
+    const counts = [Change.Added, Change.Removed, Change.Changed].map((change) => [change, route.ways.filter((way) => way.change === change).length] as const).filter(([, n]) => n > 0);
     out.push(`- ${code(route.label)}: ${route.change === Change.Changed ? counts.map(([change, n]) => `${n} ${WAYS[change]![n === 1 ? 0 : 1]}`).join(", ") : route.change}`);
-    for (const variant of route.variants.filter((v) => v.change === Change.Changed)) {
-      const parts = [variant.nowCalls.length ? `now calls ${variant.nowCalls.map(code).join(", ")}` : "", variant.noLongerCalls.length ? `no longer calls ${variant.noLongerCalls.map(code).join(", ")}` : ""];
-      out.push(`  - ${parts.filter(Boolean).join("; ") || "the same calls, nested or ordered differently"}`);
+    // Ways that changed alike read as one line: a PR comment, not a list of repeats.
+    const lines = new Map<string, number>();
+    for (const way of route.ways.filter((w) => w.change === Change.Changed)) {
+      const parts = [way.nowCalls.length ? `now calls ${way.nowCalls.map(code).join(", ")}` : "", way.noLongerCalls.length ? `no longer calls ${way.noLongerCalls.map(code).join(", ")}` : ""];
+      const line = parts.filter(Boolean).join("; ") || "the same calls, nested or ordered differently";
+      lines.set(line, (lines.get(line) ?? 0) + 1);
     }
+    for (const [line, n] of lines) out.push(`  - ${line}${n > 1 ? ` (${n} ways)` : ""}`);
   }
   out.push("");
   return out;

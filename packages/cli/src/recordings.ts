@@ -63,6 +63,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   const againstTip = flags.has("--tip");
   try {
     if (unknownFlags.length > 0) throw new UsageError(`unknown option ${unknownFlags.join(", ")}\n${USAGE}`);
+    if (againstTip && command !== "compare") throw new UsageError("--tip only applies to compare");
     switch (command) {
       case "list":
         await recordings.list();
@@ -118,6 +119,8 @@ interface Plan {
   target: RecordTarget;
   summary: CommitSummary;
   tree: { branch: string | null; dirty: boolean };
+  /** Set when this is where head's branch left the branch asked for: that branch's newest commit, and how far past it is. */
+  forkOf?: { tip: string; commitsSince: number };
 }
 
 /** Taken while recording or forgetting, so two runs can't write over each other's recordings. */
@@ -181,15 +184,32 @@ class Recordings {
    * two share no history.
    */
   async forkPoint(baseName: string, base: Plan, head: Plan): Promise<Plan> {
+    // No fork point is refused, not quietly the tip: CI checks out one commit by default, and
+    // the tip there brings back what the fork point is for.
     const fork = (await this.git.run(["merge-base", base.summary.commit, head.summary.commit]).catch(() => "")).trim();
-    if (fork === "" || fork === base.summary.commit) return base;
+    if (fork === "") {
+      throw new RecordingError(
+        `can't find where this branch left ${baseName}: they share no history here (in a shallow clone, fetch it: git fetch --unshallow, or fetch-depth: 0 in CI); --tip compares with ${baseName}'s newest commit`,
+      );
+    }
+    if (fork === base.summary.commit) return base;
+    if (fork === head.summary.commit && head.id !== WORKING_TREE_ID) {
+      throw new RecordingError(`${head.label.split(" (")[0]} is already in ${baseName}: nothing of its own to compare (--tip compares it with ${baseName}'s newest commit)`);
+    }
     const ahead = Number((await this.git.run(["rev-list", "--count", `${fork}..${base.summary.commit}`])).trim());
     const summary = await this.library.resolve(fork);
     const id = recordingIdFor(fork);
     this.dependencies.print(
       `${baseName} is ${ahead} commit${ahead === 1 ? "" : "s"} past where this branch left it: comparing with ${id} (${summary.subject}), where it left; --tip compares with ${baseName} itself`,
     );
-    return { id, label: `${baseName}'s fork point (${id} ${summary.subject})`, target: { kind: "commit", commit: fork }, summary, tree: { branch: null, dirty: false } };
+    return {
+      id,
+      label: `${baseName}'s fork point (${id} ${summary.subject})`,
+      target: { kind: "commit", commit: fork },
+      summary,
+      tree: { branch: null, dirty: false },
+      forkOf: { tip: base.summary.commit, commitsSince: ahead },
+    };
   }
 
   /**
@@ -219,7 +239,14 @@ class Recordings {
   async writeReview(base: { asked: string; plan: Plan }, head: { asked: string; plan: Plan }): Promise<string> {
     const [baseRun, headRun] = await Promise.all([this.runOf(base.plan.id), this.runOf(head.plan.id)]);
     const [baseRules, headRules] = await Promise.all([this.rulesOf(base.plan.id), this.rulesOf(head.plan.id)]);
-    const side = ({ asked, plan }: { asked: string; plan: Plan }) => ({ asked, recording: plan.id, commit: plan.summary.commit, subject: plan.summary.subject });
+    const side = ({ asked, plan }: { asked: string; plan: Plan }) => ({
+      asked,
+      recording: plan.id,
+      commit: plan.summary.commit,
+      subject: plan.summary.subject,
+      dirty: plan.tree.dirty,
+      forkOf: plan.forkOf ?? null,
+    });
     const bundle = buildReviewBundle({
       base: baseRun,
       head: headRun,
@@ -249,7 +276,14 @@ class Recordings {
     if (recording?.architecture === undefined) return null;
     const text = await readFile(join(this.library.directory, id, RULES_FILE), "utf8").catch(() => null);
     if (text === null || recording.architecture.problem !== null) return ZoneRules.none();
-    return ZoneRules.parse(text.replace(/^\uFEFF/, ""));
+    try {
+      return ZoneRules.parse(text.replace(/^\uFEFF/, ""));
+    } catch (error) {
+      // A rules format that tightened since the recording: compare without them, and say so.
+      if (!(error instanceof ZoneRulesError)) throw error;
+      this.dependencies.print(`${RULES_FILE} kept with recording ${id} can't be read, so it's compared without rules: ${error.message}`);
+      return ZoneRules.none();
+    }
   }
 
   async list(): Promise<void> {
@@ -261,7 +295,11 @@ class Recordings {
     const recording = (await this.library.recordings()).recordings.find((r) => r.id === id);
     if (recording === undefined) throw new RecordingError(`no recording ${id}`);
     await rm(join(this.library.directory, recording.id), { recursive: true, force: true });
-    this.dependencies.print(`forgot ${recording.id} (${recording.subject})`);
+    // Its reviews compare a recording that's gone: they go with it.
+    const reviews = join(this.dependencies.root, ".runshape", "reviews");
+    const ofIt = (await readdir(reviews).catch(() => [] as string[])).filter((name) => name.split("..").includes(recording.id));
+    for (const name of ofIt) await rm(join(reviews, name), { recursive: true, force: true });
+    this.dependencies.print(`forgot ${recording.id} (${recording.subject})${ofIt.length > 0 ? ` and ${ofIt.length} review${ofIt.length === 1 ? "" : "s"} of it` : ""}`);
   }
 
   /**

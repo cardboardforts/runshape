@@ -299,7 +299,7 @@ describe("runshape compare", () => {
     });
   });
 
-  test("a head recorded before zones were kept: neither side's rules are known, so none read as removed", async () => {
+  test("a head recorded before zones were kept: the bundle says the base's rules aren't known", async () => {
     const { root, commits } = repository();
     const head = commits.third!.slice(0, 12);
     await run(root, ["record", "feature"]);
@@ -311,6 +311,62 @@ describe("runshape compare", () => {
 
     const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${head}`, "review.json"), "utf8"));
     expect(bundle.baseRulesKnown).toBe(false);
+  });
+
+  test("no fork point to measure from (unrelated history, or a shallow clone) is refused, not quietly the tip (second-model review)", async () => {
+    // CI checks out one commit by default: falling back to main's tip there would bring back
+    // exactly what the fork point is for.
+    const { root } = repository();
+    gitIn(root)("checkout", "--quiet", "--orphan", "elsewhere");
+    commitIn(root, "Unrelated history");
+
+    const { code, lines, recorder } = await run(root, ["compare", "main"]);
+
+    expect({ code, lines, recorded: recorder.recorded }).toEqual({
+      code: 1,
+      lines: [
+        "runshape: can't find where this branch left main: they share no history here (in a shallow clone, fetch it: git fetch --unshallow, or fetch-depth: 0 in CI); --tip compares with main's newest commit",
+      ],
+      recorded: [],
+    });
+  });
+
+  test("a branch already merged into the base says so, rather than 'the same recording'", async () => {
+    const { root } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
+    gitIn(root)("merge", "--quiet", "--ff-only", "feature");
+    commitIn(root, "After the merge");
+
+    const { code, lines } = await run(root, ["compare", "main", "feature"]);
+
+    expect({ code, lines }).toEqual({ code: 1, lines: ["runshape: feature is already in main: nothing of its own to compare (--tip compares it with main's newest commit)"] });
+  });
+
+  test("the bundle says where the base came from and whether the working tree had uncommitted changes", async () => {
+    const { root, commits } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
+    const tip = commitIn(root, "Main moved on");
+    gitIn(root)("checkout", "--quiet", "feature");
+    writeFileSync(join(root, "file.txt"), "not committed");
+
+    await run(root, ["compare", "main"]);
+
+    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..working`, "review.json"), "utf8"));
+    expect({ forkOf: bundle.base.forkOf, dirty: bundle.head.dirty }).toEqual({ forkOf: { tip, commitsSince: 1 }, dirty: true });
+  });
+
+  test("a kept recording whose runshape.json no longer reads is compared without its rules, with a warning, not a crash", async () => {
+    const { root, commits } = repository();
+    const base = commits.second!.slice(0, 12);
+    await run(root, ["record", "main"]);
+    writeFileSync(join(root, ".runshape", "recordings", base, "runshape.json"), "{ not json");
+
+    const { code, lines } = await run(root, ["compare", "main"]);
+
+    expect({ code, warned: lines.find((line) => line.includes("can't be read")) }).toEqual({
+      code: 0,
+      warned: `runshape.json kept with recording ${base} can't be read, so it's compared without rules: runshape.json is invalid:\n  - not valid JSON: Expected property name or '}' in JSON at position 2 (line 1 column 3)`,
+    });
   });
 
   test("comparing a recording with itself is refused before anything is recorded", async () => {
@@ -413,19 +469,28 @@ describe("runshape list", () => {
     expect(lines[3]).toBe(`  ${id}  main  Second  5 tests  zones not kept  recorded 2026-10-14 12:00`);
   });
 
+  test("--tip is compare's: anywhere else it's an error, not ignored", async () => {
+    const { root } = repository();
+
+    const { code, lines } = await run(root, ["record", "main", "--tip"]);
+
+    expect({ code, first: lines[0] }).toEqual({ code: 1, first: "runshape: --tip only applies to compare" });
+  });
+
   test("forget deletes a recording; an id that isn't one is an error", async () => {
     const { root, commits } = repository();
     const id = commits.second!.slice(0, 12);
-    await run(root, ["record", "main"]);
+    await run(root, ["compare", "main"]);
 
     const forgot = await run(root, ["forget", id]);
     const unknown = await run(root, ["forget", "../.."]);
 
-    expect({ forgot: forgot.lines, unknown: unknown.lines, code: unknown.code, left: readdirSync(join(root, ".runshape", "recordings")) }).toEqual({
-      forgot: [`forgot ${id} (Second)`],
+    expect({ forgot: forgot.lines, unknown: unknown.lines, code: unknown.code, left: readdirSync(join(root, ".runshape", "recordings")), reviews: readdirSync(join(root, ".runshape", "reviews")) }).toEqual({
+      forgot: [`forgot ${id} (Second) and 1 review of it`],
       unknown: ["runshape: no recording ../.."],
       code: 1,
-      left: [],
+      left: ["working"],
+      reviews: [],
     });
   });
 });
