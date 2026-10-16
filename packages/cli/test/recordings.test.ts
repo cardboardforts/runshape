@@ -198,9 +198,40 @@ describe("each recording keeps its commit's architecture", () => {
     });
   });
 
-  test("the working tree's runshape.json is the file on disk, edits not committed yet included", async () => {
+  test("a commit is drawn with its own runshape.json, whatever is on disk now", async () => {
+    // Declared, then deleted: the older commit still had its rules, the newer has none; and
+    // the working tree's file (uncommitted here) belongs to neither commit.
     const { root } = repository();
-    writeFileSync(join(root, "runshape.json"), GO_SHOP_RULES);
+    const declared = commitFile(root, "runshape.json", GO_SHOP_RULES, "Declare the shop's zones").slice(0, 12);
+    gitIn(root)("rm", "--quiet", "runshape.json");
+    gitIn(root)("commit", "--quiet", "-m", "Drop the zones");
+    const dropped = gitIn(root)("rev-parse", "HEAD").slice(0, 12);
+    writeFileSync(join(root, "runshape.json"), "{ broken on disk");
+
+    await run(root, ["record", declared, dropped]);
+
+    expect([metadataOf(root, declared).architecture, metadataOf(root, dropped).architecture]).toEqual([
+      { style: "hexagonal", rules: 2, declared: 5, inferred: 4, problem: null },
+      { style: "hexagonal", rules: 0, declared: 0, inferred: 9, problem: null },
+    ]);
+  });
+
+  test("a runshape.json that isn't a plain file in the commit (a directory, say) is reported, not read", async () => {
+    const { root } = repository();
+    mkdirSync(join(root, "runshape.json"));
+    const commit = commitFile(root, "runshape.json/inside.txt", "a", "A directory where the zones would be").slice(0, 12);
+
+    const { lines } = await run(root, ["record", "HEAD"]);
+
+    expect({ said: lines[1], kept: existsSync(join(root, ".runshape", "recordings", commit, "runshape.json")) }).toEqual({
+      said: `runshape.json at HEAD (${commit} A directory where the zones would be) is invalid, so every zone is inferred: it is a tree in the commit, not a file`,
+      kept: false,
+    });
+  });
+
+  test("the working tree's runshape.json is the file on disk, edits not committed yet included (a byte-order mark too)", async () => {
+    const { root } = repository();
+    writeFileSync(join(root, "runshape.json"), `\uFEFF${GO_SHOP_RULES}`);
 
     await run(root, ["record", "working"]);
 
@@ -314,6 +345,19 @@ describe("runshape list", () => {
       recovered: true,
       left: [],
     });
+  });
+
+  test("a recording made before zones were kept says so", async () => {
+    const { root, commits } = repository();
+    const id = commits.second!.slice(0, 12);
+    await run(root, ["record", "main"]);
+    const file = join(root, ".runshape", "recordings", id, "recording.json");
+    const { architecture: _dropped, ...older } = JSON.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, JSON.stringify(older));
+
+    const { lines } = await run(root, ["list"]);
+
+    expect(lines[3]).toBe(`  ${id}  main  Second  5 tests  zones not kept  recorded 2026-10-14 12:00`);
   });
 
   test("forget deletes a recording; an id that isn't one is an error", async () => {

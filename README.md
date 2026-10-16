@@ -104,7 +104,7 @@ npm run runshape -- forget <id>             # each recording is ~100 MB
 ```
 
 Each recording also keeps its commit's `runshape.json` and `architecture.json`: where every
-class and module sits, and whether a rule (and who made it) or its recorded behaviour put it
+class and module the recorded tests ran sits, and whether a rule (and who made it) or its recorded behaviour put it
 there. `/demo/index.html` (no `?app`) lists the same and compares any two recordings in the browser,
 read live: no dev-server restart after recording. `--fetch` records origin's tip without
 touching local branches. `npm run self-review` is `compare main`. See

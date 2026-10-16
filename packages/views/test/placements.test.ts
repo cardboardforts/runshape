@@ -11,7 +11,7 @@
 import { describe, expect, test } from "vitest";
 
 import { ZoneRules } from "@runshape/architecture";
-import { ArchitectureSnapshot, buildPlacements, ZoneSource } from "../src";
+import { ArchitectureSnapshot, buildPlacements, byCodeUnit, ZoneSource } from "../src";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const GO_SHOP_RULES = JSON.stringify({
@@ -33,7 +33,13 @@ describe("buildPlacements", () => {
 
     const snapshot = buildPlacements(run, ZoneRules.parse(GO_SHOP_RULES));
 
-    expect({ style: snapshot.style, rules: snapshot.rules.length }).toEqual({ style: "hexagonal", rules: 2 });
+    expect({ version: snapshot.version, style: snapshot.style, rules: snapshot.rules.length, unusedRules: snapshot.unusedRules, zones: snapshot.zones.map((z) => `${z.id}: ${z.name}`) }).toEqual({
+      version: 1,
+      style: "hexagonal",
+      rules: 2,
+      unusedRules: [],
+      zones: ["inbound-adapter: Inbound adapters", "core: Core", "outbound-adapter: Outbound adapters"],
+    });
     expect(render(snapshot)).toMatchInlineSnapshot(`
       [
         "example\\.com.shop.internal.app [module] core, inferred: receives no requests and calls no external system",
@@ -47,6 +53,17 @@ describe("buildPlacements", () => {
         "example\\.com.shop.internal.web.statusRecorder [class] core, inferred: receives no requests and calls no external system",
       ]
     `);
+  });
+
+  test("a rule that places nothing is listed: after a rename, it's the rule that needs looking at", async () => {
+    const run = await loadFixtureRun("go-shop");
+    const rules = ZoneRules.parse(JSON.stringify({ version: 2, style: "hexagonal", zones: [{ match: "example\\.com.shop.internal.billing.**", zone: "core", reason: "gone", by: "user" }] }));
+
+    expect(buildPlacements(run, rules).unusedRules).toEqual(["example\\.com.shop.internal.billing.**"]);
+  });
+
+  test("the order is by code unit, the same on every machine, whatever its locale", () => {
+    expect(["app.z", "app.\u00e5", "app.B", "app.ch", "app.d"].sort(byCodeUnit)).toEqual(["app.B", "app.ch", "app.d", "app.z", "app.\u00e5"]);
   });
 
   test("with no runshape.json, everything is inferred, in the default style", async () => {
@@ -64,7 +81,7 @@ describe("buildPlacements", () => {
 
     const names = buildPlacements(run, ZoneRules.none()).placements.map((p) => p.component);
 
-    expect(names).toEqual([...new Set(names)].sort());
+    expect(names).toEqual([...new Set(names)].sort(byCodeUnit));
     expect(["app.main", "app.core.events", "app.db.events"].filter((name) => names.includes(name))).toEqual(["app.main", "app.core.events", "app.db.events"]);
   });
 });

@@ -257,7 +257,7 @@ function workingRecordingNote(recording: RecordingMetadata | undefined, working:
  * class's zone and who decided it, for a person to read through.
  */
 function Zones({ recording }: { recording: RecordingMetadata }) {
-  const architecture = recording.architecture as RecordingMetadata["architecture"] | undefined;
+  const architecture = recording.architecture;
   if (architecture === undefined) return <span className="muted">not kept (recorded before zones were)</span>;
   const summary =
     architecture.problem !== null

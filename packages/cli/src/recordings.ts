@@ -264,14 +264,24 @@ class Recordings {
   private async rulesAt(target: RecordTarget): Promise<CommittedRules> {
     let text: string | null;
     if (target.kind === "working") {
-      text = await readFile(join(this.dependencies.root, RULES_FILE), "utf8").catch(() => null);
+      try {
+        text = await readFile(join(this.dependencies.root, RULES_FILE), "utf8");
+      } catch (error) {
+        // Only a missing file means "no rules"; one that can't be read is a problem to report.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { text: null, rules: ZoneRules.none(), problem: `it can't be read: ${(error as Error).message}` };
+        text = null;
+      }
     } else {
-      const listed = await this.git.run(["ls-tree", "--name-only", target.commit, "--", RULES_FILE]);
-      text = listed.trim() === "" ? null : await this.git.run(["show", `${target.commit}:${RULES_FILE}`]);
+      // "<mode> <type> <object>\t<path>": a directory, link or submodule there isn't rules to read.
+      const entry = (await this.git.run(["ls-tree", target.commit, "--", RULES_FILE])).trim();
+      const [mode, type] = entry.split(/\s+/);
+      if (entry !== "" && !REGULAR_FILE_MODES.has(mode!)) return { text: null, rules: ZoneRules.none(), problem: `it is a ${mode === "120000" ? "symbolic link" : type} in the commit, not a file` };
+      text = entry === "" ? null : await this.git.run(["show", `${target.commit}:${RULES_FILE}`]);
     }
     if (text === null) return { text: null, rules: ZoneRules.none(), problem: null };
     try {
-      return { text, rules: ZoneRules.parse(text), problem: null };
+      // An editor's byte-order mark isn't JSON; VS Code's reader (the extension's) drops it too.
+      return { text, rules: ZoneRules.parse(text.replace(/^\uFEFF/, "")), problem: null };
     } catch (error) {
       if (!(error instanceof ZoneRulesError)) throw error;
       return { text, rules: ZoneRules.none(), problem: error.problems.join("; ") };
@@ -309,6 +319,9 @@ interface CommittedRules {
   /** Why the text couldn't be used; the rules are then none, and every zone inferred. */
   problem: string | null;
 }
+
+/** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
+const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
 
 /** A recording being replaced, kept until its replacement is in place. */
 const REPLACED_PREFIX = ".replaced-";

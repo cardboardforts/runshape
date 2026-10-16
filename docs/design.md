@@ -219,9 +219,11 @@ Accepted risks:
   commit) and, on compare, only the base. Untracked files count as uncommitted changes (a new
   test file runs). Each recording keeps its commit's architecture: that commit's
   runshape.json as it was (the working tree's as on disk) and `architecture.json`, every
-  project class and module with its zone, the rule and who decided it (user, llm, detected)
+  project class and module the recorded tests ran, with its zone, the rule and who decided it (user, llm, detected)
   or the behaviour it was inferred from, over every phase. An invalid runshape.json is kept
-  and reported; its recording is placed by inference. Comparisons don't use it yet: both
+  and reported; its recording is placed by inference. Inferred placements follow what the
+  tests did (mock the database and a class can move), so comparing two snapshots must keep
+  rule changes apart from observed ones; rules no recorded component matched are listed. Comparisons don't use it yet: both
   sides are still drawn with the current rules. Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
   server reads .runshape/recordings and runs `git` for the list (local only; vite's host check
   and CORS apply before its routes).
