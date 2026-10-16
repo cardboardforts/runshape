@@ -472,17 +472,70 @@ describe("--sandbox: commits recorded in a container", () => {
     expect({ host: recorder.recorded, sandbox: sandbox.recorded, said: lines[0] }).toEqual({
       host: [],
       sandbox: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
-      said: "refs/runshape/pr/7 is a pull request's: comparing in the sandbox",
+      said: "refs/runshape/pr/7 is a pull request's: recording in the sandbox",
     });
   });
 
-  test("a commit only ever recorded in the sandbox is compared there again, not re-run here", async () => {
+  test("someone else's commit is sandboxed however it's named or used: recorded alone, as a base, by its hash (second re-review)", async () => {
+    // A commit is yours when your branches, tags, a PR's base, or the remote's default branch
+    // hold it; one only a pull request's ref (or nothing) holds is someone else's.
     const { root, commits } = repository();
-    await run(root, ["record", "feature", "--sandbox"]);
+    gitIn(root)("checkout", "--quiet", "--detach", commits.third!);
+    const theirs = commitIn(root, "A teammate's change, only in their PR");
+    gitIn(root)("checkout", "--quiet", "feature");
+    gitIn(root)("update-ref", "refs/runshape/pr/7", theirs);
+    // A teammate's branch, fetched: on the remote, but not its default branch.
+    gitIn(root)("update-ref", "refs/remotes/origin/their-branch", theirs);
 
-    const { recorder, lines } = await run(root, ["compare", "main", "feature"]);
+    const results = {
+      record: await run(root, ["record", "refs/runshape/pr/7"]),
+      asBase: await run(root, ["compare", "refs/runshape/pr/7", "main", "--tip"]),
+      byHash: await run(root, ["compare", "main", theirs]),
+      theirBranch: await run(root, ["compare", "main", "origin/their-branch"]),
+      againstWorking: await run(root, ["compare", theirs]),
+    };
 
-    expect({ host: recorder.recorded, said: lines[0] }).toEqual({ host: [], said: `feature was recorded in the sandbox (${commits.third!.slice(0, 12)}-sandbox): comparing in the sandbox` });
+    expect({
+      host: Object.values(results).flatMap((r) => r.recorder.recorded).filter((c) => c === theirs.slice(0, 7)),
+      // The first records it in the sandbox; the others reuse that recording, in the sandbox too.
+      sandboxed: Object.entries(results).filter(([, r]) => r.lines.some((line) => line.endsWith(": recording in the sandbox"))).map(([name]) => name),
+      againstWorking: [results.againstWorking.code, results.againstWorking.lines.at(-1)],
+    }).toEqual({
+      host: [],
+      sandboxed: ["record", "asBase", "byHash", "theirBranch"],
+      againstWorking: [1, `runshape: ${theirs} isn't held by your branches or tags (someone else's code): it's recorded in the sandbox, so compare it with a commit, not the working tree`],
+    });
+  });
+
+  test("a fork point recorded in the sandbox is a sandbox recording too: a later compare here isn't refused", async () => {
+    const { root, commits } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
+    commitIn(root, "Main moved on");
+    gitIn(root)("checkout", "--quiet", "feature");
+
+    await run(root, ["compare", "main", "feature", "--sandbox"]);
+    const here = await run(root, ["compare", "main", "feature"]);
+
+    expect({ sandboxIds: existsSync(join(root, ".runshape", "recordings", `${commits.second!.slice(0, 12)}-sandbox`)), hereCode: here.code }).toEqual({ sandboxIds: true, hereCode: 0 });
+  });
+
+  test("a recording made in the sandbox before sandboxed ones had their own id is kept as one, and yours is recorded here", async () => {
+    // Its commit is yours (your branch holds it), so recording it here is safe; the sandbox's
+    // recording stays, as the sandbox's.
+    const { root, commits } = repository();
+    const id = commits.second!.slice(0, 12);
+    await run(root, ["record", "main"]);
+    const file = join(root, ".runshape", "recordings", id, "recording.json");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), environment: "docker:runshape-recorder:old" }));
+
+    const { code, recorder, lines } = await run(root, ["compare", "main", "feature"]);
+
+    expect({ code, host: recorder.recorded, said: lines[0], environments: [metadataOf(root, id).environment, metadataOf(root, `${id}-sandbox`).environment] }).toEqual({
+      code: 0,
+      host: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
+      said: `main (${id} Second) was recorded in the sandbox before; that's kept as ${id}-sandbox, and it's recorded here too`,
+      environments: ["host", "docker:runshape-recorder:old"],
+    });
   });
 
   test("--sandbox compares and records commits: the working tree is yours, recorded on this machine", async () => {

@@ -39,6 +39,7 @@ import {
   RecordingMetadata,
   recordingIdFor,
   REQUESTED_REVIEWS_FILE,
+  SANDBOX_SUFFIX,
   RequestedReview,
   RequestedReviews,
   ReviewHighlights,
@@ -46,6 +47,7 @@ import {
 } from "@runshape/library";
 export type { PullRequestSummary } from "@runshape/library";
 import type { PullRequestSummary } from "@runshape/library";
+import { removeAnyway } from "./docker-recorder";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -118,6 +120,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
           throw new UsageError("--sandbox records commits: the working tree is yours, recorded on this machine without it");
         }
         await recordings.exclusively(async () => {
+          await recordings.sandboxIfUntrusted(names, { workingHead: false });
           for (const name of names) await recordings.ensure(await recordings.plan(name, { fetch: true }));
         });
         return 0;
@@ -253,7 +256,7 @@ class Recordings {
    * review when its ref isn't how a person would say it (a pull request's).
    */
   async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string }): Promise<Compared> {
-    await this.sandboxIfUntrusted(headName);
+    await this.sandboxIfUntrusted([baseName, headName], { workingHead: headName === WORKING_TREE_ID });
     // --fetch is for the base ("the latest main"): the head is usually yours.
     const head = await this.plan(headName, { fetch: false });
     const tip = await this.plan(baseName, { fetch: true });
@@ -268,22 +271,46 @@ class Recordings {
   }
 
   /**
-   * Someone else's code is never run here without being asked: a pull request's ref, or a commit
-   * only ever recorded in the sandbox, is compared in the sandbox (both sides, so they compare).
+   * Someone else's code is never run here without being asked. A commit is yours when your
+   * branches, your tags, a PR's base, or a remote's default branch hold it; a pull request's ref,
+   * or a commit nothing of yours holds (by its hash, FETCH_HEAD) is someone else's, and the whole
+   * command records in the sandbox. Against the working tree
+   * (yours, recorded here) such a commit can't be compared.
    */
-  private async sandboxIfUntrusted(headName: string): Promise<void> {
-    if (this.options.sandbox || headName === WORKING_TREE_ID) return;
-    if (headName.startsWith(PULL_REQUEST_REFS)) {
-      this.dependencies.print(`${headName} is a pull request's: comparing in the sandbox`);
+  async sandboxIfUntrusted(names: string[], { workingHead }: { workingHead: boolean }): Promise<void> {
+    if (this.options.sandbox) return;
+    for (const name of names) {
+      if (name === WORKING_TREE_ID) continue;
+      const reason = await this.untrusted(name);
+      if (reason === null) continue;
+      if (workingHead) throw new RecordingError(`${name} ${reason}: it's recorded in the sandbox, so compare it with a commit, not the working tree`);
+      this.dependencies.print(`${name} ${reason}: recording in the sandbox`);
       this.options.sandbox = true;
       return;
     }
-    const commit = (await this.library.resolve(headName)).commit;
-    const ids = new Set((await this.library.recordings()).recordings.map((r) => r.id));
-    if (ids.has(recordingIdFor(commit, true)) && !ids.has(recordingIdFor(commit))) {
-      this.dependencies.print(`${headName} was recorded in the sandbox (${recordingIdFor(commit, true)}): comparing in the sandbox`);
-      this.options.sandbox = true;
-    }
+  }
+
+  /** Why `name` is someone else's code, or null when it's yours. */
+  private async untrusted(name: string): Promise<string | null> {
+    if (name.startsWith(PULL_REQUEST_REFS)) return "is a pull request's";
+    const commit = (await this.library.resolve(name)).commit;
+    if (!(await this.heldByYours(commit))) return "isn't held by your branches or tags (someone else's code)";
+    return null;
+  }
+
+  private async heldByYours(commit: string): Promise<boolean> {
+    const holders = (await this.git.run(["for-each-ref", "--contains", commit, "--format=%(refname)", "refs/heads", "refs/tags", "refs/runshape/base", "refs/remotes"]))
+      .split("\n")
+      .filter(Boolean);
+    if (holders.some((ref) => !ref.startsWith("refs/remotes/"))) return true;
+    // Of the remotes' branches, only their default ones (origin/main): the rest are others' work.
+    const defaults = (await this.git.run(["for-each-ref", "--format=%(refname) %(symref)", "refs/remotes"]))
+      .split("\n")
+      .map((line) => line.split(" "))
+      .filter(([ref, target]) => ref?.endsWith("/HEAD") && target)
+      .map(([, target]) => target!);
+    const fallback = holders.filter((ref) => /^refs\/remotes\/[^/]+\/(main|master)$/.test(ref));
+    return holders.some((ref) => defaults.includes(ref)) || (defaults.length === 0 && fallback.length > 0);
   }
 
   /**
@@ -361,7 +388,7 @@ class Recordings {
     }
     const ahead = Number((await this.git.run(["rev-list", "--count", `${fork}..${base.summary.commit}`])).trim());
     const summary = await this.library.resolve(fork);
-    const id = recordingIdFor(fork);
+    const id = recordingIdFor(fork, this.options.sandbox);
     this.dependencies.print(
       `${baseName} is ${ahead} commit${ahead === 1 ? "" : "s"} past where this branch left it: comparing with ${id} (${summary.subject}), where it left; --tip compares with ${baseName} itself`,
     );
@@ -382,17 +409,21 @@ class Recordings {
    */
   async ensure(plan: Plan, { sameRecorder = false } = {}): Promise<void> {
     const { print } = this.dependencies;
-    const existing = (await this.library.recordings()).recordings.find((r) => r.id === plan.id);
+    let existing = (await this.library.recordings()).recordings.find((r) => r.id === plan.id);
+    const recorder = await this.recorderFor(plan.target);
+    let madeIn = existing?.environment ?? HOST_ENVIRONMENT;
+    // Recorded in the sandbox before its recordings had ids of their own. Here, the commit is
+    // known to be yours (sandboxIfUntrusted), so it's recorded here; the sandbox's is kept as its own.
+    if (existing && madeIn.startsWith("docker:") && recorder.environment === HOST_ENVIRONMENT) {
+      await this.keepAsSandboxed(existing.id);
+      print(`${plan.label} was recorded in the sandbox before; that's kept as ${existing.id}${SANDBOX_SUFFIX}, and it's recorded here too`);
+      existing = undefined;
+      madeIn = HOST_ENVIRONMENT;
+    }
     if (existing && plan.id !== WORKING_TREE_ID && !this.options.again) {
-      const recorder = await this.recorderFor(plan.target);
-      const madeIn = existing.environment ?? HOST_ENVIRONMENT;
-      if (!sameRecorder || (existing.recorderSource === (await this.recorderSource()) && madeIn === recorder.environment)) {
+      if (!sameRecorder || (existing.recorderSource === (await this.recorderSourceFor(recorder)) && madeIn === recorder.environment)) {
         print(`${plan.label} is recorded already; record it again with --again`);
         return;
-      }
-      // Never from the sandbox to here: that would run code it was sandboxed for on this machine.
-      if (madeIn.startsWith("docker:") && recorder.environment === HOST_ENVIRONMENT) {
-        throw new RecordingError(`${plan.label} was recorded in the sandbox; recording it here would run its code unsandboxed: compare with --sandbox`);
       }
       if (madeIn !== recorder.environment) print(`${plan.label} was recorded elsewhere (${madeIn}): recording it again in ${recorder.environment}`);
       else print(`${plan.label} was recorded by another version of ${RECORDER_DIRECTORY}: recording it again`);
@@ -504,6 +535,18 @@ class Recordings {
     }
   }
 
+  /** Moves a sandboxed recording under a plain id to its own; if that's taken, the plain one goes. */
+  private async keepAsSandboxed(id: string): Promise<void> {
+    const from = join(this.library.directory, id);
+    const to = join(this.library.directory, `${id}${SANDBOX_SUFFIX}`);
+    if (await readFile(join(to, METADATA_FILE)).then(() => true, () => false)) await removeAnyway(from);
+    else {
+      await rename(from, to);
+      const metadata = JSON.parse(await readFile(join(to, METADATA_FILE), "utf8")) as RecordingMetadata;
+      await writeFile(join(to, METADATA_FILE), `${JSON.stringify({ ...metadata, id: `${id}${SANDBOX_SUFFIX}` }, null, 2)}\n`);
+    }
+  }
+
   async list(): Promise<void> {
     const overview = await this.library.overview();
     for (const line of listing(overview)) this.dependencies.print(line);
@@ -534,7 +577,9 @@ class Recordings {
   /** Half-written recordings an interrupted run left: nothing else writes while the lock is held. */
   private async clearInterrupted(): Promise<void> {
     for (const name of await readdir(this.library.directory)) {
-      if (name.startsWith(INCOMING_PREFIX) || name.startsWith(REPLACED_PREFIX)) await rm(join(this.library.directory, name), { recursive: true, force: true });
+      if (!name.startsWith(INCOMING_PREFIX) && !name.startsWith(REPLACED_PREFIX)) continue;
+      // Whatever a sandboxed run left (an unreadable folder, say) mustn't stop this one.
+      await removeAnyway(join(this.library.directory, name)).catch((error: Error) => this.dependencies.print(`runshape: couldn't clear ${name}: ${error.message}`));
     }
   }
 
@@ -544,6 +589,11 @@ class Recordings {
     if (!this.options.sandbox || target.kind === "working") return this.dependencies.recorder;
     this.sandboxRecorder ??= this.dependencies.sandbox(await this.sandboxVersion());
     return this.sandboxRecorder;
+  }
+
+  /** What recorded with `recorder`: the working tree's recorder here, HEAD's in the sandbox image. */
+  private async recorderSourceFor(recorder: Recorder): Promise<string> {
+    return recorder.environment === HOST_ENVIRONMENT ? this.recorderSource() : this.sandboxVersion();
   }
 
   /** What the sandbox image is built from, as HEAD commits it: the recorder, the lockfile, what's left out. */
@@ -583,8 +633,8 @@ class Recordings {
     const incoming = join(this.library.directory, `${INCOMING_PREFIX}${id}`);
     await mkdir(incoming, { recursive: true });
     try {
-      const recorderSource = await this.recorderSource();
       const recorder = await this.recorderFor(target);
+      const recorderSource = await this.recorderSourceFor(recorder);
       const rules = await this.rulesAt(target);
       if (rules.problem !== null) this.dependencies.print(`${RULES_FILE} at ${plan.label} is invalid, so every zone is inferred: ${rules.problem}`);
       await recorder.record(target, incoming);
@@ -608,7 +658,7 @@ class Recordings {
       await this.replace(id, incoming);
       this.dependencies.print(`recorded ${id}: ${metadata.tests.total} tests, ${metadata.tests.failed} failed`);
     } catch (error) {
-      await rm(incoming, { recursive: true, force: true });
+      await removeAnyway(incoming).catch(() => {}); // the next run clears what's left, and says if it can't
       throw new RecordingError(`recording ${plan.label} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

@@ -6,15 +6,15 @@
  * what the recording left behind) run on real files. A real recording runs it for real
  * (npm run runshape -- record <ref> --sandbox).
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { CommandResult, CommandRunner, DockerRecorder } from "../src/docker-recorder";
+import { CommandResult, CommandRunner, DockerRecorder, removeAnyway } from "../src/docker-recorder";
 
-const REGISTRY_LOCK = JSON.stringify({ packages: { "": {}, "node_modules/vitest": { resolved: "https://registry.npmjs.org/vitest/-/vitest-5.0.4.tgz" }, "packages/core": { link: true } } });
+const REGISTRY_LOCK = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/vitest": { resolved: "https://registry.npmjs.org/vitest/-/vitest-5.0.4.tgz" }, "packages/core": { link: true } } });
 
 class FakeCommands implements CommandRunner {
   readonly calls: string[][] = [];
@@ -119,7 +119,7 @@ describe("DockerRecorder", () => {
   });
 
   test("a lockfile that installs from outside the registry (a git dependency, a tarball URL) isn't installed at all", async () => {
-    const lock = JSON.stringify({ packages: { "": {}, "node_modules/evil": { resolved: "git+ssh://git@example.com/evil.git#abc" } } });
+    const lock = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/evil": { resolved: "git+ssh://git@example.com/evil.git#abc" } } });
     const { out, commands, recorder } = setup({ lock });
 
     const failure = await recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message);
@@ -128,6 +128,43 @@ describe("DockerRecorder", () => {
       failure: "its lockfile installs from outside the npm registry, which can run code at install: node_modules/evil (git+ssh://git@example.com/evil.git#abc)",
       installed: false,
     });
+  });
+
+  test("a lockfile npm would resolve past the check isn't installed: an old one with no `packages`, an entry with no `resolved` (second re-review)", async () => {
+    const dependenciesOnly = JSON.stringify({ lockfileVersion: 3, dependencies: { dep: { version: "git+file:///target/x.git" } } });
+    const unresolved = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/dep": { version: "1.0.0" } } });
+
+    const failures = await Promise.all(
+      [dependenciesOnly, unresolved].map((lock) => {
+        const { out, recorder } = setup({ lock });
+        return recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message);
+      }),
+    );
+
+    expect(failures).toEqual([
+      "its lockfile isn't one npm 7+ writes (lockfileVersion 2 or 3, with packages): its dependencies can't be checked before installing",
+      "its lockfile installs from outside the npm registry, which can run code at install: node_modules/dep (no resolved URL)",
+    ]);
+  });
+
+  test("a folder the tests made unreadable (chmod 000) is refused and still cleaned away, not left to break every later run", async () => {
+    const { out, recorder } = setup({
+      leaves: (folder) => {
+        mkdirSync(join(folder, "locked", "inside"), { recursive: true });
+        chmodSync(join(folder, "locked"), 0o000);
+      },
+    });
+
+    const failure = await recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message);
+    await removeAnyway(out);
+
+    expect({ failure: failure?.startsWith("the recording left something it can't read"), gone: !existsSync(out) }).toEqual({ failure: true, gone: true });
+  });
+
+  test("a host user that's root still records as an unprivileged one", () => {
+    const root = mkdtempSync(join(tmpdir(), "runshape-docker-"));
+
+    expect(new DockerRecorder(root, "v", new FakeCommands(() => undefined), "0:0").user).toBe("1000:1000");
   });
 
   test("a recording that runs out of time is killed, its worktree removed even if its .git was broken, and the timeout is what's reported", async () => {

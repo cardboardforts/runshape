@@ -2,7 +2,7 @@
 // read-only, and an output folder, and nothing else of this machine. docs/design.md's threat
 // model says why each step is here; docker-recorder.test.ts pins them.
 import { spawn } from "node:child_process";
-import { lstat, readdir, readFile, rm } from "node:fs/promises";
+import { chmod, lstat, readdir, readFile, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { Recorder, RecordTarget } from "./recordings";
@@ -28,14 +28,18 @@ const MAX_FILE_BYTES = 1024 ** 3;
 const MAX_RECORDING_BYTES = 2 * 1024 ** 3;
 /** The only place lockfile entries may come from: anything else (git, a tarball URL, a path) can run code at install. */
 const NPM_REGISTRY = "https://registry.npmjs.org/";
+/** node:*-slim's `node` user: for a host that runs as root. */
+const UNPRIVILEGED_USER = "1000:1000";
+/** npm 7+ lockfiles list every package with where it comes from; older ones don't. */
+const MIN_LOCKFILE_VERSION = 2;
 
 export class SandboxRefusal extends Error {}
 
 export class DockerRecorder implements Recorder {
   readonly environment: string;
+  /** The host user, so bind-mounted folders stay writable on Linux; never root, even when the host runs as root. */
+  readonly user: string;
   private readonly image: string;
-  /** The host user: bind-mounted folders stay writable on Linux, and nothing runs as root. */
-  private readonly user: string;
 
   constructor(
     private readonly root: string,
@@ -46,7 +50,7 @@ export class DockerRecorder implements Recorder {
   ) {
     this.image = `${IMAGE_NAME}:${imageVersion}`;
     this.environment = `docker:${this.image}`;
-    this.user = user;
+    this.user = user.startsWith("0:") ? UNPRIVILEGED_USER : user;
   }
 
   async record(target: RecordTarget, outDirectory: string): Promise<void> {
@@ -156,7 +160,7 @@ export class DockerRecorder implements Recorder {
 
   /** Removes the worktree even if the commit's tests broke its .git file, which `git worktree remove` would refuse. */
   private async cleanUp(worktree: string): Promise<void> {
-    await rm(worktree, { recursive: true, force: true });
+    await removeAnyway(worktree);
     await this.git(["worktree", "prune"]);
   }
 
@@ -170,10 +174,15 @@ export class DockerRecorder implements Recorder {
 async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   const text = await readFile(join(worktree, "package-lock.json"), "utf8").catch(() => null);
   if (text === null) throw new SandboxRefusal("the commit has no package-lock.json: its dependencies can't be installed as locked");
-  const lock = JSON.parse(text) as { packages?: Record<string, { resolved?: string; link?: boolean }> };
-  const outside = Object.entries(lock.packages ?? {})
-    .filter(([path, entry]) => path !== "" && !entry.link && entry.resolved !== undefined && !entry.resolved.startsWith(NPM_REGISTRY))
-    .map(([path, entry]) => `${path} (${entry.resolved})`);
+  const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; link?: boolean; inBundle?: boolean }> };
+  // Without `packages` npm resolves dependencies itself, past anything checked here.
+  if ((lock.lockfileVersion ?? 0) < MIN_LOCKFILE_VERSION || typeof lock.packages !== "object" || lock.packages === null) {
+    throw new SandboxRefusal("its lockfile isn't one npm 7+ writes (lockfileVersion 2 or 3, with packages): its dependencies can't be checked before installing");
+  }
+  // Every package says where it comes from: the registry. One that doesn't is resolved by npm, from anywhere.
+  const outside = Object.entries(lock.packages)
+    .filter(([path, entry]) => path !== "" && !entry.link && !entry.inBundle && (entry.resolved === undefined || !entry.resolved.startsWith(NPM_REGISTRY)))
+    .map(([path, entry]) => `${path} (${entry.resolved ?? "no resolved URL"})`);
   if (outside.length > 0) throw new SandboxRefusal(`its lockfile installs from outside the npm registry, which can run code at install: ${outside.slice(0, 3).join(", ")}`);
 }
 
@@ -182,6 +191,16 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
  * link would turn the host's next write or read there into one somewhere else.
  */
 export async function assertPlainFiles(directory: string): Promise<void> {
+  try {
+    await walkPlainFiles(directory);
+  } catch (error) {
+    if (error instanceof SandboxRefusal) throw error;
+    // A folder the tests made unreadable (chmod 000), say: refused, not a crash.
+    throw new SandboxRefusal(`the recording left something it can't read (${error instanceof Error ? error.message : String(error)}): not used`);
+  }
+}
+
+async function walkPlainFiles(directory: string): Promise<void> {
   let total = 0;
   const walk = async (path: string): Promise<void> => {
     for (const entry of await readdir(path, { withFileTypes: true })) {
@@ -193,6 +212,21 @@ export async function assertPlainFiles(directory: string): Promise<void> {
     }
   };
   await walk(directory);
+}
+
+/**
+ * Removes a folder whatever the commit's tests did to it: a folder they made unreadable (chmod
+ * 000, owned by the person, so fixable) would otherwise stop every later run. Links are removed,
+ * never followed.
+ */
+export async function removeAnyway(path: string): Promise<void> {
+  const entry = await lstat(path).catch(() => null);
+  if (entry === null) return;
+  if (entry.isDirectory()) {
+    await chmod(path, 0o700).catch(() => {});
+    for (const name of await readdir(path).catch(() => [] as string[])) await removeAnyway(join(path, name));
+  }
+  await rm(path, { recursive: true, force: true });
 }
 
 function lastLines(output: string): string {
