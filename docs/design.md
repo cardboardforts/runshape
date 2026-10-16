@@ -216,7 +216,10 @@ Accepted risks:
   One run at a time: a second one refuses while `.runshape/recordings/.lock` names a live
   process. A recording is written beside the library and moved into place when complete; an
   interrupted one is cleared by the next run. `--fetch` fetches a branch (not a tag or a
-  commit) and, on compare, only the base. Untracked files count as uncommitted changes (a new
+  commit) and, on compare, only the base. `compare` measures from the fork point (`git
+  merge-base` of base and head), not the base's newest commit: main having moved on since the
+  branch left it would otherwise show every merge since as the branch undoing it (`--tip`
+  compares with the newest commit). Untracked files count as uncommitted changes (a new
   test file runs). Each recording keeps its commit's architecture: that commit's
   runshape.json as it was (the working tree's as on disk) and `architecture.json`, every
   project class and module the recorded tests ran, with its zone, the rule and who decided it (user, llm, detected)

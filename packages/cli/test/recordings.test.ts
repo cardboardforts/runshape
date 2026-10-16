@@ -260,6 +260,26 @@ describe("each recording keeps its commit's architecture", () => {
 });
 
 describe("runshape compare", () => {
+  test("main moved on since the branch left it: the base is where it left, not main's newest commit", async () => {
+    // Otherwise every change merged to main since would read as this branch undoing it.
+    const { root, commits } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
+    const moved = commitIn(root, "Someone else's change, merged to main");
+    gitIn(root)("checkout", "--quiet", "feature");
+
+    const fromFork = await run(root, ["compare", "main"]);
+    const fromTip = await run(root, ["compare", "main", "--tip"]);
+
+    expect({ fork: fromFork.lines.slice(0, 2), forkLink: fromFork.lines.at(-1), tipLink: fromTip.lines.at(-1) }).toEqual({
+      fork: [
+        `main is 1 commit past where this branch left it: comparing with ${commits.second!.slice(0, 12)} (Second), where it left; --tip compares with main itself`,
+        `recording main's fork point (${commits.second!.slice(0, 12)} Second)…`,
+      ],
+      forkLink: `open http://localhost:5173/demo/index.html?base=${commits.second!.slice(0, 12)}&head=working (npm run dev -w packages/webview)`,
+      tipLink: `open http://localhost:5173/demo/index.html?base=${moved.slice(0, 12)}&head=working (npm run dev -w packages/webview)`,
+    });
+  });
+
   test("comparing a recording with itself is refused before anything is recorded", async () => {
     const { root } = repository();
 

@@ -100,7 +100,8 @@ any two can be compared:
 
 ```sh
 npm run runshape -- list                    # what's recorded, which branch tips aren't yet
-npm run runshape -- compare main --fetch    # fetch main, record it and your working tree, link them
+npm run runshape -- compare main --fetch    # fetch main, record where your branch left it and your working tree
+                                            # (--tip: main's newest commit instead of the fork point)
 npm run runshape -- record <branch|commit|working> [--fetch] [--again]
 npm run runshape -- forget <id>             # each recording is ~100 MB
 ```

@@ -1,4 +1,4 @@
-// npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] | forget <id>
+// npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -48,6 +48,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   const [command = "list", ...names] = argv.filter((arg) => !arg.startsWith("--"));
   const unknownFlags = [...flags].filter((flag) => !KNOWN_FLAGS.has(flag));
   const recordings = new Recordings(dependencies, { fetch: flags.has("--fetch"), again: flags.has("--again") });
+  const againstTip = flags.has("--tip");
   try {
     if (unknownFlags.length > 0) throw new UsageError(`unknown option ${unknownFlags.join(", ")}\n${USAGE}`);
     switch (command) {
@@ -65,8 +66,9 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         const [baseName, headName = WORKING_TREE_ID] = names as [string, string?];
         await recordings.exclusively(async () => {
           // --fetch is for the base ("the latest main"): the head is usually yours.
-          const base = await recordings.plan(baseName, { fetch: true });
           const head = await recordings.plan(headName, { fetch: false });
+          const tip = await recordings.plan(baseName, { fetch: true });
+          const base = againstTip ? tip : await recordings.forkPoint(baseName, tip, head);
           if (base.id === head.id) throw new RecordingError(`${baseName} and ${headName} are the same recording: nothing to compare`);
           await recordings.ensure(base, { sameRecorder: true });
           await recordings.ensure(head, { sameRecorder: true });
@@ -90,8 +92,8 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again"]);
-const USAGE = "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] | forget <id>";
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip"]);
+const USAGE = "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>";
 
 class RecordingError extends Error {}
 
@@ -157,6 +159,24 @@ class Recordings {
     const id = recordingIdFor(summary.commit);
     const shown = ref.replace(/^refs\/remotes\//, "");
     return { id, label: `${shown} (${id} ${summary.subject})`, target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } };
+  }
+
+  /**
+   * Where head's history left the base's: what the branch changed is measured from there. A
+   * base that moved on since (main, with others' merges) would otherwise make every one of
+   * those merges read as the branch undoing it. The base itself when head contains it, or the
+   * two share no history.
+   */
+  async forkPoint(baseName: string, base: Plan, head: Plan): Promise<Plan> {
+    const fork = (await this.git.run(["merge-base", base.summary.commit, head.summary.commit]).catch(() => "")).trim();
+    if (fork === "" || fork === base.summary.commit) return base;
+    const ahead = Number((await this.git.run(["rev-list", "--count", `${fork}..${base.summary.commit}`])).trim());
+    const summary = await this.library.resolve(fork);
+    const id = recordingIdFor(fork);
+    this.dependencies.print(
+      `${baseName} is ${ahead} commit${ahead === 1 ? "" : "s"} past where this branch left it: comparing with ${id} (${summary.subject}), where it left; --tip compares with ${baseName} itself`,
+    );
+    return { id, label: `${baseName}'s fork point (${id} ${summary.subject})`, target: { kind: "commit", commit: fork }, summary, tree: { branch: null, dirty: false } };
   }
 
   /**
