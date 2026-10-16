@@ -119,7 +119,9 @@ export function App({ host }: { host: Host }) {
   const [modelAdvice, setModelAdvice] = useState<ModelAdvice>({ kind: "idle" });
   /** The sidebar lists tests, the requests they sent grouped by route, or (comparing) how the architecture changed. */
   const [listing, setListing] = useState<Listing>("tests");
-  const [architecture, setArchitecture] = useState<{ diff: ArchitectureDiff; baseRulesKnown: boolean } | null>(null);
+  const [architecture, setArchitecture] = useState<{ diff: ArchitectureDiff; baseRulesKnown: boolean } | { failed: string } | null>(null);
+  /** Responses carry no request id: an error while a diff is awaited is the diff's answer. */
+  const awaitingDiff = useRef(false);
   const [routeMap, setRouteMap] = useState<{ routes: RouteMap; diff: RouteMapDiff | null } | { failed: string } | null>(null);
   /** Responses carry no request id: an error while routes are awaited is the routes' answer. */
   const awaitingRoutes = useRef(false);
@@ -150,6 +152,10 @@ export function App({ host }: { host: Host }) {
           setStatus({ kind: "empty", message: response.message });
           break;
         case "error":
+          if (awaitingDiff.current) {
+            awaitingDiff.current = false;
+            setArchitecture({ failed: response.message });
+          }
           if (awaitingRoutes.current) {
             awaitingRoutes.current = false;
             setRouteMap({ failed: response.message });
@@ -181,13 +187,18 @@ export function App({ host }: { host: Host }) {
             host.post({ type: "graph", phases, grouping: currentGrouping, style });
             const canCompare = comparing && response.summary.baselineCreatedAt !== null;
             if (canCompare) {
+              awaitingDiff.current = true;
               host.post({ type: "diff", phases, grouping: currentGrouping, style });
             }
             if (currentListing === "routes") {
               awaitingRoutes.current = true;
               host.post({ type: "routes", phases, compare: canCompare });
             }
-            if (response.summary.baselineCreatedAt === null) setCompare(false);
+            if (response.summary.baselineCreatedAt === null) {
+              setCompare(false);
+              // Its tab goes with compare mode; it mustn't be left showing "Comparing…".
+              setListing((current) => (current === "architecture" ? "tests" : current));
+            }
           }
           runLoaded.current = true;
           loadFailed.current = false;
@@ -212,6 +223,7 @@ export function App({ host }: { host: Host }) {
         case "diff":
           setDiff(response.diff);
           setReview(response.review);
+          awaitingDiff.current = false;
           setArchitecture({ diff: response.architecture, baseRulesKnown: response.baseRulesKnown });
           break;
         case "routes":
@@ -230,7 +242,10 @@ export function App({ host }: { host: Host }) {
           const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
           setAdvice({ componentId: "", state: { kind: "idle" } });
           host.post({ type: "graph", phases, grouping: currentGrouping, style });
-          if (comparing) host.post({ type: "diff", phases, grouping: currentGrouping, style });
+          if (comparing) {
+            awaitingDiff.current = true;
+            host.post({ type: "diff", phases, grouping: currentGrouping, style });
+          }
           if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
           break;
         }
@@ -336,6 +351,7 @@ export function App({ host }: { host: Host }) {
       setArchitecture(null);
       setExecution(null);
       setExecutionFn(null);
+      awaitingDiff.current = true;
       host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping, style });
       if (selected !== null) host.post({ type: "executionDiff", scenarioId: selected, phases: nextPhases, grouping: nextGrouping });
     }
@@ -373,6 +389,7 @@ export function App({ host }: { host: Host }) {
     if (next) {
       setDiff(null); // never show a diff computed for other view options
       setArchitecture(null);
+      awaitingDiff.current = true;
       host.post({ type: "diff", phases, grouping, style: drawStyle });
       if (selected !== null) requestExecution(selected);
     }
@@ -513,13 +530,16 @@ export function App({ host }: { host: Host }) {
           )}
         </div>
         {listing === "architecture" ? (
-          architecture === null || diff === null ? (
+          architecture !== null && "failed" in architecture ? (
+            <p className="muted" role="alert">
+              Couldn't compare the two commits' architecture: {architecture.failed}
+            </p>
+          ) : architecture === null || diff === null ? (
             <p className="muted">Comparing the two commits' architecture…</p>
           ) : (
             <ArchitectureChangesPanel
               diff={architecture.diff}
               baseRulesKnown={architecture.baseRulesKnown}
-              zoneName={(zone) => diff.profile.zones.find((candidate) => candidate.id === zone)?.name ?? zone}
               onOpenComponent={(qualifiedName) => {
                 const node = displayed?.nodes.find((candidate) => candidate.qualifiedName === qualifiedName);
                 if (node) openComponent(node);

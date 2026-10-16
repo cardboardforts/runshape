@@ -198,14 +198,17 @@ export class ViewerSession {
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
         const profile = this.drawingStyle(request.style);
         if (profile === null) return { type: "error", message: unknownStyle(request.style) };
-        const baseRules = this.baselineRules ?? this.rules;
+        // A head runshape.json that can't be read has no rules to compare: not "every rule removed".
+        const baseRulesKnown = this.baselineRules !== null && this.rulesProblem === null;
+        const baseRules = baseRulesKnown ? this.baselineRules! : this.rules;
         const drawing = { phases: request.phases, grouping: request.grouping, rules: this.rules, baseRules, moves: this.moves() };
         return {
           type: "diff",
           diff: diffRuns(this.baseline, this.run, { ...drawing, profile }),
           review: buildReview(this.baseline, this.run, drawing),
-          architecture: diffArchitecture(buildPlacements(this.baseline, baseRules), buildPlacements(this.run, this.rules), this.moves()),
-          baseRulesKnown: this.baselineRules !== null,
+          // Both placed in head's style, so a style change doesn't read as every class moving.
+          architecture: diffArchitecture(buildPlacements(this.baseline, baseRules, this.rules.profile), buildPlacements(this.run, this.rules), this.moves()),
+          baseRulesKnown,
         };
       }
       case "routes": {

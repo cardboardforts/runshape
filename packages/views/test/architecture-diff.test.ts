@@ -103,7 +103,7 @@ describe("what the example recordings don't show, written out", () => {
     decidedBy: null,
     reason,
   });
-  const snapshot = (placements: Placement[]): ArchitectureSnapshot => ({ version: 1, style: "hexagonal", zones: [], rules: [], unusedRules: [], placements });
+  const snapshot = (placements: Placement[]): ArchitectureSnapshot => ({ version: 1, style: "hexagonal", declaredStyle: "hexagonal", zones: [], rules: [], unusedRules: [], placements });
 
   test("an inferred zone that moved with the tests' behaviour is observed, not decided", () => {
     const before = snapshot([placement("app.Exporter", "core", "receives no requests and calls no external system")]);
@@ -147,6 +147,32 @@ describe("what the example recordings don't show, written out", () => {
       moved: ["style hexagonal -> hexagonal"],
       unmatched: ["style hexagonal -> hexagonal", "needs a decision: app.exports.Exporter (inferred core: no I/O)", "gone: app.old.Exporter"],
     });
+  });
+});
+
+describe("cases the first version got wrong (second-model review)", () => {
+  test("a style changed in the branch: both commits placed in the new style, so nothing moved that wasn't moved", async () => {
+    const run = await loadFixtureRun("go-shop");
+    const mvc = ZoneRules.parse(JSON.stringify({ version: 2, style: "mvc", zones: [] }));
+    const hexagonal = ZoneRules.none();
+
+    const diff = diffArchitecture(buildPlacements(run, mvc, hexagonal.profile), buildPlacements(run, hexagonal));
+
+    expect(render(diff)).toEqual(["style mvc -> hexagonal"]);
+  });
+
+  test("two base classes merged into one: the one that keeps the name is compared, the other is listed gone", () => {
+    const ruledTarget: Placement = { component: "app.Target", kind: "class" as Placement["kind"], zone: "core", source: ZoneSource.Rule, rule: "app.Target", decidedBy: "user", reason: "the rules" };
+    const zeta: Placement = { component: "app.Zeta", kind: "class" as Placement["kind"], zone: "outbound-adapter", source: ZoneSource.Inferred, rule: null, decidedBy: null, reason: "calls s3" };
+    const after: Placement = { ...zeta, component: "app.Target", zone: "inbound-adapter", reason: "handles a route" };
+    const moves = new Moves([], [], [{ from: QualifiedName.parse("app.Zeta"), to: QualifiedName.parse("app.Target") }]);
+    const snap = (placements: Placement[]): ArchitectureSnapshot => ({ version: 1, style: "hexagonal", declaredStyle: "hexagonal", zones: [], rules: [], unusedRules: [], placements });
+
+    expect(render(diffArchitecture(snap([ruledTarget, zeta]), snap([after]), moves))).toEqual([
+      "style hexagonal -> hexagonal",
+      "decided: app.Target: core (user) -> inbound-adapter (inferred)",
+      "gone: app.Zeta",
+    ]);
   });
 });
 

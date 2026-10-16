@@ -79,7 +79,14 @@ function libraryTraces(head: string, base: string | null): TraceFiles {
  * none. Null when the recording predates kept zones, so nobody knows.
  */
 async function recordingRules(id: string): Promise<ZoneRules | null> {
-  const metadata = JSON.parse(await libraryText(id, "recording.json")) as { architecture?: unknown };
+  let metadata: { architecture?: unknown };
+  try {
+    metadata = JSON.parse(await libraryText(id, "recording.json")) as { architecture?: unknown };
+  } catch (error) {
+    // The traces may still load: draw with no known rules rather than failing everything.
+    console.warn(`demo: recording ${id} has no readable recording.json`, error);
+    return null;
+  }
   if (metadata.architecture === undefined) return null;
   const response = await fetch(`/__runshape/recordings/${encodeURIComponent(id)}/runshape.json`);
   if (!response.ok) return ZoneRules.none();
@@ -125,7 +132,9 @@ function demoHost(params: URLSearchParams): Host {
   const rules = headId === null ? Promise.resolve(null) : recordingRules(headId);
   const baselineRules = pair === null ? Promise.resolve(null) : recordingRules(pair.base);
   const session = Promise.all([latest, loadPreviousRun(traces), rules, baselineRules]).then(
-    ([run, baseline, headRules, baseRules]) => new ViewerSession(run, { sources, baseline, ruleStore, rules: headRules ?? undefined, baselineRules: baseRules }),
+    // Head's rules unknown: then neither side's are, or the base's would all read as removed.
+    ([run, baseline, headRules, baseRules]) =>
+      new ViewerSession(run, { sources, baseline, ruleStore, rules: headRules ?? undefined, baselineRules: headRules === null ? null : baseRules }),
   );
 
   return {

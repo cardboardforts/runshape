@@ -1,5 +1,5 @@
 import { Phase, QualifiedName, Run } from "@runshape/trace";
-import { ComponentKind, FINE_GROUPING, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { ArchitectureProfile, ComponentKind, FINE_GROUPING, ZoneRule, ZoneRules } from "@runshape/architecture";
 import { buildSystemGraph, ZoneSource } from "./system-graph";
 
 /** One of the project's classes or modules, where it sits, and who put it there. */
@@ -26,7 +26,10 @@ export interface Placement {
 export interface ArchitectureSnapshot {
   /** Of this file's format: a format change mustn't read as an architecture change. */
   version: typeof ARCHITECTURE_FORMAT_VERSION;
+  /** The style the components are placed in: the rules' own, unless another was asked for. */
   style: string;
+  /** The style the commit's runshape.json declares. */
+  declaredStyle: string;
   /** The style's zones, so a person reading the file sees names, not only ids. */
   zones: { id: string; name: string }[];
   rules: ZoneRule[];
@@ -41,8 +44,13 @@ export const ARCHITECTURE_FORMAT_VERSION = 1;
 /** A class built only while setting up still has a place: placements look at every phase. */
 const EVERY_PHASE = [Phase.Setup, Phase.Call, Phase.Teardown];
 
-export function buildPlacements(run: Run, rules: ZoneRules): ArchitectureSnapshot {
-  const graph = buildSystemGraph(run, { phases: EVERY_PHASE, grouping: FINE_GROUPING, rules, profile: rules.profile });
+/**
+ * Placed in `profile`, the rules' own style by default. Comparing commits whose styles differ,
+ * both are placed in head's, so zone ids compare: rules written for another style place
+ * nothing there, and their components are inferred.
+ */
+export function buildPlacements(run: Run, rules: ZoneRules, profile: ArchitectureProfile = rules.profile): ArchitectureSnapshot {
+  const graph = buildSystemGraph(run, { phases: EVERY_PHASE, grouping: FINE_GROUPING, rules, profile });
   const placements: Placement[] = [];
   const used = new Set<string>();
   for (const node of graph.nodes) {
@@ -64,8 +72,9 @@ export function buildPlacements(run: Run, rules: ZoneRules): ArchitectureSnapsho
   placements.sort((a, b) => byCodeUnit(a.component, b.component) || byCodeUnit(a.kind, b.kind));
   return {
     version: ARCHITECTURE_FORMAT_VERSION,
-    style: rules.profile.style,
-    zones: rules.profile.zones.map(({ id, name }) => ({ id, name })),
+    style: profile.style,
+    declaredStyle: rules.profile.style,
+    zones: profile.zones.map(({ id, name }) => ({ id, name })),
     rules: rules.rules,
     unusedRules: rules.rules.map((rule) => rule.match).filter((match) => !used.has(match)),
     placements,

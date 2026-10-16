@@ -100,7 +100,9 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
     graphBefore.edges.map((edge) => ({ ...edge, id: `${headId(edge.from)}->${headId(edge.to)}`, from: headId(edge.from), to: headId(edge.to) })),
     (into, edge) => ({ ...into, calls: into.calls + edge.calls, scenarioIds: union(into.scenarioIds, edge.scenarioIds) }),
   );
-  const originalNodes = new Map(graphBefore.nodes.map((node) => [headId(node.id), node]));
+  // The first of several boxes merged into one, as combined() keeps it: one before, consistently.
+  const originalNodes = new Map<string, GraphNode>();
+  for (const node of graphBefore.nodes) if (!originalNodes.has(headId(node.id))) originalNodes.set(headId(node.id), node);
 
   // A box only the base has keeps its own id, matching its name and label.
   const nodes = mergeById(nodesBefore, graphAfter.nodes, (node, change, previous) => ({

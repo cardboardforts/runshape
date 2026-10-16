@@ -6,7 +6,6 @@ interface Props {
   diff: ArchitectureDiff;
   /** False when the base was drawn with the current rules, its own being unknown. */
   baseRulesKnown: boolean;
-  zoneName: (zone: string) => string;
   onOpenComponent: (qualifiedName: string) => void;
 }
 
@@ -15,8 +14,10 @@ interface Props {
  * decided (rules, and what they moved), what still needs a decision (new code no rule covers),
  * and what only moved because the tests behave differently.
  */
-export function ArchitectureChangesPanel({ diff, baseRulesKnown, zoneName, onOpenComponent }: Props) {
+export function ArchitectureChangesPanel({ diff, baseRulesKnown, onOpenComponent }: Props) {
   const { rules, decided, observed, unplaced, removed, unusedRules } = diff;
+  // The commit's own style names its zones, not whatever style the graph previews.
+  const zoneName = (zone: string) => diff.zones.find((candidate) => candidate.id === zone)?.name ?? zone;
   const ruleChanges = rules.added.length + rules.removed.length + rules.changed.length;
   const nothing = ruleChanges + decided.length + observed.length + unplaced.length + removed.length + unusedRules.length === 0 && diff.styleBefore === diff.styleAfter;
   const name = (component: string) => (
@@ -37,7 +38,8 @@ export function ArchitectureChangesPanel({ diff, baseRulesKnown, zoneName, onOpe
       {nothing && <p className="muted">No architecture changes: the same rules, and no new code they don't cover.</p>}
       {diff.styleBefore !== diff.styleAfter && (
         <p>
-          <strong>Style changed</strong>: {diff.styleBefore} → {diff.styleAfter}. Both sides are drawn as {diff.styleAfter}.
+          <strong>Style changed</strong>: {diff.styleBefore} → {diff.styleAfter}. Both commits are placed as {diff.styleAfter}: the old style's rules place
+          nothing there.
         </p>
       )}
 
@@ -59,16 +61,22 @@ export function ArchitectureChangesPanel({ diff, baseRulesKnown, zoneName, onOpe
               {rules.changed.map(({ before, after }) => (
                 <li key={`changed:${after.match}`}>
                   <span className="mark">~</span> <code>{after.match}</code>: {zoneName(before.zone)} by {decider(before)} → {zoneName(after.zone)} by {decider(after)}
-                  <div className="muted">{after.reason}</div>
+                  {before.reason !== after.reason ? (
+                    <div className="muted">
+                      <del>{before.reason}</del> → {after.reason}
+                    </div>
+                  ) : (
+                    <div className="muted">{after.reason}</div>
+                  )}
                 </li>
               ))}
             </ul>
           )}
-          <PlacementList changes={decided.filter(movedZone)} name={name} placed={placed} />
-          {decided.some((change) => !movedZone(change)) && (
+          <PlacementList changes={decided.filter((change) => !isConfirmation(change))} name={name} placed={placed} />
+          {decided.some(isConfirmation) && (
             <details>
-              <summary className="muted">{decided.filter((change) => !movedZone(change)).length} now declared where they already were (or by someone else)</summary>
-              <PlacementList changes={decided.filter((change) => !movedZone(change))} name={name} placed={placed} />
+              <summary className="muted">{decided.filter(isConfirmation).length} now declared where they already were</summary>
+              <PlacementList changes={decided.filter(isConfirmation)} name={name} placed={placed} />
             </details>
           )}
         </section>
@@ -143,6 +151,11 @@ function PlacementList({
         <li key={`${change.kind}:${change.component}`}>
           {name(change.component)} {placed(change.before)} → <strong>{placed(change.after)}</strong>
           {change.movedFrom && <div className="muted">moved from {change.movedFrom}</div>}
+          {change.before?.rule && change.after?.rule && change.before.rule !== change.after.rule && (
+            <div className="muted">
+              rule <code>{change.before.rule}</code> → <code>{change.after.rule}</code>
+            </div>
+          )}
           {change.after?.reason && <div className="muted">{change.after.reason}</div>}
         </li>
       ))}
@@ -159,9 +172,12 @@ function RuleText({ rule, zoneName }: { rule: ZoneRule; zoneName: (zone: string)
   );
 }
 
-/** A decision that put it somewhere else, rather than writing down where it already was. */
-function movedZone(change: PlacementChange): boolean {
-  return change.before?.zone !== change.after?.zone;
+/**
+ * A rule writing down where inference already had it: worth a count, not a line each. A rule
+ * that changed hands, glob or zone is never folded: that's what a reviewer approves.
+ */
+function isConfirmation(change: PlacementChange): boolean {
+  return change.before !== null && change.before.decidedBy === null && change.after !== null && change.before.zone === change.after.zone;
 }
 
 function decider(rule: ZoneRule): string {

@@ -106,6 +106,38 @@ describe("comparing two commits' architecture on the wire", () => {
     });
   });
 
+  test("a style changed in the branch is one change, not every class moving", async () => {
+    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const mvc = ZoneRules.parse(JSON.stringify({ version: 2, style: "mvc", zones: [] }));
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([]), baselineRules: mvc });
+
+    const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });
+    if (response?.type !== "diff") throw new Error(`expected a diff, got ${response?.type}`);
+
+    const { styleBefore, styleAfter, observed, decided } = response.architecture;
+    expect({ styleBefore, styleAfter, observed: observed.length, decided: decided.length }).toEqual({ styleBefore: "mvc", styleAfter: "hexagonal", observed: 0, decided: 0 });
+  });
+
+  test("the zones are named in the commit's own style, whatever style the graph previews", async () => {
+    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]), baselineRules: shopRules([]) });
+
+    const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING, style: "mvc" });
+    if (response?.type !== "diff") throw new Error(`expected a diff, got ${response?.type}`);
+
+    expect(response.architecture.zones.map((zone) => zone.id)).toEqual(["inbound-adapter", "core", "outbound-adapter"]);
+  });
+
+  test("a head runshape.json that can't be read isn't 'every rule removed': both sides use what the session has, and the response says so", async () => {
+    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rulesProblem: "not valid JSON", baselineRules: shopRules([STORAGE]) });
+
+    const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });
+    if (response?.type !== "diff") throw new Error(`expected a diff, got ${response?.type}`);
+
+    expect({ baseRulesKnown: response.baseRulesKnown, removed: response.architecture.rules.removed }).toEqual({ baseRulesKnown: false, removed: [] });
+  });
+
   test("without the base's rules both sides use the current ones, and the response says so", async () => {
     const run = await loadLatestRun(fixtureFiles("go-shop"));
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]) });

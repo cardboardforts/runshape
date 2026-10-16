@@ -19,8 +19,11 @@ export interface PlacementChange {
  * the test (architecture-diff.test.ts) for why.
  */
 export interface ArchitectureDiff {
+  /** The styles the two commits' runshape.json declare; both are placed in the second. */
   styleBefore: string;
   styleAfter: string;
+  /** The zones placements name, in the style they're placed in. */
+  zones: { id: string; name: string }[];
   /** Rules by their glob: added, removed, or kept with another zone, reason or decider. */
   rules: { added: ZoneRule[]; removed: ZoneRule[]; changed: { before: ZoneRule; after: ZoneRule }[] };
   /** Placements a rule made or unmade: someone decided these. */
@@ -42,7 +45,19 @@ export function diffArchitecture(before: ArchitectureSnapshot, after: Architectu
     return (placement.kind === ComponentKind.Class ? moves.type(name) : moves.module(name)).text;
   };
   const keyOf = (kind: string, component: string) => `${kind} ${component}`;
-  const previous = new Map(before.placements.map((placement) => [keyOf(placement.kind, headName(placement)), placement]));
+  // Code merged into a class that was already there: the one that kept its name is that
+  // class's past; the rest are gone (otherwise sort order would pick, and could hide a rule).
+  const previous = new Map<string, Placement>();
+  const merged: Placement[] = [];
+  for (const placement of before.placements) {
+    const key = keyOf(placement.kind, headName(placement));
+    const held = previous.get(key);
+    if (held === undefined) previous.set(key, placement);
+    else if (placement.component === headName(placement)) {
+      merged.push(held);
+      previous.set(key, placement);
+    } else merged.push(placement);
+  }
   const decided: PlacementChange[] = [];
   const observed: PlacementChange[] = [];
   const unplaced: Placement[] = [];
@@ -63,13 +78,14 @@ export function diffArchitecture(before: ArchitectureSnapshot, after: Architectu
   }
 
   return {
-    styleBefore: before.style,
-    styleAfter: after.style,
+    styleBefore: before.declaredStyle,
+    styleAfter: after.declaredStyle,
+    zones: after.zones,
     rules: diffRules(before.rules, after.rules),
     decided,
     observed,
     unplaced,
-    removed: [...previous.values()].sort((a, b) => byCodeUnit(a.component, b.component)),
+    removed: [...previous.values(), ...merged].sort((a, b) => byCodeUnit(a.component, b.component)),
     unusedRules: after.unusedRules,
   };
 }
