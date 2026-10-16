@@ -12,6 +12,7 @@ import {
   CommitMessage,
   explainChange,
   Explanation,
+  explanationInputs,
   explanationMarkdown,
   LanguageModel,
   loadLatestRun,
@@ -293,13 +294,13 @@ class Recordings {
     const where = join(review.relative, EXPLANATION_MARKDOWN);
     try {
       const context: ChangeContext = { commits: await this.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty };
-      const inputs = { review: sha256(reviewBundleMarkdown(review.bundle)), commits: context.commits.map((c) => c.commit) };
+      const inputs = explanationInputs(review.bundle, context, sha256);
+      const model = await this.dependencies.models(choice);
       const saved = await readFile(join(review.directory, EXPLANATION_JSON), "utf8").then((text) => JSON.parse(text) as Explanation, () => null);
-      if (saved !== null && !this.options.again && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
-        this.dependencies.print(`explanation: ${where} (current: same review and commits)`);
+      if (saved !== null && !this.options.again && saved.model === model.name && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
+        this.dependencies.print(`explanation: ${where} (current: same review, commits and model)`);
         return;
       }
-      const model = await this.dependencies.models(choice);
       const explanation = await explainChange(model, review.bundle, context, this.dependencies.now().toISOString(), sha256);
       await writeFile(join(review.directory, EXPLANATION_JSON), `${JSON.stringify(explanation, null, 2)}\n`);
       await writeFile(join(review.directory, EXPLANATION_MARKDOWN), explanationMarkdown(explanation));

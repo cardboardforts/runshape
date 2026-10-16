@@ -40,7 +40,7 @@ class FixtureRecorder implements Recorder {
 
 /** A language model that answers every prompt the same way, and remembers what it was asked. */
 class FakeModel implements LanguageModel {
-  readonly name = "fake-model";
+  readonly name: string = "fake-model";
   readonly available = true;
   readonly prompts: string[] = [];
   constructor(private readonly answer: string | Error = JSON.stringify({ summary: "Second, explained.", reasons: [], unexplained: [], questions: [] })) {}
@@ -459,10 +459,24 @@ describe("runshape compare --explain", () => {
       askedAbout: true,
       saved: "Second, explained.",
       markdown: "## Why it changed (model's account)",
-      again: `explanation: ${join(".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`, "explanation.md")} (current: same review and commits)`,
+      again: `explanation: ${join(".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`, "explanation.md")} (current: same review, commits and model)`,
       askedAgain: 0,
       unasked: [[], 0],
     });
+  });
+
+  test("another model is asked afresh: an answer is current only for the same review, commits, model and prompt", async () => {
+    // Found by the explainer explaining itself: switching from claude -p to the API handed back
+    // claude's answer as current.
+    const { root } = repository();
+    class OtherModel extends FakeModel {
+      override readonly name = "other-model";
+    }
+
+    await run(root, ["compare", "main", "feature", "--explain"]);
+    const other = await run(root, ["compare", "main", "feature", "--explain"], new FixtureRecorder(), new OtherModel());
+
+    expect({ asked: other.model.prompts.length, said: other.lines.at(-1)?.endsWith("(by other-model)") }).toEqual({ asked: 1, said: true });
   });
 
   test("a model that fails or answers nonsense fails the explanation, says why, and leaves the review", async () => {

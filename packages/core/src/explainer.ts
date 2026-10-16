@@ -21,8 +21,8 @@ export interface Explanation {
   createdAt: string;
   /** The model that answered: this is its account, not a finding. */
   model: string;
-  /** What it was asked about: an explanation of other inputs is stale. */
-  basedOn: { review: string; commits: string[] };
+  /** What it was asked about, and with which prompt: an explanation of other inputs is stale. */
+  basedOn: { review: string; commits: string[]; prompt: number };
   summary: string;
   /** Reasons the authors gave, each with where: a commit's hash, or "review". */
   reasons: { reason: string; source: string }[];
@@ -31,6 +31,9 @@ export interface Explanation {
   /** What a reviewer is going to ask, each with the review's evidence for it. */
   questions: { question: string; evidence: string }[];
 }
+
+/** Bumped when the prompt's wording changes: answers to the old one are asked again. */
+export const EXPLANATION_PROMPT_VERSION = 1;
 
 export const EXPLANATION_FORMAT = "runshape-explanation";
 export const EXPLANATION_VERSION = 1;
@@ -54,7 +57,12 @@ export async function explainChange(
 ): Promise<Explanation> {
   const review = reviewBundleMarkdown(bundle);
   const answer = await model.complete(explanationPrompt(review, context));
-  return parseExplanation(answer, { model: model.name, createdAt, basedOn: { review: digest(review), commits: context.commits.map((c) => c.commit) } });
+  return parseExplanation(answer, { model: model.name, createdAt, basedOn: explanationInputs(bundle, context, digest) });
+}
+
+/** What an explanation is based on: the review as the model reads it, the commits, the prompt. */
+export function explanationInputs(bundle: ReviewBundle, context: ChangeContext, digest: (text: string) => string): Explanation["basedOn"] {
+  return { review: digest(reviewBundleMarkdown(bundle)), commits: context.commits.map((c) => c.commit), prompt: EXPLANATION_PROMPT_VERSION };
 }
 
 /**

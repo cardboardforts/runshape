@@ -88,7 +88,7 @@ describe("explainChange", () => {
   });
 
   test("an answer that isn't the asked-for JSON is refused with every problem, not half used", () => {
-    const meta = { model: "fake", createdAt: "x", basedOn: { review: "r", commits: [] } };
+    const meta = { model: "fake", createdAt: "x", basedOn: { review: "r", commits: [], prompt: 1 } };
 
     expect(() => parseExplanation("I think it's fine.", meta)).toThrowError(new ExplanationError(["the answer holds no JSON object"]));
     expect(() => parseExplanation(JSON.stringify({ summary: 3, reasons: [{ reason: "x" }], questions: "none" }), meta)).toThrowError(
@@ -104,7 +104,7 @@ describe("explainChange", () => {
 
 describe("explanationMarkdown", () => {
   test("reads as the model's answer, labelled as one, sources and evidence beside each line", () => {
-    const meta = { model: "claude-cli", createdAt: "2026-10-16T09:05:00Z", basedOn: { review: "r".repeat(64), commits: ["abc1234def5678"] } };
+    const meta = { model: "claude-cli", createdAt: "2026-10-16T09:05:00Z", basedOn: { review: "r".repeat(64), commits: ["abc1234def5678"], prompt: 1 } };
 
     expect(explanationMarkdown(parseExplanation(JSON.stringify(ANSWER), meta))).toMatchInlineSnapshot(`
       "## Why it changed (model's account)
