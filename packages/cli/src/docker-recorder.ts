@@ -3,7 +3,7 @@
 // model says why each step is here; docker-recorder.test.ts pins them.
 import { spawn } from "node:child_process";
 import { chmod, lstat, readdir, readFile, rm } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join, normalize } from "node:path";
 
 import { Recorder, RecordTarget } from "./recordings";
 
@@ -179,9 +179,23 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   if ((lock.lockfileVersion ?? 0) < MIN_LOCKFILE_VERSION || typeof lock.packages !== "object" || lock.packages === null) {
     throw new SandboxRefusal("its lockfile isn't one npm 7+ writes (lockfileVersion 2 or 3, with packages): its dependencies can't be checked before installing");
   }
-  // Every package says where it comes from: the registry. One that doesn't is resolved by npm, from anywhere.
+  // A workspace: a link to a folder of the project, and that folder (which has no resolved of its own).
+  const linked = new Set<string>();
+  for (const [path, entry] of Object.entries(lock.packages)) {
+    if (!entry.link) continue;
+    if (entry.resolved === undefined || isAbsolute(entry.resolved) || normalize(entry.resolved).startsWith("..")) {
+      throw new SandboxRefusal(`its lockfile links ${path} outside the project (${entry.resolved ?? "nowhere"})`);
+    }
+    linked.add(normalize(entry.resolved));
+  }
+  // Every other package says it comes from the registry; one that doesn't is resolved by npm,
+  // from anywhere. A bundled one comes inside its parent's tarball, and says nothing of its own.
   const outside = Object.entries(lock.packages)
-    .filter(([path, entry]) => path !== "" && !entry.link && !entry.inBundle && (entry.resolved === undefined || !entry.resolved.startsWith(NPM_REGISTRY)))
+    .filter(([path, entry]) => {
+      if (path === "" || entry.link || linked.has(path)) return false;
+      if (entry.inBundle && entry.resolved === undefined) return false;
+      return entry.resolved === undefined || !entry.resolved.startsWith(NPM_REGISTRY);
+    })
     .map(([path, entry]) => `${path} (${entry.resolved ?? "no resolved URL"})`);
   if (outside.length > 0) throw new SandboxRefusal(`its lockfile installs from outside the npm registry, which can run code at install: ${outside.slice(0, 3).join(", ")}`);
 }

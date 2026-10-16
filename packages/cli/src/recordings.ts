@@ -47,7 +47,7 @@ import {
 } from "@runshape/library";
 export type { PullRequestSummary } from "@runshape/library";
 import type { PullRequestSummary } from "@runshape/library";
-import { removeAnyway } from "./docker-recorder";
+import { assertPlainFiles, removeAnyway } from "./docker-recorder";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -120,8 +120,10 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
           throw new UsageError("--sandbox records commits: the working tree is yours, recorded on this machine without it");
         }
         await recordings.exclusively(async () => {
-          await recordings.sandboxIfUntrusted(names, { workingHead: false });
-          for (const name of names) await recordings.ensure(await recordings.plan(name, { fetch: true }));
+          if (names.includes(WORKING_TREE_ID)) await recordings.refuseCheckedOutPullRequest();
+          const plans: Plan[] = [];
+          for (const name of names) plans.push(await recordings.plan(name, { fetch: true }));
+          for (const plan of await recordings.place(plans, { workingHead: false })) await recordings.ensure(plan);
         });
         return 0;
       case "compare": {
@@ -187,6 +189,8 @@ class RecordingError extends Error {}
 /** What a name will record as, worked out before anything is recorded. */
 interface Plan {
   id: string;
+  /** As the person named it ("main", "origin/main", a hash), for messages. */
+  name: string;
   /** How the name reads in messages: "main (ca63db8816d7 Routes: …)". */
   label: string;
   target: RecordTarget;
@@ -242,13 +246,12 @@ class Recordings {
       const working = await this.library.workingTree();
       const summary = await this.library.resolve("HEAD");
       const where = `${working.branch ?? "detached"}${working.dirty ? ", with uncommitted changes" : ""}`;
-      return { id: WORKING_TREE_ID, label: `the working tree (${where})`, target: { kind: "working" }, summary, tree: { branch: working.branch, dirty: working.dirty } };
+      return { id: WORKING_TREE_ID, name: "the working tree", label: `the working tree (${where})`, target: { kind: "working" }, summary, tree: { branch: working.branch, dirty: working.dirty } };
     }
     const ref = fetch && this.options.fetch ? await this.fetched(name) : name;
     const summary = await this.library.resolve(ref);
-    const id = recordingIdFor(summary.commit, this.options.sandbox);
     const shown = ref.replace(/^refs\/remotes\//, "");
-    return { id, label: `${shown} (${id} ${summary.subject})`, target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } };
+    return this.identified({ id: "", name: shown, label: "", target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } });
   }
 
   /**
@@ -256,11 +259,14 @@ class Recordings {
    * review when its ref isn't how a person would say it (a pull request's).
    */
   async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string }): Promise<Compared> {
-    await this.sandboxIfUntrusted([baseName, headName], { workingHead: headName === WORKING_TREE_ID });
+    const workingHead = headName === WORKING_TREE_ID;
+    if (workingHead) await this.refuseCheckedOutPullRequest();
     // --fetch is for the base ("the latest main"): the head is usually yours.
-    const head = await this.plan(headName, { fetch: false });
+    const plannedHead = await this.plan(headName, { fetch: false });
     const tip = await this.plan(baseName, { fetch: true });
-    const base = options.againstTip ? tip : await this.forkPoint(options.baseAsked ?? baseName, tip, head);
+    const fork = options.againstTip ? tip : await this.forkPoint(options.baseAsked ?? baseName, tip, plannedHead);
+    // Decided on what was fetched and what will be recorded, not on the names asked for.
+    const [base, head] = (await this.place([fork, plannedHead], { workingHead })) as [Plan, Plan];
     if (base.id === head.id) throw new RecordingError(`${baseName} and ${options.headAsked ?? headName} are the same recording: nothing to compare`);
     await this.ensure(base, { sameRecorder: true });
     await this.ensure(head, { sameRecorder: true });
@@ -271,46 +277,62 @@ class Recordings {
   }
 
   /**
-   * Someone else's code is never run here without being asked. A commit is yours when your
-   * branches, your tags, a PR's base, or a remote's default branch hold it; a pull request's ref,
-   * or a commit nothing of yours holds (by its hash, FETCH_HEAD) is someone else's, and the whole
-   * command records in the sandbox. Against the working tree
-   * (yours, recorded here) such a commit can't be compared.
+   * Where each planned commit records, decided on the commits themselves, after any fetch.
+   * Yours means merged: a commit your default branch holds (main, here or on origin). Anything
+   * else (another branch, yours too; a teammate's; a tag; a hash) may be someone else's code,
+   * and the whole command records in the sandbox; against the working tree (yours, recorded
+   * here) it can't be compared. Returns the plans with their recordings' ids.
    */
-  async sandboxIfUntrusted(names: string[], { workingHead }: { workingHead: boolean }): Promise<void> {
-    if (this.options.sandbox) return;
-    for (const name of names) {
-      if (name === WORKING_TREE_ID) continue;
-      const reason = await this.untrusted(name);
-      if (reason === null) continue;
-      if (workingHead) throw new RecordingError(`${name} ${reason}: it's recorded in the sandbox, so compare it with a commit, not the working tree`);
-      this.dependencies.print(`${name} ${reason}: recording in the sandbox`);
-      this.options.sandbox = true;
-      return;
+  async place(plans: Plan[], { workingHead }: { workingHead: boolean }): Promise<Plan[]> {
+    if (!this.options.sandbox) {
+      const branch = await this.defaultBranch();
+      for (const plan of plans) {
+        if (plan.target.kind === "working" || (await this.onDefaultBranch(plan.summary.commit, branch))) continue;
+        const reason = `isn't on ${branch} (it may be someone else's code)`;
+        if (workingHead) throw new RecordingError(`${plan.name} ${reason}: it's recorded in the sandbox, so compare it with a commit, not the working tree`);
+        this.dependencies.print(`${plan.name} ${reason}: recording in the sandbox`);
+        this.options.sandbox = true;
+        break;
+      }
     }
+    return plans.map((plan) => (plan.target.kind === "working" ? plan : this.identified(plan)));
   }
 
-  /** Why `name` is someone else's code, or null when it's yours. */
-  private async untrusted(name: string): Promise<string | null> {
-    if (name.startsWith(PULL_REQUEST_REFS)) return "is a pull request's";
-    const commit = (await this.library.resolve(name)).commit;
-    if (!(await this.heldByYours(commit))) return "isn't held by your branches or tags (someone else's code)";
-    return null;
+  /** The plan with the id of its recording where it'll be made: here, or in the sandbox. */
+  private identified(plan: Plan): Plan {
+    const id = recordingIdFor(plan.summary.commit, this.options.sandbox);
+    return { ...plan, id, label: `${plan.name} (${id} ${plan.summary.subject})` };
   }
 
-  private async heldByYours(commit: string): Promise<boolean> {
-    const holders = (await this.git.run(["for-each-ref", "--contains", commit, "--format=%(refname)", "refs/heads", "refs/tags", "refs/runshape/base", "refs/remotes"]))
-      .split("\n")
-      .filter(Boolean);
-    if (holders.some((ref) => !ref.startsWith("refs/remotes/"))) return true;
-    // Of the remotes' branches, only their default ones (origin/main): the rest are others' work.
-    const defaults = (await this.git.run(["for-each-ref", "--format=%(refname) %(symref)", "refs/remotes"]))
-      .split("\n")
-      .map((line) => line.split(" "))
-      .filter(([ref, target]) => ref?.endsWith("/HEAD") && target)
-      .map(([, target]) => target!);
-    const fallback = holders.filter((ref) => /^refs\/remotes\/[^/]+\/(main|master)$/.test(ref));
-    return holders.some((ref) => defaults.includes(ref)) || (defaults.length === 0 && fallback.length > 0);
+  /**
+   * The working tree is recorded here, as the person's own code. One that's a pull request they
+   * checked out (a commit only runshape's PR refs hold, or a branch gh made from a PR) isn't.
+   */
+  async refuseCheckedOutPullRequest(): Promise<void> {
+    const head = (await this.library.resolve("HEAD")).commit;
+    if (await this.onDefaultBranch(head, await this.defaultBranch())) return;
+    const prRefs = (await this.git.run(["for-each-ref", "--points-at", head, "--format=%(refname)", PULL_REQUEST_REFS])).trim();
+    const branch = (await this.library.workingTree()).branch;
+    const merges = branch === null ? "" : (await this.git.run(["config", "--get", `branch.${branch}.merge`]).catch(() => "")).trim();
+    if (prRefs === "" && !merges.startsWith("refs/pull/")) return;
+    throw new RecordingError(
+      `the working tree is a pull request you checked out (${prRefs.split("\n")[0] || merges}): its tests would run here; compare its commit instead, which is recorded in the sandbox`,
+    );
+  }
+
+  /** origin's default branch, as origin says (refs/remotes/origin/HEAD), else main or master. */
+  private async defaultBranch(): Promise<string> {
+    const fromOrigin = (await this.git.run(["symbolic-ref", "--quiet", "--short", `refs/remotes/${REMOTE}/HEAD`]).catch(() => "")).trim();
+    if (fromOrigin.startsWith(`${REMOTE}/`)) return fromOrigin.slice(REMOTE.length + 1);
+    const exists = async (ref: string) => this.git.run(["rev-parse", "--verify", "--quiet", ref]).then(() => true, () => false);
+    return (await exists("refs/heads/main")) || (await exists(`refs/remotes/${REMOTE}/main`)) ? "main" : "master";
+  }
+
+  private async onDefaultBranch(commit: string, branch: string): Promise<boolean> {
+    for (const tip of [`refs/heads/${branch}`, `refs/remotes/${REMOTE}/${branch}`]) {
+      if (await this.git.run(["merge-base", "--is-ancestor", commit, tip]).then(() => true, () => false)) return true;
+    }
+    return false;
   }
 
   /**
@@ -331,7 +353,7 @@ class Recordings {
         // Its base as the repository it's listed in has it (in a fork workflow, origin is the fork).
         const baseRef = `refs/runshape/base/${pr.baseRefName}`;
         try {
-          await this.git.run(["fetch", "--quiet", repository, "--end-of-options", `+refs/pull/${pr.number}/head:${headRef}`, `+refs/heads/${pr.baseRefName}:${baseRef}`]);
+          await this.git.run(["fetch", "--quiet", "--no-tags", repository, "--end-of-options", `+refs/pull/${pr.number}/head:${headRef}`, `+refs/heads/${pr.baseRefName}:${baseRef}`]);
         } catch (error) {
           throw new RecordingError(`fetching it failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -388,16 +410,12 @@ class Recordings {
     }
     const ahead = Number((await this.git.run(["rev-list", "--count", `${fork}..${base.summary.commit}`])).trim());
     const summary = await this.library.resolve(fork);
-    const id = recordingIdFor(fork, this.options.sandbox);
+    const id = recordingIdFor(fork);
     this.dependencies.print(
       `${baseName} is ${ahead} commit${ahead === 1 ? "" : "s"} past where this branch left it: comparing with ${id} (${summary.subject}), where it left; --tip compares with ${baseName} itself`,
     );
     return {
-      id,
-      label: `${baseName}'s fork point (${id} ${summary.subject})`,
-      target: { kind: "commit", commit: fork },
-      summary,
-      tree: { branch: null, dirty: false },
+      ...this.identified({ id, name: `${baseName}'s fork point`, label: "", target: { kind: "commit", commit: fork }, summary, tree: { branch: null, dirty: false } }),
       forkOf: { tip: base.summary.commit, commitsSince: ahead },
     };
   }
@@ -413,7 +431,7 @@ class Recordings {
     const recorder = await this.recorderFor(plan.target);
     let madeIn = existing?.environment ?? HOST_ENVIRONMENT;
     // Recorded in the sandbox before its recordings had ids of their own. Here, the commit is
-    // known to be yours (sandboxIfUntrusted), so it's recorded here; the sandbox's is kept as its own.
+    // known to be yours (place: on the default branch), so it's recorded here; the sandbox's is kept as its own.
     if (existing && madeIn.startsWith("docker:") && recorder.environment === HOST_ENVIRONMENT) {
       await this.keepAsSandboxed(existing.id);
       print(`${plan.label} was recorded in the sandbox before; that's kept as ${existing.id}${SANDBOX_SUFFIX}, and it's recorded here too`);
@@ -538,6 +556,8 @@ class Recordings {
   /** Moves a sandboxed recording under a plain id to its own; if that's taken, the plain one goes. */
   private async keepAsSandboxed(id: string): Promise<void> {
     const from = join(this.library.directory, id);
+    // Made before recordings from the sandbox were checked: checked before it's touched.
+    await assertPlainFiles(from);
     const to = join(this.library.directory, `${id}${SANDBOX_SUFFIX}`);
     if (await readFile(join(to, METADATA_FILE)).then(() => true, () => false)) await removeAnyway(from);
     else {
@@ -570,7 +590,8 @@ class Recordings {
   private async fetched(name: string): Promise<string> {
     const branch = name.startsWith(`${REMOTE}/`) ? name.slice(REMOTE.length + 1) : name;
     this.dependencies.print(`fetching ${branch} from ${REMOTE}…`);
-    await this.git.run(["fetch", "--quiet", REMOTE, "--end-of-options", `refs/heads/${branch}:refs/remotes/${REMOTE}/${branch}`]);
+    // No tags: a tag pulled in with a fetch is someone else's word for a commit.
+    await this.git.run(["fetch", "--quiet", "--no-tags", REMOTE, "--end-of-options", `refs/heads/${branch}:refs/remotes/${REMOTE}/${branch}`]);
     return `refs/remotes/${REMOTE}/${branch}`;
   }
 

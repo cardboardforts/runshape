@@ -202,6 +202,7 @@ describe("each recording keeps its commit's architecture", () => {
   // a person to read.
   test("a commit's runshape.json is kept as it was, with every class's place and who decided it", async () => {
     const { root } = repository();
+    gitIn(root)("checkout", "--quiet", "main"); // commits on main are yours: recorded here
     const commit = commitFile(root, "runshape.json", GO_SHOP_RULES, "Declare the shop's zones");
     const id = commit.slice(0, 12);
 
@@ -233,6 +234,7 @@ describe("each recording keeps its commit's architecture", () => {
     // Declared, then deleted: the older commit still had its rules, the newer has none; and
     // the working tree's file (uncommitted here) belongs to neither commit.
     const { root } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
     const declared = commitFile(root, "runshape.json", GO_SHOP_RULES, "Declare the shop's zones").slice(0, 12);
     gitIn(root)("rm", "--quiet", "runshape.json");
     gitIn(root)("commit", "--quiet", "-m", "Drop the zones");
@@ -249,6 +251,7 @@ describe("each recording keeps its commit's architecture", () => {
 
   test("a runshape.json that isn't a plain file in the commit (a directory, say) is reported, not read", async () => {
     const { root } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
     mkdirSync(join(root, "runshape.json"));
     const commit = commitFile(root, "runshape.json/inside.txt", "a", "A directory where the zones would be").slice(0, 12);
 
@@ -271,6 +274,7 @@ describe("each recording keeps its commit's architecture", () => {
 
   test("an invalid runshape.json is kept and reported, the code recorded anyway with every zone inferred", async () => {
     const { root } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
     const commit = commitFile(root, "runshape.json", '{"version": 2, "zones": [{"match": "x"}]}', "Break the zones");
     const id = commit.slice(0, 12);
 
@@ -332,15 +336,15 @@ describe("runshape compare", () => {
 
   test("a head recorded before zones were kept: the bundle says the base's rules aren't known", async () => {
     const { root, commits } = repository();
-    const head = commits.third!.slice(0, 12);
-    await run(root, ["record", "feature"]);
+    const head = commits.second!.slice(0, 12);
+    await run(root, ["record", "main"]);
     const file = join(root, ".runshape", "recordings", head, "recording.json");
     const { architecture: _dropped, ...older } = JSON.parse(readFileSync(file, "utf8"));
     writeFileSync(file, JSON.stringify(older));
 
-    await run(root, ["compare", "main", "feature"]);
+    await run(root, ["compare", "main~1", "main"]);
 
-    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${head}`, "review.json"), "utf8"));
+    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.first!.slice(0, 12)}..${head}`, "review.json"), "utf8"));
     expect(bundle.baseRulesKnown).toBe(false);
   });
 
@@ -472,13 +476,13 @@ describe("--sandbox: commits recorded in a container", () => {
     expect({ host: recorder.recorded, sandbox: sandbox.recorded, said: lines[0] }).toEqual({
       host: [],
       sandbox: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
-      said: "refs/runshape/pr/7 is a pull request's: recording in the sandbox",
+      said: "refs/runshape/pr/7 isn't on main (it may be someone else's code): recording in the sandbox",
     });
   });
 
-  test("someone else's commit is sandboxed however it's named or used: recorded alone, as a base, by its hash (second re-review)", async () => {
-    // A commit is yours when your branches, tags, a PR's base, or the remote's default branch
-    // hold it; one only a pull request's ref (or nothing) holds is someone else's.
+  test("a commit not on main is sandboxed however it's named or used: recorded alone, as a base, by its hash, as a fetched branch (reviews 2 and 3)", async () => {
+    // Yours means merged: your default branch holds it (main, here or on origin). Branches,
+    // tags, other remotes and PR bases can all be someone else's, so they don't count.
     const { root, commits } = repository();
     gitIn(root)("checkout", "--quiet", "--detach", commits.third!);
     const theirs = commitIn(root, "A teammate's change, only in their PR");
@@ -503,7 +507,52 @@ describe("--sandbox: commits recorded in a container", () => {
     }).toEqual({
       host: [],
       sandboxed: ["record", "asBase", "byHash", "theirBranch"],
-      againstWorking: [1, `runshape: ${theirs} isn't held by your branches or tags (someone else's code): it's recorded in the sandbox, so compare it with a commit, not the working tree`],
+      // Its fork point with the working tree (feature, not merged) isn't on main either.
+      againstWorking: [1, `runshape: ${theirs}'s fork point isn't on main (it may be someone else's code): it's recorded in the sandbox, so compare it with a commit, not the working tree`],
+    });
+  });
+
+  test("the third review's ways round it: a fetch's new commit, a teammate's remote and its HEAD, a planted tag, a stacked PR's base, a checked-out PR", async () => {
+    const { root, commits } = repository();
+    const origin = join(mkdtempSync(join(tmpdir(), "runshape-origin-")), "origin");
+    gitIn(root)("clone", "--quiet", "--branch", "feature", root, origin);
+    const pushed = commitIn(origin, "Pushed to origin/feature by a teammate");
+    gitIn(root)("remote", "add", "origin", origin);
+    const alice = join(mkdtempSync(join(tmpdir(), "runshape-alice-")), "alice");
+    gitIn(root)("clone", "--quiet", "--branch", "feature", root, alice);
+    gitIn(alice)("checkout", "--quiet", "-b", "wip");
+    commitIn(alice, "Alice's work in progress");
+    gitIn(root)("remote", "add", "alice", alice);
+    gitIn(root)("fetch", "--quiet", "alice"); // git 2.48+: makes refs/remotes/alice/HEAD, pointing where alice says
+    gitIn(root)("symbolic-ref", "refs/remotes/alice/HEAD", "refs/remotes/alice/wip");
+    gitIn(root)("tag", "v9", commits.third!);
+    gitIn(root)("update-ref", "refs/runshape/base/attacker-a", commits.third!);
+
+    const host = async (argv: string[]) => (await run(root, argv)).recorder.recorded;
+    const recordedHere = {
+      fetchedFeature: await host(["record", "feature", "--fetch"]),
+      aliceHead: await host(["compare", "main", "alice/wip"]),
+      tag: await host(["compare", "main", "v9"]),
+      stackedBase: await host(["compare", "main", "refs/runshape/base/attacker-a"]),
+    };
+    gitIn(root)("update-ref", "refs/runshape/pr/9", commits.third!);
+    gitIn(root)("checkout", "--quiet", "--detach", "refs/runshape/pr/9");
+    const checkedOut = await run(root, ["compare", "main"]);
+    // As gh pr checkout leaves a fork's PR: a branch whose upstream is GitHub's PR ref.
+    gitIn(root)("checkout", "--quiet", "-b", "pr-12-branch", commits.third!);
+    gitIn(root)("config", "branch.pr-12-branch.merge", "refs/pull/12/head");
+    const ghCheckout = await run(root, ["compare", "main"]);
+
+    expect({
+      recordedHere,
+      pushedAnywhere: pushed.length > 0,
+      checkedOut: [checkedOut.code, checkedOut.recorder.recorded, checkedOut.lines.at(-1)],
+      ghCheckout: [ghCheckout.code, ghCheckout.recorder.recorded],
+    }).toEqual({
+      recordedHere: { fetchedFeature: [], aliceHead: [], tag: [], stackedBase: [] },
+      pushedAnywhere: true,
+      checkedOut: [1, [], "runshape: the working tree is a pull request you checked out (refs/runshape/pr/9): its tests would run here; compare its commit instead, which is recorded in the sandbox"],
+      ghCheckout: [1, []],
     });
   });
 
@@ -528,11 +577,11 @@ describe("--sandbox: commits recorded in a container", () => {
     const file = join(root, ".runshape", "recordings", id, "recording.json");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), environment: "docker:runshape-recorder:old" }));
 
-    const { code, recorder, lines } = await run(root, ["compare", "main", "feature"]);
+    const { code, recorder, lines } = await run(root, ["compare", "main~1", "main"]);
 
-    expect({ code, host: recorder.recorded, said: lines[0], environments: [metadataOf(root, id).environment, metadataOf(root, `${id}-sandbox`).environment] }).toEqual({
+    expect({ code, host: recorder.recorded, said: lines.find((line) => line.includes("recorded in the sandbox before")), environments: [metadataOf(root, id).environment, metadataOf(root, `${id}-sandbox`).environment] }).toEqual({
       code: 0,
-      host: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
+      host: [commits.first!.slice(0, 7), commits.second!.slice(0, 7)],
       said: `main (${id} Second) was recorded in the sandbox before; that's kept as ${id}-sandbox, and it's recorded here too`,
       environments: ["host", "docker:runshape-recorder:old"],
     });
@@ -630,7 +679,9 @@ describe("runshape compare --explain", () => {
     gitIn(root)("checkout", "--quiet", "main");
     commitIn(root, "Main moved on");
     gitIn(root)("checkout", "--quiet", "feature");
-    const directory = join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`);
+    // feature isn't merged: compared in the sandbox, under the sandbox's ids.
+    const reviewName = `${commits.second!.slice(0, 12)}-sandbox..${commits.third!.slice(0, 12)}-sandbox`;
+    const directory = join(root, ".runshape", "reviews", reviewName);
 
     const first = await run(root, ["compare", "main", "feature", "--explain=claude"]);
     const again = await run(root, ["compare", "main", "feature", "--explain=claude"]);
@@ -646,12 +697,12 @@ describe("runshape compare --explain", () => {
       askedAgain: again.model.prompts.length,
       unasked: [unasked.chosen, unasked.model.prompts.length],
     }).toEqual({
-      said: `explanation: ${join(".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`, "explanation.md")} (by fake-model)`,
+      said: `explanation: ${join(".runshape", "reviews", reviewName, "explanation.md")} (by fake-model)`,
       chosen: ["claude"],
       askedAbout: true,
       saved: "Second, explained.",
       markdown: "## Why it changed (model's account)",
-      again: `explanation: ${join(".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`, "explanation.md")} (current: same review, commits and model)`,
+      again: `explanation: ${join(".runshape", "reviews", reviewName, "explanation.md")} (current: same review, commits and model)`,
       askedAgain: 0,
       unasked: [[], 0],
     });
@@ -691,12 +742,12 @@ describe("runshape compare --explain", () => {
     const first = await run(root, ["compare", "main", "feature", "--explain"]);
     const again = await run(root, ["compare", "main", "feature", "--explain-again"]);
 
-    const directory = join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${head.slice(0, 12)}`);
+    const directory = join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}-sandbox..${head.slice(0, 12)}-sandbox`);
     expect({
       commits: JSON.parse(readFileSync(join(directory, "explanation.json"), "utf8")).basedOn.commits,
       againAsked: again.model.prompts.length,
-      againRecorded: again.recorder.recorded,
-      firstRecorded: first.recorder.recorded.length,
+      againRecorded: [...again.recorder.recorded, ...again.sandbox.recorded],
+      firstRecorded: first.sandbox.recorded.length,
     }).toEqual({ commits: [commits.third, head], againAsked: 1, againRecorded: [], firstRecorded: 2 });
   });
 

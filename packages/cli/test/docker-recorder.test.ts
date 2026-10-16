@@ -14,7 +14,16 @@ import { describe, expect, test } from "vitest";
 
 import { CommandResult, CommandRunner, DockerRecorder, removeAnyway } from "../src/docker-recorder";
 
-const REGISTRY_LOCK = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/vitest": { resolved: "https://registry.npmjs.org/vitest/-/vitest-5.0.4.tgz" }, "packages/core": { link: true } } });
+// npm's own shape: a registry package, and a workspace (its link, and its folder, which has no resolved).
+const REGISTRY_LOCK = JSON.stringify({
+  lockfileVersion: 3,
+  packages: {
+    "": {},
+    "node_modules/vitest": { resolved: "https://registry.npmjs.org/vitest/-/vitest-5.0.4.tgz" },
+    "node_modules/@runshape/core": { resolved: "packages/core", link: true },
+    "packages/core": { version: "0.1.0" },
+  },
+});
 
 class FakeCommands implements CommandRunner {
   readonly calls: string[][] = [];
@@ -159,6 +168,25 @@ describe("DockerRecorder", () => {
     await removeAnyway(out);
 
     expect({ failure: failure?.startsWith("the recording left something it can't read"), gone: !existsSync(out) }).toEqual({ failure: true, gone: true });
+  });
+
+  test("runshape's own lockfile (workspaces, a bundled package or two) is installable; a bundled entry claiming a git source, or a link out of the project, isn't (third review)", async () => {
+    const own = readFileSync(join(import.meta.dirname, "..", "..", "..", "package-lock.json"), "utf8");
+    const bundledGit = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/evil": { resolved: "git+https://example.invalid/evil.git#abc", inBundle: true } } });
+    const linkOut = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/evil": { resolved: "../../elsewhere", link: true } } });
+
+    const outcomes = await Promise.all(
+      [own, bundledGit, linkOut].map((lock) => {
+        const { out, recorder } = setup({ lock });
+        return recorder.record({ kind: "commit", commit: "c0ffee" }, out).then(() => "installed", (error: Error) => error.message);
+      }),
+    );
+
+    expect(outcomes).toEqual([
+      "installed",
+      "its lockfile installs from outside the npm registry, which can run code at install: node_modules/evil (git+https://example.invalid/evil.git#abc)",
+      "its lockfile links node_modules/evil outside the project (../../elsewhere)",
+    ]);
   });
 
   test("a host user that's root still records as an unprivileged one", () => {
