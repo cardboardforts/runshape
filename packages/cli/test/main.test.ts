@@ -13,7 +13,7 @@ describe("runshape-review-md", () => {
     expect(markdown.split("\n").slice(0, 5)).toEqual([
       "## Behaviour changes (Runshape)",
       "",
-      "4 tests recorded on the base and on this branch.",
+      "4 tests ran on both the base and this branch.",
       "",
       "**2 tests still pass but now run differently** — the changes a green CI won't show you.",
     ]);

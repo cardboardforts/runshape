@@ -178,8 +178,12 @@ const MAX_LISTED = 5;
 /** Markdown for a PR comment. Test names and function names only; no SQL text or source. */
 export function reviewMarkdown(summary: ReviewSummary): string {
   const out: string[] = ["## Behaviour changes (Runshape)", ""];
+  // Three counts that add up, so "N on both" isn't read as the total (a model read it so).
   const onBothSides = summary.items.filter((item) => item.category !== ReviewCategory.Removed && item.outcomeBefore !== null).length;
-  out.push(`${onBothSides} tests recorded on the base and on this branch.`, "");
+  const added = summary.items.filter((item) => item.category !== ReviewCategory.Removed && item.outcomeBefore === null).length;
+  const removed = summary.counts[ReviewCategory.Removed];
+  const extra = [added > 0 ? `${added} new on this branch` : "", removed > 0 ? `${removed} only on the base` : ""].filter(Boolean);
+  out.push(`${tests(onBothSides)} ran on both the base and this branch${extra.length ? `; ${extra.join(", ")}` : ""}.`, "");
   const silent = summary.counts[ReviewCategory.SilentChange];
   if (silent > 0) {
     out.push(`**${silent} test${silent === 1 ? " still passes" : "s still pass"} but now ${silent === 1 ? "runs" : "run"} differently** — the changes a green CI won't show you.`, "");
@@ -198,6 +202,10 @@ export function reviewMarkdown(summary: ReviewSummary): string {
   out.push(`${summary.counts[ReviewCategory.Unchanged]} tests behave exactly as before.`);
   for (const caveat of summary.caveats) out.push("", `> ${caveat}`);
   return `${out.join("\n")}\n`;
+}
+
+function tests(n: number): string {
+  return `${n} test${n === 1 ? "" : "s"}`;
 }
 
 function list(names: string[]): string {

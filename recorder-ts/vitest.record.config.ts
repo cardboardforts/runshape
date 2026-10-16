@@ -1,9 +1,9 @@
 // Records a TypeScript project's vitest run in the runshape trace format (version 2).
 //   RUNSHAPE_TARGET  the project root (default: this repository)
-//   RUNSHAPE_INCLUDE comma-separated source directories to record (default: the src of core and
-//                    of the packages it is built from, as far as the target has them)
-//   RUNSHAPE_TESTS   comma-separated test globs (default: the tests of core and the packages it
-//                    is built from, wherever a revision keeps them)
+//   RUNSHAPE_INCLUDE comma-separated source directories to record (default: the src of each
+//                    Node package, RECORDED_PACKAGES, as far as the target has them)
+//   RUNSHAPE_TESTS   comma-separated test globs (default: those packages' tests, wherever a
+//                    revision keeps them)
 //   RUNSHAPE_OUT     the traces directory (default: <target>/.runshape/traces)
 //   RUNSHAPE_RUN     the run's directory name (default: the time)
 // npm run self-review sets these to record a base commit and the working tree.
@@ -17,18 +17,23 @@ import { runshapeInstrument } from "./src/plugin";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const target = resolve(process.env.RUNSHAPE_TARGET ?? join(here, ".."));
-const CORE_PACKAGES = ["core", "trace", "architecture", "views"];
-const include = (process.env.RUNSHAPE_INCLUDE ?? CORE_PACKAGES.map((name) => `packages/${name}/src`).filter((dir) => existsSync(join(target, dir))).join(",")).split(",");
+// Every package that runs in Node, so a change to the CLI or the recordings library shows in
+// Runshape's own reviews too; the webview and the extension need a browser and VS Code.
+const RECORDED_PACKAGES = ["core", "trace", "architecture", "views", "library", "cli"];
+const include = (process.env.RUNSHAPE_INCLUDE ?? RECORDED_PACKAGES.map((name) => `packages/${name}/src`).filter((dir) => existsSync(join(target, dir))).join(",")).split(",");
 // @runshape/* resolves to the target's own packages: through node_modules, a base worktree
 // would get the working tree's.
 const packagesDirectory = join(target, "packages");
+// A package's name is its entry file; a path under it (a test helper another package's tests
+// share) is that file in the package.
 const alias = existsSync(packagesDirectory)
-  ? Object.fromEntries(
-      readdirSync(packagesDirectory)
+  ? [
+      ...readdirSync(packagesDirectory)
         .filter((name) => existsSync(join(packagesDirectory, name, "src", "index.ts")))
-        .map((name) => [`@runshape/${name}`, join(packagesDirectory, name, "src", "index.ts")]),
-    )
-  : {};
+        .map((name) => ({ find: new RegExp(`^@runshape/${name}$`), replacement: join(packagesDirectory, name, "src", "index.ts") })),
+      { find: /^@runshape\/([^/]+)\/(.+)$/, replacement: `${packagesDirectory}/$1/$2` },
+    ]
+  : [];
 process.env.RUNSHAPE_TARGET = target;
 process.env.RUNSHAPE_INCLUDE = include.join(",");
 process.env.RUNSHAPE_OUT ??= join(target, ".runshape", "traces");
@@ -38,7 +43,7 @@ export default defineConfig({
   resolve: { alias },
   plugins: [runshapeInstrument(target, include)],
   test: {
-    include: (process.env.RUNSHAPE_TESTS ?? CORE_PACKAGES.map((name) => `packages/${name}/test/**/*.test.ts`).join(",")).split(","),
+    include: (process.env.RUNSHAPE_TESTS ?? RECORDED_PACKAGES.map((name) => `packages/${name}/test/**/*.test.ts`).join(",")).split(","),
     // Wraps each test's function, so its hooks are told apart from its body (src/runner.ts).
     runner: join(here, "src/runner.ts"),
     setupFiles: [join(here, "src/setup.ts")],
