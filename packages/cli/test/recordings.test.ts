@@ -556,6 +556,37 @@ describe("--sandbox: commits recorded in a container", () => {
     });
   });
 
+  test("the fourth review's ways round it: the working tree as the base, an ambiguous default, no default to go by", async () => {
+    const { root, commits } = repository();
+    // A fork PR checked out by gh: its upstream is GitHub's PR ref.
+    gitIn(root)("checkout", "--quiet", "-b", "pr-12", commits.third!);
+    gitIn(root)("config", "branch.pr-12.merge", "refs/pull/12/head");
+    const asBase = await run(root, ["compare", "working", "main", "--tip"]);
+    gitIn(root)("checkout", "--quiet", "feature");
+
+    // A branch named like origin's default makes `symbolic-ref --short` ambiguous.
+    gitIn(root)("branch", "origin/main", commits.third!);
+    const ambiguous = await run(root, ["record", "feature"]);
+
+    // No origin/HEAD and no say-so: nothing counts as merged; the working tree can't be compared.
+    gitIn(root)("symbolic-ref", "--delete", "refs/remotes/origin/HEAD");
+    const unknown = await run(root, ["compare", "main"]);
+    gitIn(root)("config", "runshape.trustedBranch", "main");
+    const told = await run(root, ["compare", "main"]);
+
+    expect({
+      asBase: [asBase.code, asBase.recorder.recorded, asBase.lines.at(-1)],
+      ambiguousHere: ambiguous.recorder.recorded,
+      unknown: [unknown.code, unknown.lines.at(-1)],
+      told: told.code,
+    }).toEqual({
+      asBase: [1, [], "runshape: the working tree is a pull request you checked out (refs/pull/12/head): its tests would run here; compare its commit instead, which is recorded in the sandbox"],
+      ambiguousHere: [],
+      unknown: [1, "runshape: main can't be told apart from someone else's code: there's no refs/remotes/origin/HEAD to say which branch is merged code. Run `git remote set-head origin --auto`, or say which: `git config runshape.trustedBranch main`"],
+      told: 0,
+    });
+  });
+
   test("a fork point recorded in the sandbox is a sandbox recording too: a later compare here isn't refused", async () => {
     const { root, commits } = repository();
     gitIn(root)("checkout", "--quiet", "main");

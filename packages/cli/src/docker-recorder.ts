@@ -172,6 +172,9 @@ export class DockerRecorder implements Recorder {
 
 /** A lockfile entry from anywhere but the registry (git, a URL, a path) can run code as npm installs it. */
 async function refuseUnregisteredPackages(worktree: string): Promise<void> {
+  if (await lstat(join(worktree, "npm-shrinkwrap.json")).then(() => true, () => false)) {
+    throw new SandboxRefusal("it has an npm-shrinkwrap.json, which npm installs from instead of package-lock.json: not checked, so not installed");
+  }
   const text = await readFile(join(worktree, "package-lock.json"), "utf8").catch(() => null);
   if (text === null) throw new SandboxRefusal("the commit has no package-lock.json: its dependencies can't be installed as locked");
   const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; link?: boolean; inBundle?: boolean }> };
@@ -192,7 +195,9 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   // from anywhere. A bundled one comes inside its parent's tarball, and says nothing of its own.
   const outside = Object.entries(lock.packages)
     .filter(([path, entry]) => {
-      if (path === "" || entry.link || linked.has(path)) return false;
+      if (path === "" || entry.link) return false;
+      // A workspace's folder: linked to, outside node_modules, saying no source of its own.
+      if (linked.has(path) && !path.startsWith("node_modules/") && entry.resolved === undefined) return false;
       if (entry.inBundle && entry.resolved === undefined) return false;
       return entry.resolved === undefined || !entry.resolved.startsWith(NPM_REGISTRY);
     })

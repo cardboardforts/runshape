@@ -36,12 +36,14 @@ class FakeCommands implements CommandRunner {
 
 interface Options {
   lock?: string;
+  /** A shrinkwrap beside the lockfile. */
+  shrinkwrap?: string;
   /** What the recording container leaves in /out. */
   leaves?: (out: string) => void;
   answer?: (command: string, args: string[]) => CommandResult | undefined;
 }
 
-function setup({ lock = REGISTRY_LOCK, leaves, answer }: Options = {}) {
+function setup({ lock = REGISTRY_LOCK, shrinkwrap, leaves, answer }: Options = {}) {
   const root = mkdtempSync(join(tmpdir(), "runshape-docker-"));
   const out = join(root, ".runshape", "recordings", ".incoming-abc");
   const worktree = join(root, ".runshape", "worktrees", "sandbox-.incoming-abc");
@@ -52,6 +54,7 @@ function setup({ lock = REGISTRY_LOCK, leaves, answer }: Options = {}) {
       mkdirSync(join(worktree, "node_modules"), { recursive: true });
       writeFileSync(join(worktree, "package-lock.json"), lock);
       writeFileSync(join(worktree, ".npmrc"), "git=./evil.sh\n");
+      if (shrinkwrap !== undefined) writeFileSync(join(worktree, "npm-shrinkwrap.json"), shrinkwrap);
     }
     if (command === "docker" && args[0] === "run" && args.includes("none")) {
       mkdirSync(join(out, "run"), { recursive: true });
@@ -186,6 +189,28 @@ describe("DockerRecorder", () => {
       "installed",
       "its lockfile installs from outside the npm registry, which can run code at install: node_modules/evil (git+https://example.invalid/evil.git#abc)",
       "its lockfile links node_modules/evil outside the project (../../elsewhere)",
+    ]);
+  });
+
+  test("a shrinkwrap (which npm prefers to the lockfile) isn't installed, nor a link whose target claims a source of its own (fourth review)", async () => {
+    const linkToEvil = JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {}, "node_modules/foo": { link: true, resolved: "packages/../node_modules/evil" }, "node_modules/evil": { resolved: "https://evil.example/x.tgz" } },
+    });
+    const shrinkwrapped = setup({ shrinkwrap: REGISTRY_LOCK });
+    const outcomes = [
+      await (async () => {
+        const { out, recorder } = setup({ lock: linkToEvil });
+        return recorder.record({ kind: "commit", commit: "c0ffee" }, out).then(() => "installed", (error: Error) => error.message);
+      })(),
+      await shrinkwrapped.recorder
+        .record({ kind: "commit", commit: "c0ffee" }, shrinkwrapped.out)
+        .then(() => "installed", (error: Error) => error.message),
+    ];
+
+    expect(outcomes).toEqual([
+      "its lockfile installs from outside the npm registry, which can run code at install: node_modules/evil (https://evil.example/x.tgz)",
+      "it has an npm-shrinkwrap.json, which npm installs from instead of package-lock.json: not checked, so not installed",
     ]);
   });
 

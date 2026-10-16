@@ -130,7 +130,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         if (names.length < 1 || names.length > 2) throw new UsageError(`compare <base> [<head>]\n${USAGE}`);
         const [baseName, headName = WORKING_TREE_ID] = names as [string, string?];
         // Both sides from one place: the working tree is recorded here, so a sandboxed base wouldn't compare.
-        if (flags.has("--sandbox") && headName === WORKING_TREE_ID) {
+        if (flags.has("--sandbox") && (headName === WORKING_TREE_ID || baseName === WORKING_TREE_ID)) {
           throw new UsageError("--sandbox compares commits: name the head (the working tree is yours, recorded on this machine without it)");
         }
         await recordings.exclusively(async () => {
@@ -260,7 +260,8 @@ class Recordings {
    */
   async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string }): Promise<Compared> {
     const workingHead = headName === WORKING_TREE_ID;
-    if (workingHead) await this.refuseCheckedOutPullRequest();
+    // Either side: a checked-out PR as the base runs here just the same.
+    if (workingHead || baseName === WORKING_TREE_ID) await this.refuseCheckedOutPullRequest();
     // --fetch is for the base ("the latest main"): the head is usually yours.
     const plannedHead = await this.plan(headName, { fetch: false });
     const tip = await this.plan(baseName, { fetch: true });
@@ -287,9 +288,12 @@ class Recordings {
     if (!this.options.sandbox) {
       const branch = await this.defaultBranch();
       for (const plan of plans) {
-        if (plan.target.kind === "working" || (await this.onDefaultBranch(plan.summary.commit, branch))) continue;
-        const reason = `isn't on ${branch} (it may be someone else's code)`;
-        if (workingHead) throw new RecordingError(`${plan.name} ${reason}: it's recorded in the sandbox, so compare it with a commit, not the working tree`);
+        if (plan.target.kind === "working" || (branch !== null && (await this.onDefaultBranch(plan.summary.commit, branch)))) continue;
+        const reason =
+          branch === null
+            ? `can't be told apart from someone else's code: there's no refs/remotes/${REMOTE}/HEAD to say which branch is merged code. Run \`git remote set-head ${REMOTE} --auto\`, or say which: \`git config ${TRUSTED_BRANCH_CONFIG} main\``
+            : `isn't on ${branch} (it may be someone else's code)`;
+        if (workingHead) throw new RecordingError(branch === null ? `${plan.name} ${reason}` : `${plan.name} ${reason}: it's recorded in the sandbox, so compare it with a commit, not the working tree`);
         this.dependencies.print(`${plan.name} ${reason}: recording in the sandbox`);
         this.options.sandbox = true;
         break;
@@ -310,7 +314,8 @@ class Recordings {
    */
   async refuseCheckedOutPullRequest(): Promise<void> {
     const head = (await this.library.resolve("HEAD")).commit;
-    if (await this.onDefaultBranch(head, await this.defaultBranch())) return;
+    const trusted = await this.defaultBranch();
+    if (trusted !== null && (await this.onDefaultBranch(head, trusted))) return;
     const prRefs = (await this.git.run(["for-each-ref", "--points-at", head, "--format=%(refname)", PULL_REQUEST_REFS])).trim();
     const branch = (await this.library.workingTree()).branch;
     const merges = branch === null ? "" : (await this.git.run(["config", "--get", `branch.${branch}.merge`]).catch(() => "")).trim();
@@ -320,12 +325,17 @@ class Recordings {
     );
   }
 
-  /** origin's default branch, as origin says (refs/remotes/origin/HEAD), else main or master. */
-  private async defaultBranch(): Promise<string> {
-    const fromOrigin = (await this.git.run(["symbolic-ref", "--quiet", "--short", `refs/remotes/${REMOTE}/HEAD`]).catch(() => "")).trim();
-    if (fromOrigin.startsWith(`${REMOTE}/`)) return fromOrigin.slice(REMOTE.length + 1);
-    const exists = async (ref: string) => this.git.run(["rev-parse", "--verify", "--quiet", ref]).then(() => true, () => false);
-    return (await exists("refs/heads/main")) || (await exists(`refs/remotes/${REMOTE}/main`)) ? "main" : "master";
+  /**
+   * The branch of merged code: as the person says (git config runshape.trustedBranch), else as
+   * origin says (refs/remotes/origin/HEAD, read in full: a short name can be ambiguous with a
+   * branch or tag someone else named). Never guessed: null when neither says.
+   */
+  private async defaultBranch(): Promise<string | null> {
+    const said = (await this.git.run(["config", "--get", TRUSTED_BRANCH_CONFIG]).catch(() => "")).trim();
+    if (said !== "") return said;
+    const prefix = `refs/remotes/${REMOTE}/`;
+    const fromOrigin = (await this.git.run(["symbolic-ref", "--quiet", `${prefix}HEAD`]).catch(() => "")).trim();
+    return fromOrigin.startsWith(prefix) ? fromOrigin.slice(prefix.length) : null;
   }
 
   private async onDefaultBranch(commit: string, branch: string): Promise<boolean> {
@@ -781,6 +791,9 @@ function sha256(text: string): string {
 
 /** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+
+/** Where the person names their branch of merged code, when origin's HEAD doesn't. */
+const TRUSTED_BRANCH_CONFIG = "runshape.trustedBranch";
 
 /** What the sandbox image is built from: a change to any of them, in HEAD, builds a new one. */
 const SANDBOX_IMAGE_SOURCES = ["recorder-ts", "package-lock.json", ".dockerignore"];
