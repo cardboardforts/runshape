@@ -22,6 +22,8 @@ export enum Change {
 
 export interface DiffNode extends GraphNode {
   change: Change;
+  /** Its zone in the base, drawn with the base's rules; null when the base hasn't it. */
+  zoneBefore: string | null;
 }
 
 export interface DiffEdge extends GraphEdge {
@@ -66,6 +68,11 @@ export interface DiffOptions {
   phases?: Phase[];
   grouping?: Grouping;
   rules?: ZoneRules;
+  /**
+   * The base's own rules (its commit's runshape.json): a zone a branch changed is then a
+   * change. Defaults to `rules`, both sides drawn with the same zones.
+   */
+  baseRules?: ZoneRules;
   /** The style to draw both sides in; defaults to the rules' style. */
   profile?: ArchitectureProfile;
   /** What moved between the runs; detected when not given. */
@@ -76,8 +83,11 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
   const rules = options.rules ?? ZoneRules.none();
-  const graphBefore = buildSystemGraph(before, { phases, grouping, rules, profile: options.profile });
-  const graphAfter = buildSystemGraph(after, { phases, grouping, rules, profile: options.profile });
+  // Both sides in one style, so their zones compare: the base's rules for another style place
+  // nothing in it, and its code is inferred.
+  const profile = options.profile ?? rules.profile;
+  const graphBefore = buildSystemGraph(before, { phases, grouping, rules: options.baseRules ?? rules, profile });
+  const graphAfter = buildSystemGraph(after, { phases, grouping, rules, profile });
   const moves = options.moves ?? detectMoves(before, after);
   // The base's boxes under head's names: a moved module is the same box, not one gone and one new.
   const headId = (id: string) => renamedComponentId(id, moves);
@@ -93,7 +103,12 @@ export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): Ru
   const originalNodes = new Map(graphBefore.nodes.map((node) => [headId(node.id), node]));
 
   // A box only the base has keeps its own id, matching its name and label.
-  const nodes = mergeById(nodesBefore, graphAfter.nodes, (node, change) => ({ ...(change === Change.Removed ? (originalNodes.get(node.id) ?? node) : node), change }));
+  const nodes = mergeById(nodesBefore, graphAfter.nodes, (node, change, previous) => ({
+    ...(change === Change.Removed ? (originalNodes.get(node.id) ?? node) : node),
+    // Called the same, placed elsewhere: changed all the same.
+    change: change === Change.Unchanged && previous !== undefined && previous.zone !== node.zone ? Change.Changed : change,
+    zoneBefore: previous?.zone ?? null,
+  }));
   const edges = mergeById(edgesBefore, graphAfter.edges, (edge, change, previous) => ({
     ...edge,
     change,

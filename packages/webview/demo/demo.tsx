@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
-import { loadLatestRun, loadPreviousRun, RuleChange, TraceFiles, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
+import { loadLatestRun, loadPreviousRun, RuleChange, TraceFiles, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
@@ -74,6 +74,24 @@ function libraryTraces(head: string, base: string | null): TraceFiles {
   };
 }
 
+/**
+ * The rules a kept recording was made with: its commit's runshape.json, none if the commit had
+ * none. Null when the recording predates kept zones, so nobody knows.
+ */
+async function recordingRules(id: string): Promise<ZoneRules | null> {
+  const metadata = JSON.parse(await libraryText(id, "recording.json")) as { architecture?: unknown };
+  if (metadata.architecture === undefined) return null;
+  const response = await fetch(`/__runshape/recordings/${encodeURIComponent(id)}/runshape.json`);
+  if (!response.ok) return ZoneRules.none();
+  try {
+    return ZoneRules.parse((await response.text()).replace(/^\uFEFF/, ""));
+  } catch (error) {
+    // Recorded as invalid (recording.json says why): its zones were all inferred.
+    if (error instanceof ZoneRulesError) return ZoneRules.none();
+    throw error;
+  }
+}
+
 function demoHost(params: URLSearchParams): Host {
   const app = params.get("app") ?? "django";
   const listeners = new Set<(response: UiResponse) => void>();
@@ -102,8 +120,12 @@ function demoHost(params: URLSearchParams): Host {
   };
   // Rules live in memory here (nothing to write to); the confirm mirrors the extension's modal.
   const ruleStore = { save: async (_rules: unknown, change: RuleChange) => window.confirm(`${change.question}\n\n${change.detail}`) };
-  const session = Promise.all([latest, loadPreviousRun(traces)]).then(
-    ([run, baseline]) => new ViewerSession(run, { sources, baseline, ruleStore }),
+  // A kept recording brings its commit's rules, so each side of a comparison is drawn with its own.
+  const headId = pair?.head ?? single;
+  const rules = headId === null ? Promise.resolve(null) : recordingRules(headId);
+  const baselineRules = pair === null ? Promise.resolve(null) : recordingRules(pair.base);
+  const session = Promise.all([latest, loadPreviousRun(traces), rules, baselineRules]).then(
+    ([run, baseline, headRules, baseRules]) => new ViewerSession(run, { sources, baseline, ruleStore, rules: headRules ?? undefined, baselineRules: baseRules }),
   );
 
   return {

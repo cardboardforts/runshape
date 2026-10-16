@@ -223,8 +223,13 @@ Accepted risks:
   or the behaviour it was inferred from, over every phase. An invalid runshape.json is kept
   and reported; its recording is placed by inference. Inferred placements follow what the
   tests did (mock the database and a class can move), so comparing two snapshots must keep
-  rule changes apart from observed ones; rules no recorded component matched are listed. Comparisons don't use it yet: both
-  sides are still drawn with the current rules. Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
+  rule changes apart from observed ones; rules no recorded component matched are listed. Comparisons draw each side with its own
+  commit's rules (a kept recording brings them; elsewhere, as in the VS Code extension's
+  latest/previous pair, both sides use the current file and the view says so), and compare
+  mode's Architecture tab lists rules added, removed or reworded, what they moved, new code no
+  rule covers, inferred zones that moved with behaviour, and rules that place nothing. A style
+  changed in the branch draws both sides in the new one (the base's rules for the old style
+  place nothing in it). Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
   server reads .runshape/recordings and runs `git` for the list (local only; vite's host check
   and CORS apply before its routes).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
@@ -234,8 +239,7 @@ Accepted risks:
 - From the second-model review, not yet fixed: webview responses carry no request id, so a
   slow response for old view options can still land after newer ones; asyncio tasks are
   parented to the frame that ran the event loop, not the code that created the task; a run
-  interrupted before session end has scenario files but no manifest; a graph node whose zone
-  changed but whose call count didn't reads as unchanged in the diff; symlinks inside the
+  interrupted before session end has scenario files but no manifest; symlinks inside the
   project are followed by the path guard (the project root is trusted).
 
 ## Next

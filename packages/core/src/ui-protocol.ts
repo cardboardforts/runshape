@@ -12,6 +12,7 @@ import type { ReplayStep } from "@runshape/views";
 import type { RunDiff } from "@runshape/views";
 import type { ComponentWiring, ObjectGraph } from "@runshape/views";
 import type { ReviewSummary } from "@runshape/views";
+import type { ArchitectureDiff } from "@runshape/views";
 import type { RouteMap, RouteMapDiff } from "@runshape/views";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "@runshape/views";
 import type { SystemGraph } from "@runshape/views";
@@ -57,7 +58,8 @@ export type UiResponse =
   | { type: "function"; view: FunctionView }
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
   | { type: "timeline"; timeline: Timeline }
-  | { type: "diff"; diff: RunDiff; review: ReviewSummary }
+  /** `baseRulesKnown`: the base was drawn with its own commit's rules, not the current ones. */
+  | { type: "diff"; diff: RunDiff; review: ReviewSummary; architecture: ArchitectureDiff; baseRulesKnown: boolean }
   | { type: "routes"; routes: RouteMap; diff: RouteMapDiff | null }
   | { type: "rulesChanged"; count: number; style: string }
   | { type: "architecture"; candidates: ArchitectureCandidate[] }

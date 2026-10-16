@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ArchitectureCandidate,
+  ArchitectureDiff,
   ArchitectureProfile,
   ArchitectureStyle,
   PROFILES,
@@ -45,10 +46,13 @@ import { ScenarioDiffPanel } from "./components/ScenarioDiffPanel";
 import { FunctionExecutionPanel } from "./components/ExecutionDiffView";
 import { ScenarioList } from "./components/ScenarioList";
 import { RoutesPanel } from "./components/RoutesPanel";
+import { ArchitectureChangesPanel } from "./components/ArchitectureChangesPanel";
 import type { Host } from "./host";
 import { layoutGraph, Positioned } from "./layout";
 import { zoneClass, zoneColor } from "./zone-style";
 import { Scene3D } from "./three/Scene3D";
+
+type Listing = "tests" | "routes" | "architecture";
 
 type Status =
   | { kind: "loading"; message: string }
@@ -113,12 +117,13 @@ export function App({ host }: { host: Host }) {
   const [timeline, setTimeline] = useState<Timeline | null>(null);
   const [detection, setDetection] = useState<{ candidates: ArchitectureCandidate[] | null } | null>(null);
   const [modelAdvice, setModelAdvice] = useState<ModelAdvice>({ kind: "idle" });
-  /** The sidebar lists tests, or the requests they sent grouped by route. */
-  const [listing, setListing] = useState<"tests" | "routes">("tests");
+  /** The sidebar lists tests, the requests they sent grouped by route, or (comparing) how the architecture changed. */
+  const [listing, setListing] = useState<Listing>("tests");
+  const [architecture, setArchitecture] = useState<{ diff: ArchitectureDiff; baseRulesKnown: boolean } | null>(null);
   const [routeMap, setRouteMap] = useState<{ routes: RouteMap; diff: RouteMapDiff | null } | { failed: string } | null>(null);
   /** Responses carry no request id: an error while routes are awaited is the routes' answer. */
   const awaitingRoutes = useRef(false);
-  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined; listing: "tests" | "routes" }>({
+  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined; listing: Listing }>({
     phases: TEST_BODY_ONLY,
     grouping: INITIAL_GROUPING,
     compare: false,
@@ -167,6 +172,7 @@ export function App({ host }: { host: Host }) {
             setDetail({ component: null, fn: null });
             setReplay(null);
             setDiff(null);
+            setArchitecture(null);
             setExecution(null);
             setExecutionFn(null);
             setObjectGraph(null);
@@ -206,6 +212,7 @@ export function App({ host }: { host: Host }) {
         case "diff":
           setDiff(response.diff);
           setReview(response.review);
+          setArchitecture({ diff: response.architecture, baseRulesKnown: response.baseRulesKnown });
           break;
         case "routes":
           awaitingRoutes.current = false;
@@ -326,6 +333,7 @@ export function App({ host }: { host: Host }) {
     if (comparing) {
       // Every compare view depends on the options; none may outlive them.
       setDiff(null);
+      setArchitecture(null);
       setExecution(null);
       setExecutionFn(null);
       host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping, style });
@@ -352,7 +360,7 @@ export function App({ host }: { host: Host }) {
     awaitingRoutes.current = true;
     host.post({ type: "routes", phases: nextPhases, compare: comparing });
   };
-  const showListing = (next: "tests" | "routes") => {
+  const showListing = (next: Listing) => {
     setListing(next);
     if (next === "routes") requestRoutes(phases, compare);
   };
@@ -360,9 +368,11 @@ export function App({ host }: { host: Host }) {
     const next = !compare;
     setCompare(next);
     setReplay(null);
+    if (!next && listing === "architecture") setListing("tests");
     if (listing === "routes") requestRoutes(phases, next);
     if (next) {
       setDiff(null); // never show a diff computed for other view options
+      setArchitecture(null);
       host.post({ type: "diff", phases, grouping, style: drawStyle });
       if (selected !== null) requestExecution(selected);
     }
@@ -496,8 +506,28 @@ export function App({ host }: { host: Host }) {
           <button type="button" aria-pressed={listing === "routes"} onClick={() => showListing("routes")}>
             Routes
           </button>
+          {compare && (
+            <button type="button" aria-pressed={listing === "architecture"} onClick={() => showListing("architecture")}>
+              Architecture
+            </button>
+          )}
         </div>
-        {listing === "tests" ? (
+        {listing === "architecture" ? (
+          architecture === null || diff === null ? (
+            <p className="muted">Comparing the two commits' architecture…</p>
+          ) : (
+            <ArchitectureChangesPanel
+              diff={architecture.diff}
+              baseRulesKnown={architecture.baseRulesKnown}
+              zoneName={(zone) => diff.profile.zones.find((candidate) => candidate.id === zone)?.name ?? zone}
+              onOpenComponent={(qualifiedName) => {
+                const node = displayed?.nodes.find((candidate) => candidate.qualifiedName === qualifiedName);
+                if (node) openComponent(node);
+                else setNotice(`${qualifiedName} isn't drawn with the current grouping.`);
+              }}
+            />
+          )
+        ) : listing === "tests" ? (
           <ScenarioList
             scenarios={summary.scenarios}
             selected={selected}

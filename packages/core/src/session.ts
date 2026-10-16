@@ -13,6 +13,7 @@ import { buildTimeline } from "@runshape/views";
 import { detectMoves, diffExecution, diffFunctionExecution, mergeReplays, Moves } from "@runshape/views";
 import { aggregateWiring, buildObjectGraph } from "@runshape/views";
 import { buildReview } from "@runshape/views";
+import { buildPlacements, diffArchitecture } from "@runshape/views";
 import { buildRouteMap, diffRouteMaps } from "@runshape/views";
 import { diffRuns } from "@runshape/views";
 import { buildSystemGraph } from "@runshape/views";
@@ -39,6 +40,12 @@ export interface SessionDependencies {
   /** The previous recording, to compare against. */
   baseline?: Run | null;
   rules?: ZoneRules;
+  /**
+   * The baseline commit's own runshape.json, when the host has it (a kept recording does): the
+   * base is drawn with it, so zones a branch changed show as changes. Without it, both sides
+   * are drawn with `rules`.
+   */
+  baselineRules?: ZoneRules | null;
   /** Set when runshape.json exists but couldn't be read: saving would overwrite what's there. */
   rulesProblem?: string | null;
   ruleStore?: ZoneRuleStore | null;
@@ -80,6 +87,7 @@ export interface RunSummary {
 export class ViewerSession {
   private readonly sources: SourceReader;
   private readonly baseline: Run | null;
+  private readonly baselineRules: ZoneRules | null;
   private readonly ruleStore: ZoneRuleStore | null;
   private readonly advisor: ZoneAdvisor | null;
   private rules: ZoneRules;
@@ -95,6 +103,7 @@ export class ViewerSession {
   ) {
     this.sources = dependencies.sources;
     this.baseline = dependencies.baseline ?? null;
+    this.baselineRules = dependencies.baselineRules ?? null;
     this.rules = dependencies.rules ?? ZoneRules.none();
     this.rulesProblem = dependencies.rulesProblem ?? null;
     this.ruleStore = dependencies.ruleStore ?? null;
@@ -189,10 +198,14 @@ export class ViewerSession {
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
         const profile = this.drawingStyle(request.style);
         if (profile === null) return { type: "error", message: unknownStyle(request.style) };
+        const baseRules = this.baselineRules ?? this.rules;
+        const drawing = { phases: request.phases, grouping: request.grouping, rules: this.rules, baseRules, moves: this.moves() };
         return {
           type: "diff",
-          diff: diffRuns(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile, moves: this.moves() }),
-          review: buildReview(this.baseline, this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, moves: this.moves() }),
+          diff: diffRuns(this.baseline, this.run, { ...drawing, profile }),
+          review: buildReview(this.baseline, this.run, drawing),
+          architecture: diffArchitecture(buildPlacements(this.baseline, baseRules), buildPlacements(this.run, this.rules), this.moves()),
+          baseRulesKnown: this.baselineRules !== null,
         };
       }
       case "routes": {

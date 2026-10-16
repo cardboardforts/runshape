@@ -26,7 +26,9 @@ the onion it is (or isn't).
   now run differently*. Also as a Markdown PR comment. See [docs/pr-review.md](docs/pr-review.md).
 - **Compare.** Re-record after a change (yours or an AI agent's) and see which journeys now
   behave differently: new and lost hops, SQL that appeared or vanished, lines that started or
-  stopped running, outcomes that flipped.
+  stopped running, outcomes that flipped. Each side is drawn with its own commit's zones, and the
+  Architecture tab lists what the change decided (rules, and what they moved), new code no
+  rule covers yet, and zones that only moved with behaviour.
 - **Routes.** The sidebar's Routes tab groups requests by the route that served them, and a
   route's requests by the way they went through the code: `POST /orders` placed, refused
   ("skips MemoryRepository.Save"), malformed. In compare mode a route's ways read as new,

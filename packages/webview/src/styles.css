@@ -1038,3 +1038,51 @@ button {
 .variant-path li .link {
   font: inherit;
 }
+
+/* ---- architecture changes ---- */
+
+.architecture-changes h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 14px 0 4px;
+}
+
+.architecture-changes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.architecture-changes li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.architecture-changes code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.architecture-changes .mark {
+  display: inline-block;
+  width: 1em;
+}
+
+.architecture-changes .zone-tag {
+  font-size: 11px;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.architecture-changes .component-name {
+  font: inherit;
+}
+
+.notice-inline {
+  border-left: 3px solid var(--zone-outbound);
+  padding-left: 8px;
+}

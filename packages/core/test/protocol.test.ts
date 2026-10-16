@@ -6,6 +6,7 @@
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/trace";
+import { ZoneRules } from "@runshape/architecture";
 import { ViewerSession } from "../src/session";
 import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
 import { fixtureFiles } from "../../trace/test/fixtures";
@@ -80,5 +81,38 @@ describe("the route view on the wire", () => {
       type: "error",
       message: "There is no earlier recording to compare with yet.",
     });
+  });
+});
+
+describe("comparing two commits' architecture on the wire", () => {
+  const shopRules = (zones: object[]) => ZoneRules.parse(JSON.stringify({ version: 2, style: "hexagonal", zones }));
+  const STORAGE = { match: "example\\.com.shop.internal.storage.**", zone: "outbound-adapter", reason: "stores orders", by: "llm" };
+
+  test("each side drawn with its own rules: the branch's new rule is a decision in the diff", async () => {
+    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]), baselineRules: shopRules([]) });
+
+    const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });
+    if (response?.type !== "diff") throw new Error(`expected a diff, got ${response?.type}`);
+
+    expect({
+      baseRulesKnown: response.baseRulesKnown,
+      added: response.architecture.rules.added.map((rule) => rule.match),
+      decided: response.architecture.decided.map((change) => `${change.component}: ${change.before?.zone} -> ${change.after?.zone}`),
+    }).toEqual({
+      baseRulesKnown: true,
+      added: [STORAGE.match],
+      decided: ["example\\.com.shop.internal.storage: core -> outbound-adapter", "example\\.com.shop.internal.storage.MemoryRepository: core -> outbound-adapter"],
+    });
+  });
+
+  test("without the base's rules both sides use the current ones, and the response says so", async () => {
+    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]) });
+
+    const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });
+    if (response?.type !== "diff") throw new Error(`expected a diff, got ${response?.type}`);
+
+    expect({ baseRulesKnown: response.baseRulesKnown, decided: response.architecture.decided }).toEqual({ baseRulesKnown: false, decided: [] });
   });
 });
