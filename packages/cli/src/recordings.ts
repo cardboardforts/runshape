@@ -72,12 +72,14 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   const flags = new Set(flagValues.keys());
   const [command = "list", ...names] = argv.filter((arg) => !arg.startsWith("--"));
   const unknownFlags = [...flags].filter((flag) => !KNOWN_FLAGS.has(flag));
-  const recordings = new Recordings(dependencies, { fetch: flags.has("--fetch"), again: flags.has("--again") });
+  const recordings = new Recordings(dependencies, { fetch: flags.has("--fetch"), again: flags.has("--again"), explainAgain: flags.has("--explain-again") });
   const againstTip = flags.has("--tip");
   try {
     if (unknownFlags.length > 0) throw new UsageError(`unknown option ${unknownFlags.join(", ")}\n${USAGE}`);
     if (againstTip && command !== "compare") throw new UsageError("--tip only applies to compare");
-    const explain = flags.has("--explain") ? (flagValues.get("--explain") ?? "auto") : null;
+    // --explain-again asks the model again without recording again (--again would do both).
+    const explainFlag = flags.has("--explain-again") ? "--explain-again" : "--explain";
+    const explain = flags.has(explainFlag) ? (flagValues.get(explainFlag) ?? "auto") : null;
     if (explain !== null && command !== "compare") throw new UsageError("--explain only applies to compare");
     if (explain !== null && !MODEL_CHOICES.has(explain)) throw new UsageError("--explain takes claude or api (or nothing: claude -p if it runs, else the API)");
     switch (command) {
@@ -124,7 +126,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again"]);
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
   "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] [--explain[=claude|api]] | forget <id>";
@@ -155,7 +157,7 @@ class Recordings {
 
   constructor(
     private readonly dependencies: RecordingsDependencies,
-    private readonly options: { fetch: boolean; again: boolean },
+    private readonly options: { fetch: boolean; again: boolean; explainAgain: boolean },
   ) {
     this.git = new GitCli(dependencies.root);
     this.library = new RecordingLibrary(join(dependencies.root, ".runshape", "recordings"), this.git);
@@ -282,6 +284,12 @@ class Recordings {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, REVIEW_JSON), `${JSON.stringify(bundle, null, 2)}\n`);
     await writeFile(join(directory, REVIEW_MARKDOWN), reviewBundleMarkdown(bundle));
+    // An explanation of an older review mustn't sit beside this one looking current.
+    const explained = await readFile(join(directory, EXPLANATION_JSON), "utf8").then((text) => JSON.parse(text) as Explanation, () => null);
+    if (explained !== null && explained.basedOn.review !== sha256(reviewBundleMarkdown(bundle))) {
+      await rm(join(directory, EXPLANATION_JSON), { force: true });
+      await rm(join(directory, EXPLANATION_MARKDOWN), { force: true });
+    }
     return { bundle, directory, relative, markdown: join(relative, REVIEW_MARKDOWN) };
   }
 
@@ -293,11 +301,11 @@ class Recordings {
   async explain(review: SavedReview, base: Plan, head: Plan, choice: ModelChoice): Promise<void> {
     const where = join(review.relative, EXPLANATION_MARKDOWN);
     try {
-      const context: ChangeContext = { commits: await this.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty };
+      const context: ChangeContext = { commits: await this.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
       const inputs = explanationInputs(review.bundle, context, sha256);
       const model = await this.dependencies.models(choice);
       const saved = await readFile(join(review.directory, EXPLANATION_JSON), "utf8").then((text) => JSON.parse(text) as Explanation, () => null);
-      if (saved !== null && !this.options.again && saved.model === model.name && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
+      if (saved !== null && !this.options.explainAgain && saved.model === model.name && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
         this.dependencies.print(`explanation: ${where} (current: same review, commits and model)`);
         return;
       }
@@ -311,16 +319,19 @@ class Recordings {
     }
   }
 
-  /** The commits head has that the base hasn't, oldest first: what the authors said about the change. */
+  /**
+   * The commits head has that the base hasn't, oldest first: what the authors said about the
+   * change. Records end in NUL (-z), which git doesn't allow in a message, so a message can't
+   * forge another commit.
+   */
   private async commitsBetween(base: string, head: string): Promise<CommitMessage[]> {
-    const output = await this.git.run(["log", "--reverse", `--format=%H%x00%s%x00%b%x1e`, `${base}..${head}`, "--"]);
+    const output = await this.git.run(["log", "-z", "--reverse", "--format=%H%n%s%n%b", `${base}..${head}`, "--"]);
     return output
-      .split("\x1e")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== "")
+      .split("\0")
+      .filter((entry) => entry.trim() !== "")
       .map((entry) => {
-        const [commit, subject, body] = entry.split("\0");
-        return { commit: commit!, subject: subject ?? "", body: body ?? "" };
+        const [commit, subject, ...body] = entry.split("\n");
+        return { commit: commit!, subject: subject ?? "", body: body.join("\n") };
       });
   }
 

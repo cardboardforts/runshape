@@ -105,7 +105,8 @@ npm run runshape -- compare main --fetch    # fetch main, record where your bran
 # each compare also saves .runshape/reviews/<base>..<head>/review.md (and review.json, docs/review-bundle.md)
 npm run runshape -- compare main --explain  # and asks a model why it changed, from the commit messages:
                                             # explanation.md beside the review (--explain=claude: claude -p,
-                                            # --explain=api: ANTHROPIC_API_KEY; plain --explain picks)
+                                            # --explain=api: ANTHROPIC_API_KEY; plain --explain picks;
+                                            # --explain-again asks again without recording again)
 npm run runshape -- record <branch|commit|working> [--fetch] [--again]
 npm run runshape -- forget <id>             # each recording is ~100 MB
 ```

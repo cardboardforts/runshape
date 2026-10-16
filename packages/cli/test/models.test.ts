@@ -4,7 +4,7 @@
  * the boundary: the prompt goes in on stdin or in the body, the model gets no tools, the key
  * goes in a header and never into an error message.
  */
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, IncomingMessage } from "node:http";
 import { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -18,21 +18,34 @@ function standInClaude(script: string): { command: string; seen: string } {
   const directory = mkdtempSync(join(tmpdir(), "runshape-claude-"));
   const seen = join(directory, "seen.txt");
   const command = join(directory, "claude");
-  writeFileSync(command, `#!/bin/sh\nprintf '%s\\n' "$@" > "${seen}"\necho --- >> "${seen}"\ncat >> "${seen}"\n${script}\n`);
+  writeFileSync(command, `#!/bin/sh\nprintf '%s\\n' "$@" > "${seen}"\npwd >> "${seen}"\necho --- >> "${seen}"\ncat >> "${seen}"\n${script}\n`);
   chmodSync(command, 0o755);
   return { command, seen };
 }
 
 describe("ClaudeCliModel (claude -p)", () => {
-  test("the prompt goes in on stdin, with no tools, no MCP servers and no saved session; the answer is stdout", async () => {
+  test("the prompt goes in on stdin; no tools, no customisations (CLAUDE.md, hooks, plugins, MCP), no session, run from a temporary directory", async () => {
+    // Without --safe-mode, -p loads the person's and the project's hooks and CLAUDE.md: hooks
+    // would run on every explanation and see the prompt, and CLAUDE.md would steer the answer.
     const { command, seen } = standInClaude('echo "{\\"summary\\": \\"ok\\"}"');
 
     const answer = await new ClaudeCliModel(command).complete("explain this change");
 
     expect({ answer: answer.trim(), seen: readFileSync(seen, "utf8").split("\n") }).toEqual({
       answer: '{"summary": "ok"}',
-      seen: ["-p", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--output-format", "text", "---", "explain this change"],
+      seen: ["-p", "--safe-mode", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--output-format", "text", realpathSync(tmpdir()), "---", "explain this change"],
     });
+  });
+
+  test("a claude that exits without reading a big prompt is a failure to report, not a crash (second-model review)", async () => {
+    // Past the pipe's buffer, writing to a process that's gone raises EPIPE: unhandled, it
+    // would kill the CLI before "explaining failed (the review is saved)".
+    const command = join(mkdtempSync(join(tmpdir(), "runshape-claude-")), "claude");
+    writeFileSync(command, '#!/bin/sh\necho "not logged in" >&2\nexit 1\n'); // never reads stdin
+    chmodSync(command, 0o755);
+    const big = "x".repeat(5 * 1024 * 1024);
+
+    await expect(new ClaudeCliModel(command).complete(big)).rejects.toThrowError("claude -p exited with 1: not logged in");
   });
 
   test("a failed run says why, from its stderr", async () => {

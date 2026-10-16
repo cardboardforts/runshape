@@ -1,5 +1,6 @@
 // The Node adapters of core's LanguageModel port: `claude -p`, and the Anthropic API.
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 
 import type { LanguageModel } from "@runshape/core";
 
@@ -13,8 +14,10 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const MAX_ANSWER_TOKENS = 4096;
 
 /**
- * The person's own `claude` command, headless. It gets no tools and no MCP servers (commit
- * messages may be written by an agent, and are part of the prompt), and keeps no session.
+ * The person's own `claude` command, headless, signed in however they signed it in. It gets no
+ * tools and no customisations (--safe-mode: no CLAUDE.md, hooks, plugins, skills or MCP
+ * servers, which would otherwise run on every call and steer the answer), keeps no session, and
+ * runs from a temporary directory, away from the project's own .claude settings.
  */
 export class ClaudeCliModel implements LanguageModel {
   readonly name = "claude-cli";
@@ -23,8 +26,9 @@ export class ClaudeCliModel implements LanguageModel {
   constructor(private readonly command = "claude") {}
 
   complete(prompt: string): Promise<string> {
-    const args = ["-p", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--output-format", "text"];
-    return run(this.command, args, prompt).then(({ code, stdout, stderr }) => {
+    const args = ["-p", "--safe-mode", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--output-format", "text"];
+    return run(this.command, args, prompt).then(({ code, signal, stdout, stderr }) => {
+      if (signal !== null) throw new Error(`claude -p was stopped (${signal}), after ${MODEL_TIMEOUT_MS / 60_000} minutes at most`);
       if (code !== 0) throw new Error(`claude -p exited with ${code}: ${stderr.trim() || stdout.trim()}`);
       return stdout;
     });
@@ -44,9 +48,10 @@ export class AnthropicApiModel implements LanguageModel {
   constructor(
     private readonly key: string,
     private readonly model = DEFAULT_API_MODEL,
-    private readonly baseUrl = ANTHROPIC_API,
+    private baseUrl = ANTHROPIC_API,
   ) {
     this.name = `anthropic:${model}`;
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
 
   async complete(prompt: string): Promise<string> {
@@ -78,15 +83,18 @@ export async function chooseModel(choice: ModelChoice, env: Record<string, strin
   throw new Error("no language model to explain with: install the claude command (or point RUNSHAPE_CLAUDE at it), or set ANTHROPIC_API_KEY");
 }
 
-function run(command: string, args: string[], stdin: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function run(command: string, args: string[], stdin: string): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], timeout: MODEL_TIMEOUT_MS });
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], timeout: MODEL_TIMEOUT_MS, cwd: tmpdir() });
+    // A process that exits without reading leaves a big prompt half written (EPIPE): its exit
+    // code says what went wrong; unhandled, the write error would kill the CLI.
+    child.stdin.on("error", () => {});
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
     child.stderr.on("data", (chunk) => (stderr += chunk));
     child.on("error", reject);
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
+    child.on("close", (code, signal) => resolve({ code, signal, stdout, stderr }));
     child.stdin.end(stdin);
   });
 }
