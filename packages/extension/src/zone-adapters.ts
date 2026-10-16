@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { RuleChange, RULES_FILE, ZoneAdvisor, ZoneRules, ZoneRulesError, ZoneRuleStore } from "@runshape/core";
+import { LanguageModel, RuleChange, RULES_FILE, ZoneRules, ZoneRulesError, ZoneRuleStore } from "@runshape/core";
 
 import type { Logger } from "./logger";
 
@@ -42,13 +42,16 @@ export function confirmingRuleStore(projectRoot: vscode.Uri, logger: Logger): Zo
 }
 
 /**
- * A model from VS Code's language model API (e.g. one GitHub Copilot provides). Each call
+ * A model from VS Code's Language Model API (e.g. one GitHub Copilot provides): core's
+ * LanguageModel port, as claude -p and the Anthropic API are in the CLI. Each call
  * is started by a click, and VS Code asks the person to allow the extension the first time.
  * What is sent: the component's name, its functions, what called it and what it called,
  * and its own source — logged as a size only, never the content.
  */
-export function vscodeModelAdvisor(logger: Logger, available: boolean): ZoneAdvisor {
+export function vscodeModelAdvisor(logger: Logger, available: boolean): LanguageModel {
   return {
+    // Whichever chat model VS Code offers first: its id goes in the log with each request.
+    name: "vscode",
     available,
     async complete(prompt: string): Promise<string> {
       const [model] = await vscode.lm.selectChatModels();

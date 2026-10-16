@@ -1,6 +1,7 @@
 // npm run runshape -- <command>: the recordings this checkout keeps (see recordings.ts).
 import { execFileSync } from "node:child_process";
 
+import { chooseModel } from "./models";
 import { runRecordings } from "./recordings";
 import { ShellRecorder } from "./shell-recorder";
 
@@ -14,4 +15,5 @@ process.exitCode = await runRecordings(process.argv.slice(2), {
   recorder: new ShellRecorder(root),
   print: (line) => console.log(line),
   now: () => new Date(),
+  models: (choice) => chooseModel(choice, process.env),
 });

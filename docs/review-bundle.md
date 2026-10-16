@@ -46,5 +46,8 @@ the working tree; a commit-to-commit review is replaced only by comparing the sa
 
 - The graph itself (boxes and edges). It depends on view options, and the recordings it's
   drawn from are kept alongside.
-- An explanation of *why* the code changed (from commits, the PR description or tickets).
-  That comes from a separate step, annotating the bundle without changing it.
+- An explanation of *why* the code changed. `compare --explain` asks a language model and
+  saves its answer beside the bundle (`explanation.json`, `explanation.md`). The answer is
+  marked with the model that gave it and what it was based on (the review's Markdown hash and
+  the commits), and the bundle itself is left unchanged. PR descriptions and tickets aren't
+  read yet.

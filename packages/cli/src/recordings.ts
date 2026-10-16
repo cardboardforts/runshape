@@ -8,7 +8,14 @@ import {
   ArchitectureSnapshot,
   buildPlacements,
   buildReviewBundle,
+  ChangeContext,
+  CommitMessage,
+  explainChange,
+  Explanation,
+  explanationMarkdown,
+  LanguageModel,
   loadLatestRun,
+  ReviewBundle,
   Outcome,
   reviewBundleMarkdown,
   RULES_FILE,
@@ -31,6 +38,7 @@ import {
   recordingIdFor,
   WORKING_TREE_ID,
 } from "@runshape/library";
+import type { ModelChoice } from "./models";
 
 /** What to record: a commit (checked out on its own, the working tree untouched) or the working tree as it is. */
 export type RecordTarget = { kind: "commit"; commit: string } | { kind: "working" };
@@ -46,6 +54,8 @@ export interface RecordingsDependencies {
   recorder: Recorder;
   print: (line: string) => void;
   now: () => Date;
+  /** The language model `--explain` asks: claude -p, the Anthropic API (models.ts), or a fake in tests. */
+  models: (choice: ModelChoice) => Promise<LanguageModel>;
 }
 
 /** Where the demo's dev server serves the recordings page (npm run dev -w packages/webview). */
@@ -56,7 +66,9 @@ const REMOTE = "origin";
 class UsageError extends Error {}
 
 export async function runRecordings(argv: string[], dependencies: RecordingsDependencies): Promise<number> {
-  const flags = new Set(argv.filter((arg) => arg.startsWith("--")));
+  // "--explain=api": a flag's name, and its value if it has one.
+  const flagValues = new Map(argv.filter((arg) => arg.startsWith("--")).map((arg) => [arg.split("=")[0]!, arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : null]));
+  const flags = new Set(flagValues.keys());
   const [command = "list", ...names] = argv.filter((arg) => !arg.startsWith("--"));
   const unknownFlags = [...flags].filter((flag) => !KNOWN_FLAGS.has(flag));
   const recordings = new Recordings(dependencies, { fetch: flags.has("--fetch"), again: flags.has("--again") });
@@ -64,6 +76,9 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   try {
     if (unknownFlags.length > 0) throw new UsageError(`unknown option ${unknownFlags.join(", ")}\n${USAGE}`);
     if (againstTip && command !== "compare") throw new UsageError("--tip only applies to compare");
+    const explain = flags.has("--explain") ? (flagValues.get("--explain") ?? "auto") : null;
+    if (explain !== null && command !== "compare") throw new UsageError("--explain only applies to compare");
+    if (explain !== null && !MODEL_CHOICES.has(explain)) throw new UsageError("--explain takes claude or api (or nothing: claude -p if it runs, else the API)");
     switch (command) {
       case "list":
         await recordings.list();
@@ -85,8 +100,10 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
           if (base.id === head.id) throw new RecordingError(`${baseName} and ${headName} are the same recording: nothing to compare`);
           await recordings.ensure(base, { sameRecorder: true });
           await recordings.ensure(head, { sameRecorder: true });
-          dependencies.print(`review: ${await recordings.writeReview({ asked: baseName, plan: base }, { asked: headName, plan: head })}`);
+          const review = await recordings.writeReview({ asked: baseName, plan: base }, { asked: headName, plan: head });
+          dependencies.print(`review: ${review.markdown}`);
           dependencies.print(`open ${DEMO_URL}?base=${base.id}&head=${head.id} (npm run dev -w packages/webview)`);
+          if (explain !== null) await recordings.explain(review, base, head, explain as ModelChoice);
         });
         return 0;
       }
@@ -106,8 +123,10 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip"]);
-const USAGE = "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>";
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain"]);
+const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
+const USAGE =
+  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] [--explain[=claude|api]] | forget <id>";
 
 class RecordingError extends Error {}
 
@@ -236,7 +255,7 @@ class Recordings {
    * Saves the comparison as a review bundle beside the recordings (.runshape/reviews/<base>..<head>):
    * review.json for tools, review.md to read or post. Returns the Markdown's path, relative to the project.
    */
-  async writeReview(base: { asked: string; plan: Plan }, head: { asked: string; plan: Plan }): Promise<string> {
+  async writeReview(base: { asked: string; plan: Plan }, head: { asked: string; plan: Plan }): Promise<SavedReview> {
     const [baseRun, headRun] = await Promise.all([this.runOf(base.plan.id), this.runOf(head.plan.id)]);
     const [baseRules, headRules] = await Promise.all([this.rulesOf(base.plan.id), this.rulesOf(head.plan.id)]);
     const side = ({ asked, plan }: { asked: string; plan: Plan }) => ({
@@ -262,7 +281,46 @@ class Recordings {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, REVIEW_JSON), `${JSON.stringify(bundle, null, 2)}\n`);
     await writeFile(join(directory, REVIEW_MARKDOWN), reviewBundleMarkdown(bundle));
-    return join(relative, REVIEW_MARKDOWN);
+    return { bundle, directory, relative, markdown: join(relative, REVIEW_MARKDOWN) };
+  }
+
+  /**
+   * Asks a language model why the change was made, from the review (names only) and the commit
+   * messages between the two sides; saved beside the review, which it doesn't change. Asked
+   * again only when the review or the commits changed (or with --again).
+   */
+  async explain(review: SavedReview, base: Plan, head: Plan, choice: ModelChoice): Promise<void> {
+    const where = join(review.relative, EXPLANATION_MARKDOWN);
+    try {
+      const context: ChangeContext = { commits: await this.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty };
+      const inputs = { review: sha256(reviewBundleMarkdown(review.bundle)), commits: context.commits.map((c) => c.commit) };
+      const saved = await readFile(join(review.directory, EXPLANATION_JSON), "utf8").then((text) => JSON.parse(text) as Explanation, () => null);
+      if (saved !== null && !this.options.again && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
+        this.dependencies.print(`explanation: ${where} (current: same review and commits)`);
+        return;
+      }
+      const model = await this.dependencies.models(choice);
+      const explanation = await explainChange(model, review.bundle, context, this.dependencies.now().toISOString(), sha256);
+      await writeFile(join(review.directory, EXPLANATION_JSON), `${JSON.stringify(explanation, null, 2)}\n`);
+      await writeFile(join(review.directory, EXPLANATION_MARKDOWN), explanationMarkdown(explanation));
+      this.dependencies.print(`explanation: ${where} (by ${explanation.model})`);
+    } catch (error) {
+      if (error instanceof UsageError || error instanceof GitError) throw error;
+      throw new RecordingError(`explaining failed (the review is saved): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** The commits head has that the base hasn't, oldest first: what the authors said about the change. */
+  private async commitsBetween(base: string, head: string): Promise<CommitMessage[]> {
+    const output = await this.git.run(["log", "--reverse", `--format=%H%x00%s%x00%b%x1e`, `${base}..${head}`, "--"]);
+    return output
+      .split("\x1e")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry !== "")
+      .map((entry) => {
+        const [commit, subject, body] = entry.split("\0");
+        return { commit: commit!, subject: subject ?? "", body: body ?? "" };
+      });
   }
 
   private runOf(id: string): Promise<Run> {
@@ -431,9 +489,23 @@ interface CommittedRules {
   problem: string | null;
 }
 
-/** A comparison's bundle (docs/review-bundle.md) and its Markdown. */
+/** A comparison's bundle (docs/review-bundle.md) and its Markdown; a model's explanation of it. */
 const REVIEW_JSON = "review.json";
 const REVIEW_MARKDOWN = "review.md";
+const EXPLANATION_JSON = "explanation.json";
+const EXPLANATION_MARKDOWN = "explanation.md";
+
+interface SavedReview {
+  bundle: ReviewBundle;
+  directory: string;
+  /** The directory relative to the project, as printed. */
+  relative: string;
+  markdown: string;
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
 
 /** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);

@@ -103,6 +103,9 @@ npm run runshape -- list                    # what's recorded, which branch tips
 npm run runshape -- compare main --fetch    # fetch main, record where your branch left it and your working tree
                                             # (--tip: main's newest commit instead of the fork point)
 # each compare also saves .runshape/reviews/<base>..<head>/review.md (and review.json, docs/review-bundle.md)
+npm run runshape -- compare main --explain  # and asks a model why it changed, from the commit messages:
+                                            # explanation.md beside the review (--explain=claude: claude -p,
+                                            # --explain=api: ANTHROPIC_API_KEY; plain --explain picks)
 npm run runshape -- record <branch|commit|working> [--fetch] [--again]
 npm run runshape -- forget <id>             # each recording is ~100 MB
 ```

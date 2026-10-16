@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
+import type { LanguageModel } from "@runshape/core";
 import { Recorder, RecordTarget, runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
@@ -37,10 +38,28 @@ class FixtureRecorder implements Recorder {
   }
 }
 
-async function run(root: string, argv: string[], recorder = new FixtureRecorder()) {
+/** A language model that answers every prompt the same way, and remembers what it was asked. */
+class FakeModel implements LanguageModel {
+  readonly name = "fake-model";
+  readonly available = true;
+  readonly prompts: string[] = [];
+  constructor(private readonly answer: string | Error = JSON.stringify({ summary: "Second, explained.", reasons: [], unexplained: [], questions: [] })) {}
+  async complete(prompt: string): Promise<string> {
+    this.prompts.push(prompt);
+    if (this.answer instanceof Error) throw this.answer;
+    return this.answer;
+  }
+}
+
+async function run(root: string, argv: string[], recorder = new FixtureRecorder(), model = new FakeModel()) {
   const lines: string[] = [];
-  const code = await runRecordings(argv, { root, recorder, print: (line) => lines.push(line), now: () => NOW });
-  return { code, lines, recorder };
+  const chosen: string[] = [];
+  const models = async (choice: string) => {
+    chosen.push(choice);
+    return model;
+  };
+  const code = await runRecordings(argv, { root, recorder, print: (line) => lines.push(line), now: () => NOW, models });
+  return { code, lines, recorder, model, chosen };
 }
 
 const metadataOf = (root: string, id: string) => JSON.parse(readFileSync(join(root, ".runshape", "recordings", id, "recording.json"), "utf8"));
@@ -408,6 +427,69 @@ describe("runshape compare", () => {
       recorded: ["working"],
       link: `open http://localhost:5173/demo/index.html?base=${main}&head=working (npm run dev -w packages/webview)`,
     });
+  });
+});
+
+describe("runshape compare --explain", () => {
+  // Explaining sends the review (names only) and the commit messages to a language model:
+  // claude -p, the Anthropic API, or (in VS Code) the editor's. Never without being asked.
+  test("explains the comparison from its commits, beside the review, and doesn't ask again for the same inputs", async () => {
+    const { root, commits } = repository();
+    gitIn(root)("checkout", "--quiet", "main");
+    commitIn(root, "Main moved on");
+    gitIn(root)("checkout", "--quiet", "feature");
+    const directory = join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`);
+
+    const first = await run(root, ["compare", "main", "feature", "--explain=claude"]);
+    const again = await run(root, ["compare", "main", "feature", "--explain=claude"]);
+    const unasked = await run(root, ["compare", "main", "feature"]);
+
+    expect({
+      said: first.lines.at(-1),
+      chosen: first.chosen,
+      askedAbout: first.model.prompts[0]?.includes("Feature work"),
+      saved: JSON.parse(readFileSync(join(directory, "explanation.json"), "utf8")).summary,
+      markdown: readFileSync(join(directory, "explanation.md"), "utf8").split("\n")[0],
+      again: again.lines.at(-1),
+      askedAgain: again.model.prompts.length,
+      unasked: [unasked.chosen, unasked.model.prompts.length],
+    }).toEqual({
+      said: `explanation: ${join(".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`, "explanation.md")} (by fake-model)`,
+      chosen: ["claude"],
+      askedAbout: true,
+      saved: "Second, explained.",
+      markdown: "## Why it changed (model's account)",
+      again: `explanation: ${join(".runshape", "reviews", `${commits.second!.slice(0, 12)}..${commits.third!.slice(0, 12)}`, "explanation.md")} (current: same review and commits)`,
+      askedAgain: 0,
+      unasked: [[], 0],
+    });
+  });
+
+  test("a model that fails or answers nonsense fails the explanation, says why, and leaves the review", async () => {
+    const { root, commits } = repository();
+    const failing = await run(root, ["compare", "main", "--explain"], new FixtureRecorder(), new FakeModel(new Error("claude -p exited with 1: not logged in")));
+    const nonsense = await run(root, ["compare", "main", "--explain"], new FixtureRecorder(), new FakeModel("Looks good to me!"));
+
+    expect({
+      failing: [failing.code, failing.lines.at(-1), failing.chosen],
+      nonsense: nonsense.lines.at(-1),
+      reviewKept: existsSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..working`, "review.md")),
+    }).toEqual({
+      failing: [1, "runshape: explaining failed (the review is saved): claude -p exited with 1: not logged in", ["auto"]],
+      nonsense: "runshape: explaining failed (the review is saved): the model's answer can't be used: the answer holds no JSON object",
+      reviewKept: true,
+    });
+  });
+
+  test("--explain takes claude or api, and only on compare", async () => {
+    const { root } = repository();
+
+    const results = [await run(root, ["compare", "main", "--explain=gpt"]), await run(root, ["record", "main", "--explain"])];
+
+    expect(results.map(({ code, lines }) => [code, lines[0]])).toEqual([
+      [1, "runshape: --explain takes claude or api (or nothing: claude -p if it runs, else the API)"],
+      [1, "runshape: --explain only applies to compare"],
+    ]);
   });
 });
 

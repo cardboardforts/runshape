@@ -141,6 +141,9 @@ in a webview.
 | recorder → disk | **I**: traces capture data from the test run | SQL text but never parameters; URLs without query strings (API keys); request method and path only, no headers or bodies; traces live under `.runshape/`, which projects should git-ignore | credentials and personal data from test fixtures land in files people commit or share |
 | extension → language model | **I**: "Suggest a zone" sends the component's name, functions, recorded neighbours and its own source to whichever model VS Code provides (e.g. Copilot's) | only on an explicit click per component; VS Code asks the person to allow model access the first time; the log records prompt size, never content | code leaves the machine without the person deciding it should |
 | model answer → runshape.json | **T**: a model's (or prompt-injected) answer rewrites the architecture rules | the answer is validated (known zone, non-empty reason) and shown as a proposal; writing requires a modal confirmation showing the exact rule as JSON and whether it replaces one; saving is refused while runshape.json is unreadable, so a broken file is never overwritten; the request itself is validated | the rules file changes silently |
+| CLI → language model (`compare --explain`) | **I**: the review and commit messages leave the machine, to Anthropic through the person's own `claude` login or their API key | only when asked (`--explain`); what's sent is the review's Markdown (names only: no source, no query text, no request as sent) and the commit messages between the two sides; the key is read from the environment, sent only in a header, and never in an error or log | code details leave without anyone deciding they should |
+| commit message → language model | **T/E**: a message (an agent may have written it) says "ignore your instructions" to steer the explanation, or to make the model act | the prompt frames messages as data, never instructions; `claude -p` runs with no tools, no MCP servers and no saved session, so a model can only answer with text; the answer must be the asked-for JSON, checked field by field, or it's refused | a prompt-injected model runs commands or reads files with the person's permissions |
+| model answer → explanation.md | **T**: the answer's text is wrong, or written to mislead | saved apart from the review, which it never changes; headed "model's account" with the model's name; every reason carries its source (a commit) so it can be checked; stale answers are told apart by what they were based on (the review's hash and the commits) | a model's guess reads as a finding |
 | recorder → test process | **D**: tracing slows or breaks the suite | opt-in (`--runshape`); callbacks never raise; `sys.monitoring` disables uninteresting code after first sight | a broken or unusably slow test run |
 
 Accepted risks:
@@ -150,6 +153,8 @@ Accepted risks:
 - **The trace keeps project objects alive until the scenario ends** (to keep `id()` stable),
   which delays their finalizers. Accepted for test runs; would matter if this ever traced
   production.
+- **explanation.md is the model's text, unescaped.** Accepted while it's a local file: before
+  it's ever posted as a PR comment, its Markdown needs neutralising (mentions, links, HTML).
 - **No integrity check on trace files.** Anyone who can write to the repo can already change
   the code being visualised.
 
