@@ -193,9 +193,17 @@ describe("DockerRecorder", () => {
   });
 
   test("a shrinkwrap (which npm prefers to the lockfile) isn't installed, nor a link whose target claims a source of its own (fourth review)", async () => {
+    // A workspace with a node_modules of its own, the package in it saying no source but a
+    // version that's a URL: npm fetches name@version (confirmed against a local server).
     const linkToEvil = JSON.stringify({
       lockfileVersion: 3,
-      packages: { "": {}, "node_modules/foo": { link: true, resolved: "packages/../node_modules/evil" }, "node_modules/evil": { resolved: "https://evil.example/x.tgz" } },
+      packages: {
+        "": {},
+        "node_modules/a": { link: true, resolved: "packages/a" },
+        "node_modules/x": { link: true, resolved: "packages/a/node_modules/x" },
+        "packages/a": { name: "a" },
+        "packages/a/node_modules/x": { name: "x", version: "http://127.0.0.1:8765/evil.tgz" },
+      },
     });
     const shrinkwrapped = setup({ shrinkwrap: REGISTRY_LOCK });
     const outcomes = [
@@ -209,9 +217,30 @@ describe("DockerRecorder", () => {
     ];
 
     expect(outcomes).toEqual([
-      "its lockfile installs from outside the npm registry, which can run code at install: node_modules/evil (https://evil.example/x.tgz)",
+      "its lockfile installs from outside the npm registry, which can run code at install: packages/a/node_modules/x (no resolved URL)",
       "it has an npm-shrinkwrap.json, which npm installs from instead of package-lock.json: not checked, so not installed",
     ]);
+  });
+
+  test("a workspace's folder is exempt; a node_modules inside one isn't, even saying a plain version", async () => {
+    const nested = JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {}, "node_modules/a": { link: true, resolved: "packages/a" }, "node_modules/x": { link: true, resolved: "packages/a/node_modules/x" }, "packages/a": { version: "0.1.0" }, "packages/a/node_modules/x": { version: "1.0.0" } },
+    });
+    const { out, recorder } = setup({ lock: nested });
+
+    expect(await recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message)).toBe(
+      "its lockfile installs from outside the npm registry, which can run code at install: packages/a/node_modules/x (no resolved URL)",
+    );
+  });
+
+  test("a package that says no source must say a plain version: npm would fetch name@<URL> (fifth review)", async () => {
+    const bundledUrl = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/p": { resolved: "https://registry.npmjs.org/p/-/p-1.0.0.tgz" }, "node_modules/p/node_modules/q": { inBundle: true, version: "git+https://example.invalid/q.git" } } });
+    const { out, recorder } = setup({ lock: bundledUrl });
+
+    expect(await recorder.record({ kind: "commit", commit: "c0ffee" }, out).catch((error: Error) => error.message)).toBe(
+      "its lockfile installs from outside the npm registry, which can run code at install: node_modules/p/node_modules/q (no resolved URL)",
+    );
   });
 
   test("a host user that's root still records as an unprivileged one", () => {

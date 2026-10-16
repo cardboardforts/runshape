@@ -30,6 +30,8 @@ const MAX_RECORDING_BYTES = 2 * 1024 ** 3;
 const NPM_REGISTRY = "https://registry.npmjs.org/";
 /** node:*-slim's `node` user: for a host that runs as root. */
 const UNPRIVILEGED_USER = "1000:1000";
+/** A version and nothing else (semver): anything more (a URL, a git spec) is somewhere npm would fetch from. */
+const PLAIN_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 /** npm 7+ lockfiles list every package with where it comes from; older ones don't. */
 const MIN_LOCKFILE_VERSION = 2;
 
@@ -177,7 +179,7 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   }
   const text = await readFile(join(worktree, "package-lock.json"), "utf8").catch(() => null);
   if (text === null) throw new SandboxRefusal("the commit has no package-lock.json: its dependencies can't be installed as locked");
-  const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; link?: boolean; inBundle?: boolean }> };
+  const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; version?: string; link?: boolean; inBundle?: boolean }> };
   // Without `packages` npm resolves dependencies itself, past anything checked here.
   if ((lock.lockfileVersion ?? 0) < MIN_LOCKFILE_VERSION || typeof lock.packages !== "object" || lock.packages === null) {
     throw new SandboxRefusal("its lockfile isn't one npm 7+ writes (lockfileVersion 2 or 3, with packages): its dependencies can't be checked before installing");
@@ -196,9 +198,11 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   const outside = Object.entries(lock.packages)
     .filter(([path, entry]) => {
       if (path === "" || entry.link) return false;
-      // A workspace's folder: linked to, outside node_modules, saying no source of its own.
-      if (linked.has(path) && !path.startsWith("node_modules/") && entry.resolved === undefined) return false;
-      if (entry.inBundle && entry.resolved === undefined) return false;
+      // Without a source of its own npm fetches name@version: the version must be a plain one,
+      // or it's a URL npm goes to. A workspace's folder: linked to, no node_modules anywhere in it.
+      const plain = entry.resolved === undefined && (entry.version === undefined || PLAIN_VERSION.test(entry.version));
+      if (plain && linked.has(path) && !path.split("/").includes("node_modules")) return false;
+      if (plain && entry.inBundle) return false;
       return entry.resolved === undefined || !entry.resolved.startsWith(NPM_REGISTRY);
     })
     .map(([path, entry]) => `${path} (${entry.resolved ?? "no resolved URL"})`);

@@ -564,10 +564,6 @@ describe("--sandbox: commits recorded in a container", () => {
     const asBase = await run(root, ["compare", "working", "main", "--tip"]);
     gitIn(root)("checkout", "--quiet", "feature");
 
-    // A branch named like origin's default makes `symbolic-ref --short` ambiguous.
-    gitIn(root)("branch", "origin/main", commits.third!);
-    const ambiguous = await run(root, ["record", "feature"]);
-
     // No origin/HEAD and no say-so: nothing counts as merged; the working tree can't be compared.
     gitIn(root)("symbolic-ref", "--delete", "refs/remotes/origin/HEAD");
     const unknown = await run(root, ["compare", "main"]);
@@ -576,14 +572,41 @@ describe("--sandbox: commits recorded in a container", () => {
 
     expect({
       asBase: [asBase.code, asBase.recorder.recorded, asBase.lines.at(-1)],
-      ambiguousHere: ambiguous.recorder.recorded,
       unknown: [unknown.code, unknown.lines.at(-1)],
       told: told.code,
     }).toEqual({
       asBase: [1, [], "runshape: the working tree is a pull request you checked out (refs/pull/12/head): its tests would run here; compare its commit instead, which is recorded in the sandbox"],
-      ambiguousHere: [],
       unknown: [1, "runshape: main can't be told apart from someone else's code: there's no refs/remotes/origin/HEAD to say which branch is merged code. Run `git remote set-head origin --auto`, or say which: `git config runshape.trustedBranch main`"],
       told: 0,
+    });
+  });
+
+  test("which branch is merged code: the person's say-so first, then origin's HEAD read in full, never a short name someone could shadow", async () => {
+    const { root, commits } = repository();
+    // origin's default is master; a branch called origin/master makes the short name ambiguous;
+    // main (here only) holds a commit master doesn't.
+    gitIn(root)("update-ref", "refs/remotes/origin/master", commits.first!);
+    gitIn(root)("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master");
+    gitIn(root)("branch", "origin/master", commits.first!);
+    const ambiguous = await run(root, ["record", "main"]);
+    gitIn(root)("config", "runshape.trustedBranch", "feature");
+    const said = await run(root, ["record", "feature"]);
+
+    expect({ ambiguousHere: ambiguous.recorder.recorded, saidHere: said.recorder.recorded }).toEqual({ ambiguousHere: [], saidHere: [commits.third!.slice(0, 7)] });
+  });
+
+  test("a working tree is never compared with a commit recorded in the sandbox, as base or head (fifth review)", async () => {
+    const { root, commits } = repository();
+    gitIn(root)("checkout", "--quiet", "--detach", commits.third!);
+    const theirs = commitIn(root, "Someone's change");
+    gitIn(root)("checkout", "--quiet", "feature");
+
+    const { code, recorder, lines } = await run(root, ["compare", "working", theirs, "--tip"]);
+
+    expect({ code, host: recorder.recorded, said: lines.at(-1) }).toEqual({
+      code: 1,
+      host: [],
+      said: `runshape: ${theirs} isn't on main (it may be someone else's code): it's recorded in the sandbox, so compare it with a commit, not the working tree`,
     });
   });
 

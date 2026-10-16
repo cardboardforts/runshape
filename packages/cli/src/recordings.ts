@@ -267,7 +267,7 @@ class Recordings {
     const tip = await this.plan(baseName, { fetch: true });
     const fork = options.againstTip ? tip : await this.forkPoint(options.baseAsked ?? baseName, tip, plannedHead);
     // Decided on what was fetched and what will be recorded, not on the names asked for.
-    const [base, head] = (await this.place([fork, plannedHead], { workingHead })) as [Plan, Plan];
+    const [base, head] = (await this.place([fork, plannedHead], { workingHead: workingHead || fork.target.kind === "working" })) as [Plan, Plan];
     if (base.id === head.id) throw new RecordingError(`${baseName} and ${options.headAsked ?? headName} are the same recording: nothing to compare`);
     await this.ensure(base, { sameRecorder: true });
     await this.ensure(head, { sameRecorder: true });
