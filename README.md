@@ -107,6 +107,9 @@ npm run runshape -- compare main --explain  # and asks a model why it changed, f
                                             # explanation.md beside the review (--explain=claude: claude -p,
                                             # --explain=api: ANTHROPIC_API_KEY; plain --explain picks;
                                             # --explain-again asks again without recording again)
+npm run runshape -- review-requests [--explain] [--limit=N]
+# every open PR asking for your review (gh): fetched, recorded in the sandbox, reviewed against
+# where it left its base, explained if asked; .runshape/reviews/requested.json lists them
 npm run runshape -- record <branch|commit|working> [--fetch] [--again] [--sandbox]
 # --sandbox records commits in a Docker container: no network, non-root, only the commit and
 # the output mounted (for code you didn't write: someone's PR, an agent's branch). Needs Docker.

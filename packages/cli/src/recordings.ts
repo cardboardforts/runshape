@@ -2,7 +2,7 @@
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   ArchitectureSnapshot,
@@ -52,6 +52,25 @@ export interface Recorder {
   record(target: RecordTarget, outDirectory: string): Promise<void>;
 }
 
+/** An open pull request, as GitHub lists it. */
+export interface PullRequestSummary {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  baseRefName: string;
+  headRefName: string;
+  headRefOid: string;
+  /** From a fork: its branch isn't on origin, but GitHub's refs/pull/<n>/head is. */
+  isCrossRepository: boolean;
+  updatedAt: string;
+}
+
+/** Port: the open pull requests asking for the person's review (gh in pull-requests.ts). */
+export interface PullRequests {
+  requestingMyReview(limit: number): Promise<PullRequestSummary[]>;
+}
+
 export interface RecordingsDependencies {
   /** The project's root: its git repository, and where .runshape/recordings lives. */
   root: string;
@@ -62,6 +81,7 @@ export interface RecordingsDependencies {
   now: () => Date;
   /** The language model `--explain` asks: claude -p, the Anthropic API (models.ts), or a fake in tests. */
   models: (choice: ModelChoice) => Promise<LanguageModel>;
+  pullRequests: PullRequests;
 }
 
 /** Where the demo's dev server serves the recordings page (npm run dev -w packages/webview). */
@@ -81,7 +101,8 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
     fetch: flags.has("--fetch"),
     again: flags.has("--again"),
     explainAgain: flags.has("--explain-again"),
-    sandbox: flags.has("--sandbox"),
+    // Someone else's code is always recorded in the container.
+    sandbox: flags.has("--sandbox") || command === "review-requests",
   });
   const againstTip = flags.has("--tip");
   try {
@@ -90,7 +111,7 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
     // --explain-again asks the model again without recording again (--again would do both).
     const explainFlag = flags.has("--explain-again") ? "--explain-again" : "--explain";
     const explain = flags.has(explainFlag) ? (flagValues.get(explainFlag) ?? "auto") : null;
-    if (explain !== null && command !== "compare") throw new UsageError("--explain only applies to compare");
+    if (explain !== null && command !== "compare" && command !== "review-requests") throw new UsageError("--explain only applies to compare and review-requests");
     if (explain !== null && !MODEL_CHOICES.has(explain)) throw new UsageError("--explain takes claude or api (or nothing: claude -p if it runs, else the API)");
     switch (command) {
       case "list":
@@ -110,19 +131,24 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
           throw new UsageError("--sandbox compares commits: name the head (the working tree is yours, recorded on this machine without it)");
         }
         await recordings.exclusively(async () => {
-          // --fetch is for the base ("the latest main"): the head is usually yours.
-          const head = await recordings.plan(headName, { fetch: false });
-          const tip = await recordings.plan(baseName, { fetch: true });
-          const base = againstTip ? tip : await recordings.forkPoint(baseName, tip, head);
-          if (base.id === head.id) throw new RecordingError(`${baseName} and ${headName} are the same recording: nothing to compare`);
-          await recordings.ensure(base, { sameRecorder: true });
-          await recordings.ensure(head, { sameRecorder: true });
-          const review = await recordings.writeReview({ asked: baseName, plan: base }, { asked: headName, plan: head });
-          dependencies.print(`review: ${review.markdown}`);
-          dependencies.print(`open ${DEMO_URL}?base=${base.id}&head=${head.id} (npm run dev -w packages/webview)`);
-          if (explain !== null) await recordings.explain(review, base, head, explain as ModelChoice);
+          const compared = await recordings.compare(baseName, headName, { againstTip });
+          if (explain !== null) await recordings.explain(compared.review, compared.base, compared.head, explain as ModelChoice);
         });
         return 0;
+      }
+      case "review-requests": {
+        const limit = Number(flagValues.get("--limit") ?? DEFAULT_PULL_REQUEST_LIMIT);
+        if (!Number.isInteger(limit) || limit < 1) throw new UsageError("--limit takes a whole number of pull requests");
+        const requested = await dependencies.pullRequests.requestingMyReview(limit);
+        if (requested.length === 0) {
+          dependencies.print("No open pull requests are asking for your review.");
+          return 0;
+        }
+        let failed = 0;
+        await recordings.exclusively(async () => {
+          failed = await recordings.reviewPullRequests(requested, explain as ModelChoice | null);
+        });
+        return failed > 0 ? 1 : 0;
       }
       case "forget":
         if (names.length !== 1) throw new UsageError(`forget <id>\n${USAGE}`);
@@ -140,10 +166,12 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit"]);
+/** A morning's worth: more than this is a queue to triage, not to record unattended. */
+const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
-  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] [--explain[=claude|api]] | forget <id>";
+  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | forget <id>";
 
 class RecordingError extends Error {}
 
@@ -212,6 +240,70 @@ class Recordings {
     const id = recordingIdFor(summary.commit);
     const shown = ref.replace(/^refs\/remotes\//, "");
     return { id, label: `${shown} (${id} ${summary.subject})`, target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } };
+  }
+
+  /**
+   * Records what's missing of the two and saves their review; `asked` names the head in the
+   * review when its ref isn't how a person would say it (a pull request's).
+   */
+  async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string }): Promise<Compared> {
+    // --fetch is for the base ("the latest main"): the head is usually yours.
+    const head = await this.plan(headName, { fetch: false });
+    const tip = await this.plan(baseName, { fetch: true });
+    const base = options.againstTip ? tip : await this.forkPoint(options.baseAsked ?? baseName, tip, head);
+    if (base.id === head.id) throw new RecordingError(`${baseName} and ${options.headAsked ?? headName} are the same recording: nothing to compare`);
+    await this.ensure(base, { sameRecorder: true });
+    await this.ensure(head, { sameRecorder: true });
+    const review = await this.writeReview({ asked: options.baseAsked ?? baseName, plan: base }, { asked: options.headAsked ?? headName, plan: head });
+    this.dependencies.print(`review: ${review.markdown}`);
+    this.dependencies.print(`open ${DEMO_URL}?base=${base.id}&head=${head.id} (npm run dev -w packages/webview)`);
+    return { review, base, head };
+  }
+
+  /**
+   * Each pull request fetched (GitHub's refs/pull/<n>/head, so forks too), recorded in the
+   * sandbox and reviewed against where it left its base, explained if asked. One that fails is
+   * noted and the rest go on. Writes .runshape/reviews/requested.json for the morning page;
+   * returns how many failed.
+   */
+  async reviewPullRequests(requested: PullRequestSummary[], explain: ModelChoice | null): Promise<number> {
+    const entries: RequestedReview[] = [];
+    for (const pr of requested) {
+      const name = `#${pr.number} ${pr.title}`;
+      const entry: RequestedReview = { ...pr, head: pr.headRefOid, review: null, explained: false, problem: null, summary: null };
+      entries.push(entry);
+      try {
+        const headRef = `refs/runshape/pr/${pr.number}`;
+        const baseRef = `refs/remotes/${REMOTE}/${pr.baseRefName}`;
+        try {
+          await this.git.run(["fetch", "--quiet", REMOTE, "--end-of-options", `+refs/pull/${pr.number}/head:${headRef}`, `+refs/heads/${pr.baseRefName}:${baseRef}`]);
+        } catch (error) {
+          throw new RecordingError(`fetching it failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const compared = await this.compare(baseRef, headRef, { againstTip: false, headAsked: name, baseAsked: pr.baseRefName });
+        entry.head = compared.head.summary.commit;
+        entry.review = basename(compared.review.directory);
+        entry.summary = reviewSummary(compared.review.bundle);
+        if (explain !== null) {
+          try {
+            await this.explain(compared.review, compared.base, compared.head, explain);
+            entry.explained = true;
+          } catch (error) {
+            entry.problem = error instanceof Error ? error.message : String(error);
+          }
+        }
+        this.dependencies.print(`${name}: reviewed${entry.explained ? " and explained" : entry.problem ? `; ${entry.problem}` : ""}`);
+      } catch (error) {
+        if (!(error instanceof RecordingError || error instanceof GitError)) throw error;
+        entry.problem = error.message;
+        this.dependencies.print(`${name}: failed: ${error.message}`);
+      }
+    }
+    const index = { format: "runshape-requested-reviews", version: 1, createdAt: this.dependencies.now().toISOString(), pullRequests: entries };
+    const reviews = join(this.dependencies.root, ".runshape", "reviews");
+    await mkdir(reviews, { recursive: true });
+    await writeFile(join(reviews, REQUESTED_INDEX), `${JSON.stringify(index, null, 2)}\n`);
+    return entries.filter((entry) => entry.review === null).length;
   }
 
   /**
@@ -538,6 +630,37 @@ const REVIEW_JSON = "review.json";
 const REVIEW_MARKDOWN = "review.md";
 const EXPLANATION_JSON = "explanation.json";
 const EXPLANATION_MARKDOWN = "explanation.md";
+
+/** A pull request in requested.json: what it is, and what came of reviewing it. */
+interface RequestedReview extends PullRequestSummary {
+  /** The commit reviewed: the fetched head, which may be newer than the listed one. */
+  head: string;
+  /** Its review's folder under .runshape/reviews; null when it couldn't be reviewed. */
+  review: string | null;
+  explained: boolean;
+  problem: string | null;
+  summary: ReturnType<typeof reviewSummary> | null;
+}
+
+/** What a morning's list shows of a review before it's opened. */
+function reviewSummary(bundle: ReviewBundle) {
+  return {
+    nowFailing: bundle.review.counts["now-failing"],
+    silentChanges: bundle.review.counts["silent-change"],
+    newTests: bundle.review.counts.added,
+    decided: bundle.architecture.decided.length + bundle.architecture.rules.added.length + bundle.architecture.rules.removed.length + bundle.architecture.rules.changed.length,
+    needsDecision: bundle.architecture.unplaced.length,
+    routesChanged: bundle.routes.routes.length,
+  };
+}
+
+const REQUESTED_INDEX = "requested.json";
+
+interface Compared {
+  review: SavedReview;
+  base: Plan;
+  head: Plan;
+}
 
 interface SavedReview {
   bundle: ReviewBundle;

@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 
 import { chooseModel } from "./models";
 import { DockerRecorder } from "./docker-recorder";
+import { GhPullRequests } from "./pull-requests";
 import { runRecordings } from "./recordings";
 import { ShellRecorder } from "./shell-recorder";
 
@@ -18,4 +19,5 @@ process.exitCode = await runRecordings(process.argv.slice(2), {
   print: (line) => console.log(line),
   now: () => new Date(),
   models: (choice) => chooseModel(choice, process.env),
+  pullRequests: new GhPullRequests(root),
 });

@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import type { LanguageModel } from "@runshape/core";
-import { Recorder, RecordTarget, runRecordings } from "../src/recordings";
+import { PullRequestSummary, Recorder, RecordTarget, runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
 const FIXTURE = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "go-shop");
@@ -54,14 +54,22 @@ class FakeModel implements LanguageModel {
   }
 }
 
-async function run(root: string, argv: string[], recorder = new FixtureRecorder(), model = new FakeModel(), sandbox = new FixtureRecorder(false, "docker:runshape-recorder:test")) {
+async function run(
+  root: string,
+  argv: string[],
+  recorder = new FixtureRecorder(),
+  model = new FakeModel(),
+  sandbox = new FixtureRecorder(false, "docker:runshape-recorder:test"),
+  requested: PullRequestSummary[] = [],
+) {
   const lines: string[] = [];
   const chosen: string[] = [];
   const models = async (choice: string) => {
     chosen.push(choice);
     return model;
   };
-  const code = await runRecordings(argv, { root, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models });
+  const pullRequests = { requestingMyReview: async () => requested };
+  const code = await runRecordings(argv, { root, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
   return { code, lines, recorder, model, chosen, sandbox };
 }
 
@@ -471,6 +479,78 @@ describe("--sandbox: commits recorded in a container", () => {
   });
 });
 
+describe("runshape review-requests: every open PR that asks for your review", () => {
+  // Case 1: a lead's morning. Each PR's head (GitHub's refs/pull/<n>/head) is compared with
+  // where it left its base, recorded in the sandbox: it's someone else's code.
+  function withPullRequests() {
+    const { root, commits } = repository();
+    const origin = join(mkdtempSync(join(tmpdir(), "runshape-origin-")), "origin");
+    gitIn(root)("clone", "--quiet", "--branch", "main", root, origin);
+    gitIn(origin)("checkout", "--quiet", "-b", "pr-work");
+    const prHead = commitIn(origin, "A teammate's change");
+    gitIn(origin)("update-ref", "refs/pull/7/head", prHead);
+    gitIn(root)("remote", "add", "origin", origin);
+    const pr = (number: number, headRefOid: string, title: string): PullRequestSummary => ({
+      number,
+      title,
+      url: `https://github.com/example/shop/pull/${number}`,
+      author: "teammate",
+      baseRefName: "main",
+      headRefName: `pr-${number}`,
+      headRefOid,
+      isCrossRepository: false,
+      updatedAt: "2026-10-16T02:00:00Z",
+    });
+    return { root, commits, prHead, pr };
+  }
+
+  test("each PR recorded in the sandbox and reviewed against where it left its base; one that fails doesn't stop the rest", async () => {
+    const { root, commits, prHead, pr } = withPullRequests();
+    const requested = [pr(7, prHead, "Teach orders to refuse"), pr(8, "0".repeat(40), "A PR whose head is gone")];
+
+    const { code, lines, recorder, sandbox } = await run(root, ["review-requests"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), requested);
+
+    const index = JSON.parse(readFileSync(join(root, ".runshape", "reviews", "requested.json"), "utf8"));
+    expect({
+      code,
+      host: recorder.recorded,
+      sandbox: sandbox.recorded,
+      // The failure's line goes on with git's reason ("couldn't find remote ref refs/pull/8/head").
+      summary: lines.filter((line) => line.startsWith("#")).map((line) => line.split(": ").slice(0, 3).join(": ")),
+      index: index.pullRequests.map((entry: { number: number; head: string; review: string | null; problem: string | null }) => ({
+        number: entry.number,
+        head: entry.head.slice(0, 7),
+        review: entry.review,
+        problem: entry.problem?.split(":")[0] ?? null,
+      })),
+    }).toEqual({
+      code: 1,
+      host: [],
+      sandbox: [commits.second!.slice(0, 7), prHead.slice(0, 7)],
+      summary: [`#7 Teach orders to refuse: reviewed`, `#8 A PR whose head is gone: failed: fetching it failed`],
+      index: [
+        { number: 7, head: prHead.slice(0, 7), review: `${commits.second!.slice(0, 12)}..${prHead.slice(0, 12)}`, problem: null },
+        { number: 8, head: "0000000", review: null, problem: "fetching it failed" },
+      ],
+    });
+    const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}..${prHead.slice(0, 12)}`, "review.json"), "utf8"));
+    expect(bundle.head.asked).toBe("#7 Teach orders to refuse");
+  });
+
+  test("with --explain each review is explained too; with no PRs asking, it says so", async () => {
+    const { root, prHead, pr } = withPullRequests();
+
+    const explained = await run(root, ["review-requests", "--explain"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), [pr(7, prHead, "Teach orders to refuse")]);
+    const none = await run(root, ["review-requests"]);
+
+    expect({ explained: explained.lines.filter((line) => line.startsWith("#")), asked: explained.model.prompts.length, none: none.lines }).toEqual({
+      explained: ["#7 Teach orders to refuse: reviewed and explained"],
+      asked: 1,
+      none: ["No open pull requests are asking for your review."],
+    });
+  });
+});
+
 describe("runshape compare --explain", () => {
   // Explaining sends the review (names only) and the commit messages to a language model:
   // claude -p, the Anthropic API, or (in VS Code) the editor's. Never without being asked.
@@ -572,7 +652,7 @@ describe("runshape compare --explain", () => {
 
     expect(results.map(({ code, lines }) => [code, lines[0]])).toEqual([
       [1, "runshape: --explain takes claude or api (or nothing: claude -p if it runs, else the API)"],
-      [1, "runshape: --explain only applies to compare"],
+      [1, "runshape: --explain only applies to compare and review-requests"],
     ]);
   });
 });
