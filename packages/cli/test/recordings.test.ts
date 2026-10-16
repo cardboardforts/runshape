@@ -69,6 +69,8 @@ describe("runshape record", () => {
       recorder: "recorder-go 0.1.0",
       recorderSource: expect.stringMatching(/^[0-9a-f]{16}$/),
       tests: { total: 5, failed: 0 },
+      // No runshape.json at that commit: every zone inferred, in the default style.
+      architecture: { style: "hexagonal", rules: 0, declared: 0, inferred: 9, problem: null },
     });
     // A recording directory is itself a traces directory: runshape-review-md and the extension read it.
     expect(readFileSync(join(root, ".runshape", "recordings", id, "latest.json"), "utf8")).toBe('{"run":"run"}');
@@ -140,6 +142,92 @@ describe("runshape record", () => {
   });
 });
 
+/** Rules for the fixture recording's names (go-shop): two of its packages declared. */
+const GO_SHOP_RULES = `${JSON.stringify(
+  {
+    version: 2,
+    style: "hexagonal",
+    zones: [
+      { match: "example\\.com.shop.internal.orders.**", zone: "core", reason: "the order rules", by: "user" },
+      { match: "example\\.com.shop.internal.storage.**", zone: "outbound-adapter", reason: "stores orders", by: "llm" },
+    ],
+  },
+  null,
+  2,
+)}\n`;
+
+function commitFile(root: string, file: string, text: string, subject: string): string {
+  writeFileSync(join(root, file), text);
+  gitIn(root)("add", file);
+  gitIn(root)("commit", "--quiet", "-m", subject);
+  return gitIn(root)("rev-parse", "HEAD");
+}
+
+const recordingFile = (root: string, id: string, file: string) => readFileSync(join(root, ".runshape", "recordings", id, file), "utf8");
+
+describe("each recording keeps its commit's architecture", () => {
+  // The user's decision (2026-10-16): zones are committed with the code and approved with it,
+  // so each commit is drawn with its own runshape.json, and what it placed where is kept for
+  // a person to read.
+  test("a commit's runshape.json is kept as it was, with every class's place and who decided it", async () => {
+    const { root } = repository();
+    const commit = commitFile(root, "runshape.json", GO_SHOP_RULES, "Declare the shop's zones");
+    const id = commit.slice(0, 12);
+
+    await run(root, ["record", "HEAD"]);
+
+    const architecture = JSON.parse(recordingFile(root, id, "architecture.json"));
+    expect({
+      rulesFile: recordingFile(root, id, "runshape.json"),
+      summary: metadataOf(root, id).architecture,
+      placed: architecture.placements.map((p: { component: string; zone: string; decidedBy: string | null }) => `${p.component}: ${p.zone} (${p.decidedBy ?? "inferred"})`),
+    }).toEqual({
+      rulesFile: GO_SHOP_RULES,
+      summary: { style: "hexagonal", rules: 2, declared: 5, inferred: 4, problem: null },
+      placed: [
+        "example\\.com.shop.internal.app: core (inferred)",
+        "example\\.com.shop.internal.orders: core (user)",
+        "example\\.com.shop.internal.orders.Order: core (user)",
+        "example\\.com.shop.internal.orders.Service: core (user)",
+        "example\\.com.shop.internal.storage: outbound-adapter (llm)",
+        "example\\.com.shop.internal.storage.MemoryRepository: outbound-adapter (llm)",
+        "example\\.com.shop.internal.web: core (inferred)",
+        "example\\.com.shop.internal.web.Handler: inbound-adapter (inferred)",
+        "example\\.com.shop.internal.web.statusRecorder: core (inferred)",
+      ],
+    });
+  });
+
+  test("the working tree's runshape.json is the file on disk, edits not committed yet included", async () => {
+    const { root } = repository();
+    writeFileSync(join(root, "runshape.json"), GO_SHOP_RULES);
+
+    await run(root, ["record", "working"]);
+
+    expect(metadataOf(root, "working").architecture).toEqual({ style: "hexagonal", rules: 2, declared: 5, inferred: 4, problem: null });
+  });
+
+  test("an invalid runshape.json is kept and reported, the code recorded anyway with every zone inferred", async () => {
+    const { root } = repository();
+    const commit = commitFile(root, "runshape.json", '{"version": 2, "zones": [{"match": "x"}]}', "Break the zones");
+    const id = commit.slice(0, 12);
+
+    const { lines } = await run(root, ["record", "HEAD"]);
+
+    expect({ said: lines[1], summary: metadataOf(root, id).architecture, kept: existsSync(join(root, ".runshape", "recordings", id, "runshape.json")) }).toEqual({
+      said: `runshape.json at HEAD (${id} Break the zones) is invalid, so every zone is inferred: zones[0].zone must be one of inbound-adapter, core, outbound-adapter (the hexagonal zones); zones[0].reason must say why`,
+      summary: {
+        style: "hexagonal",
+        rules: 0,
+        declared: 0,
+        inferred: 9,
+        problem: "zones[0].zone must be one of inbound-adapter, core, outbound-adapter (the hexagonal zones); zones[0].reason must say why",
+      },
+      kept: true,
+    });
+  });
+});
+
 describe("runshape compare", () => {
   test("comparing a recording with itself is refused before anything is recorded", async () => {
     const { root } = repository();
@@ -195,7 +283,7 @@ describe("runshape list", () => {
         "Working tree: feature at " + commits.third!.slice(0, 7) + ", no uncommitted changes (not recorded: npm run runshape -- record working)",
         "",
         "Recorded (1):",
-        `  ${commits.second!.slice(0, 12)}  main  Second  5 tests  recorded 2026-10-14 12:00`,
+        `  ${commits.second!.slice(0, 12)}  main  Second  5 tests  hexagonal: no rules, 9 inferred  recorded 2026-10-14 12:00`,
         "",
         "Not recorded:",
         "  feature (checked out)  Feature work      npm run runshape -- record feature",

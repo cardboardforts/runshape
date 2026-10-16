@@ -217,7 +217,12 @@ Accepted risks:
   process. A recording is written beside the library and moved into place when complete; an
   interrupted one is cleared by the next run. `--fetch` fetches a branch (not a tag or a
   commit) and, on compare, only the base. Untracked files count as uncommitted changes (a new
-  test file runs). Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
+  test file runs). Each recording keeps its commit's architecture: that commit's
+  runshape.json as it was (the working tree's as on disk) and `architecture.json`, every
+  project class and module with its zone, the rule and who decided it (user, llm, detected)
+  or the behaviour it was inferred from, over every phase. An invalid runshape.json is kept
+  and reported; its recording is placed by inference. Comparisons don't use it yet: both
+  sides are still drawn with the current rules. Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
   server reads .runshape/recordings and runs `git` for the list (local only; vite's host check
   and CORS apply before its routes).
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the

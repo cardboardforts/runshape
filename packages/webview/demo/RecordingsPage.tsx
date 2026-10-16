@@ -87,6 +87,7 @@ function Library({ overview }: { overview: LibraryOverview }) {
                   <th scope="col">Branches at it</th>
                   <th scope="col">Commit</th>
                   <th scope="col">Tests</th>
+                  <th scope="col">Zones</th>
                   <th scope="col">Recorded</th>
                   <th scope="col">
                     <span className="visually-hidden">Open</span>
@@ -104,6 +105,9 @@ function Library({ overview }: { overview: LibraryOverview }) {
                     <td>
                       {recording.tests.total}
                       {recording.tests.failed > 0 && <span className="failed"> ({recording.tests.failed} failed)</span>}
+                    </td>
+                    <td>
+                      <Zones recording={recording} />
                     </td>
                     <td title={recording.recordedAt}>{when(recording.recordedAt)}</td>
                     <td>
@@ -246,6 +250,29 @@ function workingRecordingNote(recording: RecordingMetadata | undefined, working:
   const at = `Last recorded ${when(recording.recordedAt)}`;
   if (recording.commit !== working.commit) return `${at}, at ${recording.commit.slice(0, 7)}: before your latest commit, so it's out of date.`;
   return `${at}${working.dirty ? "; changes since then aren't in it" : ""}.`;
+}
+
+/**
+ * The commit's runshape.json applied to its recording, linked to the placements file: every
+ * class's zone and who decided it, for a person to read through.
+ */
+function Zones({ recording }: { recording: RecordingMetadata }) {
+  const architecture = recording.architecture as RecordingMetadata["architecture"] | undefined;
+  if (architecture === undefined) return <span className="muted">not kept (recorded before zones were)</span>;
+  const summary =
+    architecture.problem !== null
+      ? "runshape.json invalid: all inferred"
+      : architecture.rules === 0
+        ? `${architecture.style}, no rules`
+        : `${architecture.style}, ${architecture.rules} rule${architecture.rules === 1 ? "" : "s"}`;
+  return (
+    <span title={architecture.problem ?? `${architecture.declared} placed by rules, ${architecture.inferred} inferred from behaviour`}>
+      {summary} ·{" "}
+      <a href={`/__runshape/recordings/${encodeURIComponent(recording.id)}/architecture.json`} target="_blank" rel="noreferrer">
+        {architecture.declared + architecture.inferred} placed
+      </a>
+    </span>
+  );
 }
 
 function namesFor(recording: RecordingMetadata, refs: RefSummary[]): string[] {

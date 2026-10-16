@@ -8,6 +8,7 @@ export * from "./function-ref";
 export * from "./function-view";
 export * from "./moves";
 export * from "./object-graph";
+export * from "./placements";
 export * from "./replay";
 export * from "./review";
 export * from "./routes";

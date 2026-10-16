@@ -4,8 +4,10 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { loadLatestRun, Outcome } from "@runshape/core";
+import { ArchitectureSnapshot, buildPlacements, loadLatestRun, Outcome, RULES_FILE, Run, ZoneRules, ZoneRulesError, ZoneSource } from "@runshape/core";
 import {
+  ARCHITECTURE_FILE,
+  ArchitectureSummary,
   CommitSummary,
   GitCli,
   GitError,
@@ -231,8 +233,11 @@ class Recordings {
     await mkdir(incoming, { recursive: true });
     try {
       const recorderSource = await this.recorderSource();
+      const rules = await this.rulesAt(target);
+      if (rules.problem !== null) this.dependencies.print(`${RULES_FILE} at ${plan.label} is invalid, so every zone is inferred: ${rules.problem}`);
       await this.dependencies.recorder.record(target, incoming);
       const run = await loadLatestRun({ readText: (path) => readFile(join(incoming, path), "utf8") });
+      const architecture = await this.keepArchitecture(incoming, run, rules);
       const metadata: RecordingMetadata = {
         id,
         commit: summary.commit,
@@ -244,6 +249,7 @@ class Recordings {
         recorder: run.recorderVersion ?? "unknown",
         recorderSource,
         tests: { total: run.scenarios.length, failed: run.scenarios.filter((s) => FAILING.has(s.outcome)).length },
+        architecture,
       };
       await writeFile(join(incoming, METADATA_FILE), `${JSON.stringify(metadata, null, 2)}\n`);
       await this.replace(id, incoming);
@@ -252,6 +258,33 @@ class Recordings {
       await rm(incoming, { recursive: true, force: true });
       throw new RecordingError(`recording ${plan.label} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /** The target's own runshape.json: the commit's as committed, the working tree's as on disk. */
+  private async rulesAt(target: RecordTarget): Promise<CommittedRules> {
+    let text: string | null;
+    if (target.kind === "working") {
+      text = await readFile(join(this.dependencies.root, RULES_FILE), "utf8").catch(() => null);
+    } else {
+      const listed = await this.git.run(["ls-tree", "--name-only", target.commit, "--", RULES_FILE]);
+      text = listed.trim() === "" ? null : await this.git.run(["show", `${target.commit}:${RULES_FILE}`]);
+    }
+    if (text === null) return { text: null, rules: ZoneRules.none(), problem: null };
+    try {
+      return { text, rules: ZoneRules.parse(text), problem: null };
+    } catch (error) {
+      if (!(error instanceof ZoneRulesError)) throw error;
+      return { text, rules: ZoneRules.none(), problem: error.problems.join("; ") };
+    }
+  }
+
+  /** Writes the rules as they were and where they put each class, for a person to read; returns the summary. */
+  private async keepArchitecture(directory: string, run: Run, committed: CommittedRules): Promise<ArchitectureSummary> {
+    const snapshot: ArchitectureSnapshot = buildPlacements(run, committed.rules);
+    if (committed.text !== null) await writeFile(join(directory, RULES_FILE), committed.text);
+    await writeFile(join(directory, ARCHITECTURE_FILE), `${JSON.stringify({ ...snapshot, problem: committed.problem }, null, 2)}\n`);
+    const declared = snapshot.placements.filter((p) => p.source === ZoneSource.Rule).length;
+    return { style: snapshot.style, rules: snapshot.rules.length, declared, inferred: snapshot.placements.length - declared, problem: committed.problem };
   }
 
   /** The old recording is set aside, not deleted, until the new one is in place. */
@@ -267,6 +300,14 @@ class Recordings {
     }
     if (hadOne) await rm(replaced, { recursive: true, force: true });
   }
+}
+
+/** A target's runshape.json: its text as committed (null when there's none), and the rules read from it. */
+interface CommittedRules {
+  text: string | null;
+  rules: ZoneRules;
+  /** Why the text couldn't be used; the rules are then none, and every zone inferred. */
+  problem: string | null;
 }
 
 /** A recording being replaced, kept until its replacement is in place. */
@@ -302,7 +343,7 @@ function listing(overview: LibraryOverview): string[] {
     for (const recording of recordings) {
       const names = recording.id === WORKING_TREE_ID ? [`working tree (${recording.branch ?? "detached"})`] : refs.filter((ref) => ref.recordingId === recording.id).map((ref) => ref.name);
       const failed = recording.tests.failed > 0 ? `, ${recording.tests.failed} failed` : "";
-      lines.push(`  ${recording.id.padEnd(12)}  ${names.join(", ") || "-"}  ${recording.subject}  ${recording.tests.total} tests${failed}  recorded ${when(recording.recordedAt)}`);
+      lines.push(`  ${recording.id.padEnd(12)}  ${names.join(", ") || "-"}  ${recording.subject}  ${recording.tests.total} tests${failed}  ${zonesOf(recording.architecture)}  recorded ${when(recording.recordedAt)}`);
     }
   }
   const unrecorded = refs.filter((ref) => ref.recordingId === null);
@@ -318,6 +359,14 @@ function listing(overview: LibraryOverview): string[] {
   for (const problem of overview.problems) lines.push(`  (skipped ${problem})`);
   lines.push("", `Compare any two: npm run runshape -- compare <base> [<head>], or browse ${DEMO_URL}`);
   return lines;
+}
+
+/** "hexagonal: 2 rules place 5, 4 inferred"; recordings made before zones were kept have none. */
+export function zonesOf(architecture: ArchitectureSummary | undefined): string {
+  if (architecture === undefined) return "zones not kept";
+  if (architecture.problem !== null) return `${RULES_FILE} invalid, ${architecture.inferred} inferred`;
+  if (architecture.rules === 0) return `${architecture.style}: no rules, ${architecture.inferred} inferred`;
+  return `${architecture.style}: ${architecture.rules} rule${architecture.rules === 1 ? "" : "s"} place ${architecture.declared}, ${architecture.inferred} inferred`;
 }
 
 const MAX_SUBJECT = 50;

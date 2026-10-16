@@ -24,7 +24,8 @@ function recordAt(library: string, metadata: RecordingMetadata): void {
 }
 
 function metadata(id: string, commit: string, subject: string, recordedAt: string, extra: Partial<RecordingMetadata> = {}): RecordingMetadata {
-  return { id, commit, subject, committedAt: "2026-10-01T10:00:00Z", branch: null, dirty: false, recordedAt, recorder: "recorder-ts", recorderSource: "0123456789abcdef", tests: { total: 3, failed: 0 }, ...extra };
+  return { id, commit, subject, committedAt: "2026-10-01T10:00:00Z", branch: null, dirty: false, recordedAt, recorder: "recorder-ts", recorderSource: "0123456789abcdef", tests: { total: 3, failed: 0 },
+    architecture: { style: "hexagonal", rules: 0, declared: 0, inferred: 3, problem: null }, ...extra };
 }
 
 describe("RecordingLibrary", () => {

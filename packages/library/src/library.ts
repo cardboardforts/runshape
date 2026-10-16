@@ -19,7 +19,22 @@ export interface RecordingMetadata {
   /** A hash of the recorder's source when it recorded: recordings by different recorders differ for that alone. */
   recorderSource: string;
   tests: { total: number; failed: number };
+  /** The commit's runshape.json applied to this recording (placements in architecture.json). */
+  architecture: ArchitectureSummary;
 }
+
+export interface ArchitectureSummary {
+  style: string;
+  rules: number;
+  /** Classes and modules a rule placed, and those placed by their recorded behaviour. */
+  declared: number;
+  inferred: number;
+  /** Why runshape.json couldn't be used, when it couldn't: then everything is inferred. */
+  problem: string | null;
+}
+
+/** Where each recording keeps its commit's placements, and the runshape.json they came from. */
+export const ARCHITECTURE_FILE = "architecture.json";
 
 /** A branch tip, and the recording of exactly that commit if there is one. */
 export interface RefSummary {
