@@ -110,8 +110,8 @@ describe("chooseModel", () => {
     expect(names.map((m) => (typeof m === "string" ? m : m.name))).toEqual([
       "claude-cli",
       "anthropic:claude-sonnet-5-5",
-      "no language model to explain with: install the claude command (or point RUNSHAPE_CLAUDE at it), or set ANTHROPIC_API_KEY",
-      "--explain=api needs ANTHROPIC_API_KEY",
+      "no language model: install the claude command (or point RUNSHAPE_CLAUDE at it), or set ANTHROPIC_API_KEY",
+      "the API model (=api) needs ANTHROPIC_API_KEY",
     ]);
   });
 });

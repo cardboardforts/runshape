@@ -61,11 +61,14 @@ async function run(
   model = new FakeModel(),
   sandbox = new FixtureRecorder(false, "docker:runshape-recorder:test"),
   requested: PullRequestSummary[] = [],
+  /** What choosing a model fails with: no claude command and no key, say. */
+  unavailable: Error | null = null,
 ) {
   const lines: string[] = [];
   const chosen: string[] = [];
   const models = async (choice: string) => {
     chosen.push(choice);
+    if (unavailable !== null) throw unavailable;
     return model;
   };
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
@@ -909,6 +912,127 @@ describe("runshape readmes: a guide to each source folder, from the recording", 
       again: 4,
       againRecorded: [],
     });
+  });
+});
+
+describe("runshape readmes --describe: a model drafts what each new folder is for", () => {
+  const described = (text: string) => new FakeModel(JSON.stringify({ description: text }));
+  function shop() {
+    const { root } = repository();
+    for (const folder of ["internal/web", "internal/orders", "internal/storage", "internal/app", "cmd/shop"]) mkdirSync(join(root, folder), { recursive: true });
+    writeFileSync(join(root, "internal/orders/README.md"), "# Orders\n\nThe shop's rules.\n\n<!-- runshape:begin -->\nold\n<!-- runshape:end -->\n");
+    writeFileSync(join(root, "internal/web/handler.go"), "// Package web serves the shop over HTTP.\npackage web\n");
+    return root;
+  }
+
+  test("only READMEs still holding the line left for a person are described, each from its own guide and opening comments; once drafted, never asked again", async () => {
+    const root = shop();
+    const model = described("What this folder is for.");
+
+    const first = await run(root, ["readmes", "--describe", "--write"], undefined, model);
+    const asked = model.prompts.length;
+    const again = await run(root, ["readmes", "--describe", "--write"], undefined, model);
+
+    expect({
+      code: first.code,
+      chosen: first.chosen,
+      // cmd/shop, internal/app, internal/storage and internal/web are new; orders has its own opening.
+      asked,
+      webPrompt: model.prompts.find((prompt) => prompt.includes("=== Guide to internal/web ==="))?.split("=== Opening comments ===\n")[1],
+      web: readFileSync(join(root, "internal/web/README.md"), "utf8").split("\n").slice(0, 6),
+      orders: readFileSync(join(root, "internal/orders/README.md"), "utf8").split("\n").slice(0, 3),
+      said: first.lines.filter((line) => line.includes("described")),
+      askedAgain: model.prompts.length - asked,
+      againCode: again.code,
+    }).toEqual({
+      code: 0,
+      chosen: ["auto"],
+      asked: 4,
+      webPrompt: "--- handler.go\nPackage web serves the shop over HTTP.",
+      web: [
+        "# internal/web",
+        "",
+        "What this folder is for.",
+        "",
+        "_Drafted by fake-model from the guide below and the files' opening comments: check it, and edit it as you would your own; runshape won't change it._",
+        "",
+      ],
+      orders: ["# Orders", "", "The shop's rules."],
+      said: Array(4).fill("  described by fake-model"),
+      askedAgain: 0,
+      againCode: 0,
+    });
+  });
+
+  test("without --write the model isn't asked, or even chosen: a README it would describe is one that would update", async () => {
+    const root = shop();
+    const model = described("unused");
+
+    // Guides written without drafts: each README still holds the line left for a person.
+    await run(root, ["readmes", "--write"]);
+
+    const { code, lines, chosen } = await run(root, ["readmes", "--describe=api"], undefined, model);
+
+    expect({ code, chosen, asked: model.prompts.length, app: lines.slice(lines.indexOf("internal/app/README.md: would update"), lines.indexOf("internal/app/README.md: would update") + 2), would: lines.filter((line) => line.includes("would ask")).length, unwritten: readFileSync(join(root, "internal/web/README.md"), "utf8").includes("_What this folder is for") }).toEqual({
+      code: 0,
+      // Not even chosen: choosing runs claude --version, or needs a key.
+      chosen: [],
+      asked: 0,
+      app: ["internal/app/README.md: would update", "  would ask a model to describe it"],
+      would: 4,
+      unwritten: true,
+    });
+  });
+
+  test("an answer that can't be used: the guide is still written, the line left for a person kept, every failure said, and it exits 1", async () => {
+    const root = shop();
+
+    const { code, lines } = await run(root, ["readmes", "--describe", "--write"], undefined, new FakeModel("no JSON here"));
+
+    expect({
+      code,
+      failures: lines.filter((line) => line.startsWith("  ! ")),
+      web: readFileSync(join(root, "internal/web/README.md"), "utf8").split("\n").slice(0, 3),
+    }).toEqual({
+      code: 1,
+      failures: Array(4).fill("  ! not described: the model's description can't be used: the answer holds no JSON object"),
+      web: ["# internal/web", "", "_What this folder is for, in a sentence or two: yours to write; runshape keeps the part below._"],
+    });
+  });
+
+  test("a source file that's a link out of the project isn't read for the model", async () => {
+    const root = shop();
+    const outside = mkdtempSync(join(tmpdir(), "runshape-outside-"));
+    writeFileSync(join(outside, "secret.go"), "// a secret from elsewhere\npackage x\n");
+    rmSync(join(root, "internal/web/handler.go"));
+    symlinkSync(join(outside, "secret.go"), join(root, "internal/web/handler.go"));
+    const model = described("The web side.");
+
+    await run(root, ["readmes", "--describe", "--write"], undefined, model);
+
+    expect({ asked: model.prompts.length, leaked: model.prompts.some((prompt) => prompt.includes("secret")) }).toEqual({ asked: 4, leaked: false });
+  });
+
+  test("no model to be had: every draft fails with why, once chosen; the guides are still written", async () => {
+    const root = shop();
+
+    const { code, chosen, lines } = await run(root, ["readmes", "--describe", "--write"], undefined, undefined, undefined, [], new Error("no language model: install the claude command (or point RUNSHAPE_CLAUDE at it), or set ANTHROPIC_API_KEY"));
+
+    expect({ code, chosen, failures: lines.filter((line) => line.startsWith("  ! ")), web: existsSync(join(root, "internal/web/README.md")) }).toEqual({
+      code: 1,
+      chosen: ["auto"],
+      failures: Array(4).fill("  ! not described: no language model: install the claude command (or point RUNSHAPE_CLAUDE at it), or set ANTHROPIC_API_KEY"),
+      web: true,
+    });
+  });
+
+  test("--describe is for readmes, and takes claude or api", async () => {
+    const { root } = repository();
+
+    expect([(await run(root, ["list", "--describe"])).lines[0], (await run(root, ["readmes", "--describe=gpt"])).lines[0]]).toEqual([
+      "runshape: --describe only applies to readmes",
+      "runshape: --describe takes claude or api (or nothing: claude -p if it runs, else the API)",
+    ]);
   });
 });
 

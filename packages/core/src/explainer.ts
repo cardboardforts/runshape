@@ -1,5 +1,6 @@
 // Why a change was made, as its authors said, beside what it did: see explainer.test.ts.
 import { LanguageModel } from "./language-model";
+import { firstJsonObject } from "./json-answer";
 import { ReviewBundle, reviewBundleMarkdown } from "./review-bundle";
 
 export interface CommitMessage {
@@ -139,32 +140,6 @@ export function parseExplanation(answer: string, meta: Pick<Explanation, "model"
 
 /** A cited commit hash: at least as long as git's shortest abbreviation. */
 const MIN_CITED_HASH = 7;
-
-/** The first `{…}` in the answer that parses, scanning braces outside strings: prose around it can hold braces too. */
-function firstJsonObject(answer: string): Record<string, unknown> | null {
-  for (let start = answer.indexOf("{"); start !== -1; start = answer.indexOf("{", start + 1)) {
-    let depth = 0;
-    let inString = false;
-    for (let i = start; i < answer.length; i += 1) {
-      const char = answer[i];
-      if (inString) {
-        if (char === "\\") i += 1;
-        else if (char === '"') inString = false;
-      } else if (char === '"') inString = true;
-      else if (char === "{") depth += 1;
-      else if (char === "}" && --depth === 0) {
-        try {
-          const value = JSON.parse(answer.slice(start, i + 1)) as unknown;
-          if (typeof value === "object" && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
-        } catch {
-          // not JSON after all: try the next opening brace
-        }
-        break;
-      }
-    }
-  }
-  return null;
-}
 
 /** The model's account, labelled as one: what it said, where each reason came from. */
 export function explanationMarkdown(explanation: Explanation): string {

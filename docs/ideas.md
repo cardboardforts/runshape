@@ -138,6 +138,10 @@ function doesn't fit the folder's theme". Those findings prompt refactoring deci
   found the one untested source file (cli's shell-recorder.ts); with every zone inferred (no
   runshape.json) it can't yet ask "does this belong here?" of Runshape's own code.
   Next: a runshape.json for Runshape (the zone-placement pass), and the folder prose from a model.
+- **Folder prose (2026-10-17):** `readmes --describe --write` asks a model (the LanguageModel
+  port) for a paragraph on what the folder is for, from its guide and its files' opening
+  comments, and puts it in the line left for a person, marked as the model's. Drafted once:
+  after that it's the person's, so it never churns. Drift shows as the guide changing under it.
 - **First evaluation (2026-10-16):** the skeleton (files, classes, zones and why) comes from
   placements with no model involved; only the plain-language prose needs one. Placements
   cover what the recorded tests ran, so a folder's untested files would be missing from its

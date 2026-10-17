@@ -12,13 +12,18 @@ import {
   byCodeUnit,
   ChangeContext,
   CommitMessage,
+  describeFolder,
+  describeReadme,
   explainChange,
   Explanation,
   explanationInputs,
   explanationMarkdown,
+  FolderGuide,
   folderGuideMarkdown,
   LanguageModel,
   mergeIntoReadme,
+  needsDescription,
+  openingComment,
   loadLatestRun,
   ReviewBundle,
   Outcome,
@@ -113,6 +118,9 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
     const explain = flags.has(explainFlag) ? (flagValues.get(explainFlag) ?? "auto") : null;
     if (explain !== null && command !== "compare" && command !== "review-requests") throw new UsageError("--explain only applies to compare and review-requests");
     if (explain !== null && !MODEL_CHOICES.has(explain)) throw new UsageError("--explain takes claude or api (or nothing: claude -p if it runs, else the API)");
+    const describe = flags.has("--describe") ? (flagValues.get("--describe") ?? "auto") : null;
+    if (describe !== null && command !== "readmes") throw new UsageError("--describe only applies to readmes");
+    if (describe !== null && !MODEL_CHOICES.has(describe)) throw new UsageError("--describe takes claude or api (or nothing: claude -p if it runs, else the API)");
     switch (command) {
       case "list":
         await recordings.list();
@@ -156,9 +164,13 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
         });
         return failed > 0 ? 1 : 0;
       }
-      case "readmes":
-        await recordings.exclusively(() => recordings.readmes(flags.has("--write")));
-        return 0;
+      case "readmes": {
+        let failed = 0;
+        await recordings.exclusively(async () => {
+          failed = await recordings.readmes(flags.has("--write"), describe as ModelChoice | null);
+        });
+        return failed > 0 ? 1 : 0;
+      }
       case "schedule": {
         const at = flagValues.get("--at") ?? DEFAULT_SCHEDULE_TIME;
         dependencies.print(launchdJob({ root: dependencies.root, at, path: process.env.PATH ?? "/usr/bin:/bin" }).trimEnd());
@@ -181,14 +193,14 @@ export async function runRecordings(argv: string[], dependencies: RecordingsDepe
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe"]);
 /** Before anyone's at work, after most of a day's pushes. */
 const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
-  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] | schedule [--at=HH:MM] | forget <id>";
+  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | schedule [--at=HH:MM] | forget <id>";
 
 class RecordingError extends Error {}
 
@@ -586,9 +598,10 @@ class Recordings {
   /**
    * A guide to each source folder the working tree's tests run code in, kept in its README.md
    * between markers (folder-readme.ts): what would change, and the questions each raises.
-   * Written only with --write.
+   * Written only with --write. With --describe, a model's draft of what the folder is for goes
+   * where a person's words would, in READMEs that don't have them yet. How many drafts failed.
    */
-  async readmes(write: boolean): Promise<void> {
+  async readmes(write: boolean, describe: ModelChoice | null): Promise<number> {
     await this.refuseCheckedOutPullRequest();
     const [working] = await this.place([await this.plan(WORKING_TREE_ID, { fetch: false })], { workingHead: true });
     // Preview, then --write: the second run writes what the first showed, from the same recording.
@@ -606,6 +619,11 @@ class Recordings {
       if (SOURCE_FILE.test(file) && !DECLARATION_FILE.test(file) && (await lstat(join(this.dependencies.root, file)).then((s) => s.isFile(), () => false))) sources.push(file);
     }
     const context = { style: snapshot.style, rules: snapshot.rules.length };
+    // Chosen when a README first needs it (choosing runs `claude --version` or needs a key); a
+    // choice that fails is every draft's failure, and the guides are still written.
+    let model: Promise<LanguageModel | Error> | null = null;
+    const describer = () => (model ??= this.dependencies.models(describe!).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error)))));
+    let failed = 0;
     let questions = 0;
     let folders = 0;
     for (const guide of buildFolderGuides(run, snapshot, sources, rules)) {
@@ -634,13 +652,49 @@ class Recordings {
       if (merged.status === "skipped") {
         this.dependencies.print(`${relative}: skipped: it's someone's own, or its runshape markers aren't one pair of lines (to keep a guide in it, add a line <!-- runshape:begin --> and a line <!-- runshape:end -->)`);
       } else {
-        if (write && merged.status !== "unchanged") await writeFile(file, merged.text);
-        this.dependencies.print(`${relative}: ${write || merged.status === "unchanged" ? merged.status : `would ${merged.status === "created" ? "create" : "update"}`}`);
+        let text = merged.text;
+        let note: string | null = null;
+        // Without --write the model isn't asked: what it said would differ from what --write writes.
+        if (describe !== null && needsDescription(text)) {
+          if (!write) note = "  would ask a model to describe it";
+          else {
+            try {
+              const chosen = await describer();
+              if (chosen instanceof Error) throw chosen;
+              const description = await describeFolder(chosen, guide, context, await this.openingComments(guide, sources));
+              text = describeReadme(text, description) ?? text;
+              note = `  described by ${description.model}`;
+            } catch (error) {
+              failed += 1;
+              note = `  ! not described: ${error instanceof Error ? error.message : String(error)}`;
+            }
+          }
+        }
+        // A dry run's draft isn't asked for, but --write would change the README with it.
+        const status = existing === null ? "created" : text !== existing || (!write && note !== null) ? "updated" : "unchanged";
+        if (write && status !== "unchanged") await writeFile(file, text);
+        this.dependencies.print(`${relative}: ${write || status === "unchanged" ? status : `would ${status === "created" ? "create" : "update"}`}`);
+        if (note !== null) this.dependencies.print(note);
       }
       for (const question of guide.questions) this.dependencies.print(`  ? ${question}`);
       questions += guide.questions.length;
     }
     this.dependencies.print(`${questions} question${questions === 1 ? "" : "s"} in ${folders} folder${folders === 1 ? "" : "s"}.${write ? "" : " Nothing written: --write writes them."}`);
+    return failed;
+  }
+
+  /**
+   * What each of the folder's files says it is, in the comment it opens with; "" for none, or a
+   * file that can't be read. Only the project's own plain files (`sources`): a recording can name
+   * a link to anywhere.
+   */
+  private async openingComments(guide: FolderGuide, sources: string[]): Promise<Record<string, string>> {
+    const comments: Record<string, string> = {};
+    for (const file of guide.files) {
+      if (!sources.includes(file.file)) continue;
+      comments[file.name] = openingComment(await readFile(join(this.dependencies.root, file.file), "utf8").catch(() => ""));
+    }
+    return comments;
   }
 
   /**

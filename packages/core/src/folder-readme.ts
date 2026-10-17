@@ -2,8 +2,12 @@
 // markers, everything else a person's.
 import type { FolderGuide } from "@runshape/views";
 
+import type { FolderDescription } from "./folder-description";
+
 export const README_BEGIN = "<!-- runshape:begin";
 export const README_END = "<!-- runshape:end -->";
+/** The line a new README leaves for a person: `readmes --describe` puts a model's draft there instead. */
+export const README_PLACEHOLDER = "_What this folder is for, in a sentence or two: yours to write; runshape keeps the part below._";
 
 export interface GuideContext {
   style: string;
@@ -63,7 +67,7 @@ export interface MergedReadme {
 export function mergeIntoReadme(existing: string | null, block: string, folder: string): MergedReadme {
   if (existing === null) {
     const title = folder === "" ? "This project" : folder;
-    return { status: "created", text: `# ${title}\n\n_What this folder is for, in a sentence or two: yours to write; runshape keeps the part below._\n\n${block}` };
+    return { status: "created", text: `# ${title}\n\n${README_PLACEHOLDER}\n\n${block}` };
   }
   // Markers count only as lines of their own, and only one pair: a README that writes about them
   // in its text, or has two blocks, isn't guessed at.
@@ -73,6 +77,30 @@ export function mergeIntoReadme(existing: string | null, block: string, folder: 
   if (begins.length !== 1 || ends.length !== 1 || ends[0]! < begins[0]!) return { status: "skipped", text: existing };
   const text = [...lines.slice(0, begins[0]), block.replace(/\n$/, ""), ...lines.slice(ends[0]! + 1)].join("\n");
   return { status: text === existing ? "unchanged" : "updated", text };
+}
+
+/**
+ * The README with a model's description where the line left for a person was, marked as the
+ * model's; null when that line is gone (a person wrote the opening, or a model drafted it
+ * already): what the folder is for is a person's from then on.
+ */
+export function describeReadme(text: string, description: FolderDescription): string | null {
+  const lines = text.split("\n");
+  const at = placeholderLine(lines);
+  if (at === -1) return null;
+  const drafted = `_Drafted by ${description.model} from the guide below and the files' opening comments: check it, and edit it as you would your own; runshape won't change it._`;
+  return [...lines.slice(0, at), description.text, "", drafted, ...lines.slice(at + 1)].join("\n");
+}
+
+/** Whether the README still has the line left for a person. */
+export function needsDescription(text: string): boolean {
+  return placeholderLine(text.split("\n")) !== -1;
+}
+
+/** The line left for a person, above the guide (a README checked out with CRLF line ends too). */
+function placeholderLine(lines: string[]): number {
+  const guide = lines.findIndex((line) => line.startsWith(README_BEGIN));
+  return lines.slice(0, guide === -1 ? lines.length : guide).findIndex((line) => line.trimEnd() === README_PLACEHOLDER);
 }
 
 /**

@@ -115,6 +115,9 @@ npm run runshape -- schedule [--at=03:00]   # prints a launchd job that runs it 
 npm run runshape -- readmes [--write]       # a guide in each source folder's README.md: its zone, each file's
                                             # classes and entry points, and questions (code that doesn't fit,
                                             # mixes kinds, or never runs); only between runshape markers
+npm run runshape -- readmes --describe --write  # and a model drafts what a folder is for wherever the
+                                            # README still has the line left for a person (once: then
+                                            # it's theirs); without --write it isn't asked
 npm run runshape -- record <branch|commit|working> [--fetch] [--again] [--sandbox]
 # --sandbox records commits in a Docker container: no network, non-root, only the commit and
 # the output mounted (for code you didn't write: someone's PR, an agent's branch). Needs Docker.
