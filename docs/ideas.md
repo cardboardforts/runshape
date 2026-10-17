@@ -130,8 +130,8 @@ function doesn't fit the folder's theme". Those findings prompt refactoring deci
   - Which folders get one (packages and their src/, not every leaf).
 - **Taken up (2026-10-16):** `npm run runshape -- readmes [--write]` keeps a guide in each source
   folder's README.md, between markers (a README without them is someone's own, left alone):
-  the folder's main zone, each file's zone, classes and entry points (functions called from
-  outside the file, by other files or tests: its interface as used, helpers left out), files
+  the folder's main zone, each file's zone, classes and entry points (public names a call from
+  another file reached: its interface as used, helpers left out), files
   with no functions of their own, and questions: a file in another zone than the folder, one
   holding two zones, calls against the style, code no test ran. Mechanical, from the working
   tree's recording (views/folder-guide.ts, core/folder-readme.ts); no model yet. On Runshape it
