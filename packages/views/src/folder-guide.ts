@@ -1,4 +1,4 @@
-import { Phase, Role, Run } from "@runshape/trace";
+import { CatalogFunction, Phase, Role, Run } from "@runshape/trace";
 import { FINE_GROUPING, ZoneRule, ZoneRules } from "@runshape/architecture";
 import { ArchitectureSnapshot, byCodeUnit, Placement } from "./placements";
 import { buildSystemGraph } from "./system-graph";
@@ -59,10 +59,14 @@ export function buildFolderGuides(run: Run, snapshot: ArchitectureSnapshot, file
     const entry = recorded.get(fn.file) ?? { owners: new Set<string>(), functions: [] };
     recorded.set(fn.file, entry);
     entry.owners.add(fn.symbol.owner.text);
-    entry.functions.push({ name: fn.symbol.localName.text, calls: calls.get(fn.symbol.key) ?? 0, ran: ran.has(fn.symbol.key) });
+    // Only public names: a parent the recorder got wrong mustn't make a helper look like the interface.
+    const outside = isPublic(fn, run) ? (calls.get(fn.symbol.key) ?? 0) : 0;
+    entry.functions.push({ name: fn.symbol.localName.text, calls: outside, ran: ran.has(fn.symbol.key) });
   }
-  const fileOf = new Map<string, string>();
-  for (const [file, { owners }] of recorded) for (const owner of owners) if (!fileOf.has(owner)) fileOf.set(owner, file);
+  // A component in one file is blamed on that file; one spread over several (a Go package, a Go
+  // type with methods in two files) on its folder.
+  const filesOf = new Map<string, Set<string>>();
+  for (const [file, { owners }] of recorded) for (const owner of owners) filesOf.set(owner, (filesOf.get(owner) ?? new Set()).add(file));
 
   const folders = new Map<string, FileGuide[]>();
   for (const [file, { owners, functions }] of recorded) {
@@ -86,7 +90,7 @@ export function buildFolderGuides(run: Run, snapshot: ArchitectureSnapshot, file
     folders.get(folderOf(file))!.push({ file, name: baseName(file), seen: false, declarationsOnly, zones: [], classes: [], functions: [], functionCount: 0 });
   }
 
-  const offStyle = callsAgainstStyle(run, rules, snapshot, fileOf);
+  const offStyle = callsAgainstStyle(run, rules, snapshot, filesOf);
   return [...folders]
     .sort(([a], [b]) => byCodeUnit(a, b))
     .map(([folder, files]) => {
@@ -110,7 +114,13 @@ function questionsFor(
   for (const file of files) {
     if (file.declarationsOnly) continue;
     if (!file.seen) {
-      questions.push(`${file.name} wasn't seen running in the recorded tests: untested, or no longer used?`);
+      // Catalogued functions nothing called (a model's __str__ while the ORM uses the class), or
+      // a file the tests never loaded: different things to say.
+      questions.push(
+        file.functionCount > 0
+          ? `None of ${file.name}'s ${file.functionCount} function${file.functionCount === 1 ? "" : "s"} ran in the recorded tests: untested, or not needed?`
+          : `${file.name} wasn't loaded by the recorded tests: untested, or no longer used?`,
+      );
       continue;
     }
     if (file.zones.length > 1) {
@@ -118,23 +128,25 @@ function questionsFor(
       questions.push(`${file.name} holds more than one kind of code: ${byZone.join(" and ")}. Split it?`);
     } else if (file.zones.length === 1 && zone !== null && file.zones[0] !== zone) {
       const reason = [...recorded.get(file.file)!.owners].map((owner) => placements.get(owner)?.reason).find(Boolean);
-      questions.push(`${file.name} is ${zoneName(file.zones[0]!)}, unlike the rest of ${where} (${zoneName(zone)})${reason ? `: ${reason}` : ""}. Does it belong here?`);
+      questions.push(`${file.name} is ${zoneName(file.zones[0]!)}, unlike most of ${where} (${zoneName(zone)})${reason ? `: ${reason}` : ""}. Does it belong here?`);
     }
     for (const call of offStyle.get(file.file) ?? []) questions.push(`${file.name} ${call}`);
   }
+  for (const call of offStyle.get(`${FOLDER_KEY}${folder}`) ?? []) questions.push(`Code in ${where} ${call}`);
   return questions;
 }
 
 /** Calls the drawn style forbids, by the calling file: "calls X against the hexagonal style: …". */
-function callsAgainstStyle(run: Run, rules: ZoneRules, snapshot: ArchitectureSnapshot, fileOf: Map<string, string>): Map<string, string[]> {
+function callsAgainstStyle(run: Run, rules: ZoneRules, snapshot: ArchitectureSnapshot, filesOf: Map<string, Set<string>>): Map<string, string[]> {
   const graph = buildSystemGraph(run, { phases: EVERY_PHASE, grouping: FINE_GROUPING, rules, profile: rules.profile });
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
   const found = new Map<string, string[]>();
   for (const edge of graph.edges) {
     if (edge.violation === null) continue;
     const from = nodes.get(edge.from);
-    const file = from?.qualifiedName ? fileOf.get(from.qualifiedName) : undefined;
-    if (file === undefined) continue;
+    const files = from?.qualifiedName ? [...(filesOf.get(from.qualifiedName) ?? [])] : [];
+    if (files.length === 0) continue;
+    const file = files.length === 1 ? files[0]! : `${FOLDER_KEY}${folderOf(files[0]!)}`;
     const line = `calls ${nodes.get(edge.to)?.label ?? edge.to}, against the ${snapshot.style} style: ${edge.violation}`;
     if (!found.get(file)?.includes(line)) found.set(file, [...(found.get(file) ?? []), line]);
   }
@@ -153,6 +165,29 @@ function dominantZone(files: FileGuide[], order: string[]): string | null {
   return best;
 }
 
+/** Keys a call against the style to a folder, when the calling component spans its files. */
+const FOLDER_KEY = "folder:";
+
+/**
+ * Whether a function is part of its file's public face, by its language's own convention: Go's
+ * capital letter, Python's leading underscore (dunders aside), TypeScript's `export` (the
+ * function, or the class a method is on). Unknown languages, or no source to look at: public.
+ */
+function isPublic(fn: CatalogFunction, run: Run): boolean {
+  const parts = fn.symbol.localName.segments;
+  if (run.language === "go") return parts.every((part) => /^[A-Z]/.test(part));
+  if (run.language === "python") return parts.every((part) => !part.startsWith("_") || /^__.*__$/.test(part));
+  if (run.language === "typescript" || run.language === "javascript") {
+    const source = run.sources?.get(fn.file)?.join("\n");
+    if (source === undefined) return true;
+    const top = parts[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const exported = new RegExp(`export\\s+(default\\s+)?(declare\\s+)?(abstract\\s+)?(async\\s+)?(function\\*?|class|const|let|var)\\s+${top}\\b|export\\s*\\{[^}]*\\b${top}\\b[^}]*\\}`).test(source);
+    const method = parts[parts.length - 1]!;
+    return exported && (parts.length === 1 || (!method.startsWith("#") && !new RegExp(`private\\s+(async\\s+)?${method}\\s*\\(`).test(source)));
+  }
+  return true;
+}
+
 /** Files whose code ran as the tests' own: a guide is to the project's code, not its tests. */
 function filesOfTestCode(run: Run): Set<string> {
   const files = new Set<string>();
@@ -169,7 +204,7 @@ export function isTestPath(file: string): boolean {
   const name = segments[segments.length - 1]!;
   return (
     segments.slice(0, -1).some((segment) => TEST_FOLDERS.has(segment)) ||
-    /^test_.*\.py$|_test\.py$|^conftest\.py$|_test\.go$|\.(test|spec)\.[cm]?[jt]sx?$/.test(name)
+    /^test_.*\.py$|_test\.py$|^tests?\.py$|^conftest\.py$|_test\.go$|\.(test|spec)\.[cm]?[jt]sx?$/.test(name)
   );
 }
 
@@ -180,7 +215,8 @@ function callsFromOutside(run: Run): Map<string, number> {
   const calls = new Map<string, number>();
   for (const scenario of run.scenarios) {
     for (const span of scenario.spans) {
-      if (span.parent !== null && span.parent.fn.file === span.fn.file) continue;
+      // A root span (a test, background work) has no caller to be outside of.
+      if (span.parent === null || span.parent.fn.file === span.fn.file) continue;
       calls.set(span.fn.symbol.key, (calls.get(span.fn.symbol.key) ?? 0) + 1);
     }
   }

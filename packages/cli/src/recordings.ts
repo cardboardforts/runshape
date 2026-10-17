@@ -591,13 +591,21 @@ class Recordings {
   async readmes(write: boolean): Promise<void> {
     await this.refuseCheckedOutPullRequest();
     const [working] = await this.place([await this.plan(WORKING_TREE_ID, { fetch: false })], { workingHead: true });
-    await this.ensure(working!);
+    // Preview, then --write: the second run writes what the first showed, from the same recording.
+    const kept = (await this.library.recordings()).recordings.find((r) => r.id === WORKING_TREE_ID);
+    const unchanged = kept?.tree !== undefined && kept.tree === (await this.treeFingerprint()) && kept.recorderSource === (await this.recorderSource());
+    if (unchanged) this.dependencies.print(`the working tree hasn't changed since it was recorded (${kept!.recordedAt}): using that recording`);
+    else await this.ensure(working!);
     const run = await this.runOf(WORKING_TREE_ID);
     const rules = (await this.rulesOf(WORKING_TREE_ID)) ?? ZoneRules.none();
     const snapshot = buildPlacements(run, rules);
     const listed = await this.git.run(["ls-files", "--cached", "--others", "--exclude-standard"]);
-    const sources = listed.split("\n").filter((file) => SOURCE_FILE.test(file));
-    const context = { commit: working!.summary.commit, style: snapshot.style, rules: snapshot.rules.length };
+    // Tracked files deleted from the tree are listed too; declaration files never run.
+    const sources: string[] = [];
+    for (const file of listed.split("\n")) {
+      if (SOURCE_FILE.test(file) && !DECLARATION_FILE.test(file) && (await lstat(join(this.dependencies.root, file)).then((s) => s.isFile(), () => false))) sources.push(file);
+    }
+    const context = { style: snapshot.style, rules: snapshot.rules.length };
     let questions = 0;
     let folders = 0;
     for (const guide of buildFolderGuides(run, snapshot, sources, rules)) {
@@ -611,10 +619,20 @@ class Recordings {
         continue;
       }
       folders += 1;
-      const existing = await readFile(file, "utf8").catch(() => null);
+      let existing: string | null;
+      try {
+        existing = await readFile(file, "utf8");
+      } catch (error) {
+        // Only a missing README is "none"; one that can't be read isn't overwritten.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          this.dependencies.print(`${relative}: skipped: it can't be read (${(error as Error).message})`);
+          continue;
+        }
+        existing = null;
+      }
       const merged = mergeIntoReadme(existing, folderGuideMarkdown(guide, context), guide.folder);
       if (merged.status === "skipped") {
-        this.dependencies.print(`${relative}: skipped: it's someone's own (add <!-- runshape:begin --> and <!-- runshape:end --> to keep a guide in it)`);
+        this.dependencies.print(`${relative}: skipped: it's someone's own, or its runshape markers aren't one pair of lines (to keep a guide in it, add a line <!-- runshape:begin --> and a line <!-- runshape:end -->)`);
       } else {
         if (write && merged.status !== "unchanged") await writeFile(file, merged.text);
         this.dependencies.print(`${relative}: ${write || merged.status === "unchanged" ? merged.status : `would ${merged.status === "created" ? "create" : "update"}`}`);
@@ -623,6 +641,22 @@ class Recordings {
       questions += guide.questions.length;
     }
     this.dependencies.print(`${questions} question${questions === 1 ? "" : "s"} in ${folders} folder${folders === 1 ? "" : "s"}.${write ? "" : " Nothing written: --write writes them."}`);
+  }
+
+  /**
+   * The working tree's state: HEAD, and every change to it, staged, unstaged and untracked, but
+   * Markdown (which no test runs, and which `readmes --write` itself changes). The same
+   * fingerprint means the same code to record.
+   */
+  private async treeFingerprint(): Promise<string> {
+    const hash = createHash("sha256");
+    hash.update(await this.git.run(["rev-parse", "HEAD"]));
+    hash.update(await this.git.run(["diff", "--binary", "HEAD", "--", ".", ":(exclude)*.md"]));
+    const untracked = (await this.git.run(["ls-files", "--others", "--exclude-standard"])).split("\n").filter((file) => file !== "" && !file.endsWith(".md"));
+    for (const file of untracked.sort(byCodeUnit)) {
+      hash.update(file).update("\0").update(await readFile(join(this.dependencies.root, file)).catch(() => Buffer.alloc(0))).update("\0");
+    }
+    return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
   }
 
   async list(): Promise<void> {
@@ -730,6 +764,7 @@ class Recordings {
         recorder: run.recorderVersion ?? "unknown",
         recorderSource,
         environment: recorder.environment,
+        ...(target.kind === "working" ? { tree: await this.treeFingerprint() } : {}),
         tests: { total: run.scenarios.length, failed: run.scenarios.filter((s) => FAILING.has(s.outcome)).length },
         architecture,
       };
@@ -848,6 +883,7 @@ async function insideProject(root: string, directory: string): Promise<boolean> 
 
 /** The files a folder guide lists: source in the languages recorded, tests left out by the guide. */
 const SOURCE_FILE = /\.(py|go|[cm]?[jt]sx?)$/;
+const DECLARATION_FILE = /\.d\.[cm]?ts$/;
 const README_FILE = "README.md";
 
 /** Where the person names their branch of merged code, when origin's HEAD doesn't. */

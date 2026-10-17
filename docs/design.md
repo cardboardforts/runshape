@@ -260,6 +260,13 @@ Accepted risks:
   place nothing in it). Nothing prunes old recordings yet (`forget` deletes one). The demo's dev
   server reads .runshape/recordings and runs `git` for the list (local only; vite's host check
   and CORS apply before its routes).
+- Folder guides (`readmes`): only folders some recorded code is in get a guide: a package no
+  test touches at all isn't listed. "Used from other files" is the public names (exported,
+  no leading underscore, capitalised in Go) that a call from another file reached in the
+  recording; the TypeScript recorder can give a call the wrong parent across an `await`, which
+  is why private names are left out rather than trusted. A source folder named `test` or
+  `tests` is taken for tests. Zones are as good as runshape.json: with no rules, they're all
+  inferred, and "does this belong here?" needs rules to mean much.
 - 3D shows at most 16 object cubes per class; wiring to further objects isn't drawn (the
   component panel still lists it).
 - The diff compares only against the immediately previous recording. Recordings made before

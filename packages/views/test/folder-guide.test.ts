@@ -58,8 +58,8 @@ describe("buildFolderGuides", () => {
         "  jwt.py: core; classes -; 3 functions, entry points create_access_token_for_user×4, get_username_from_token×3",
         "  security.py: core; classes -; 3 functions, entry points generate_salt×9, get_password_hash×9, verify_password×1",
         "  unused.py (not seen running): -; classes -; 0 functions, entry points -",
-        "  ? comments.py wasn't seen running in the recorded tests: untested, or no longer used?",
-        "  ? unused.py wasn't seen running in the recorded tests: untested, or no longer used?",
+        "  ? None of comments.py's 1 function ran in the recorded tests: untested, or not needed?",
+        "  ? unused.py wasn't loaded by the recorded tests: untested, or no longer used?",
       ]
     `);
   });
@@ -76,8 +76,56 @@ describe("buildFolderGuides", () => {
       questions: web.questions.filter((q) => !q.startsWith("handler.go")),
     }).toEqual({
       files: ["handler.go: ran", "never_loaded.go: not seen running", "types.go: declarations only"],
-      questions: ["never_loaded.go wasn't seen running in the recorded tests: untested, or no longer used?"],
+      questions: ["never_loaded.go wasn't loaded by the recorded tests: untested, or no longer used?"],
     });
+  });
+
+  test("a Django app's guides: code that doesn't fit its folder, calls against the style, files nothing ran (review)", async () => {
+    // The questions are what the guides are for: every kind of them, on a real project.
+    const run = await loadFixtureRun("django");
+    const guides = buildFolderGuides(run, buildPlacements(run, ZoneRules.none()), [...new Set(run.catalog.map((fn) => fn.file))]);
+
+    expect(guides.flatMap((g) => g.questions.map((q) => `${g.folder}: ${q}`))).toMatchInlineSnapshot(`
+      [
+        "conduit/apps/articles: None of __init__.py's 1 function ran in the recorded tests: untested, or not needed?",
+        "conduit/apps/articles: None of models.py's 2 functions ran in the recorded tests: untested, or not needed?",
+        "conduit/apps/articles: signals.py is Core, unlike most of conduit/apps/articles (Outbound adapters): receives no requests and calls no external system. Does it belong here?",
+        "conduit/apps/articles: views.py is Inbound adapters, unlike most of conduit/apps/articles (Outbound adapters): handles a route. Does it belong here?",
+        "conduit/apps/articles: views.py calls TagRelatedField, against the hexagonal style: a request handler using an outbound adapter directly: no core in between",
+        "conduit/apps/articles: views.py calls ArticleSerializer, against the hexagonal style: a request handler using an outbound adapter directly: no core in between",
+        "conduit/apps/articles: views.py calls Profile, against the hexagonal style: a request handler using an outbound adapter directly: no core in between",
+        "conduit/apps/articles: views.py calls CommentSerializer, against the hexagonal style: a request handler using an outbound adapter directly: no core in between",
+        "conduit/apps/authentication: None of __init__.py's 1 function ran in the recorded tests: untested, or not needed?",
+        "conduit/apps/authentication: models.py holds more than one kind of code: Core (User) and Outbound adapters (UserManager). Split it?",
+        "conduit/apps/authentication: serializers.py holds more than one kind of code: Core (RegistrationSerializer) and Outbound adapters (LoginSerializer). Split it?",
+        "conduit/apps/authentication: signals.py is Outbound adapters, unlike most of conduit/apps/authentication (Inbound adapters): calls sqlite directly. Does it belong here?",
+        "conduit/apps/authentication: views.py calls LoginSerializer, against the hexagonal style: a request handler using an outbound adapter directly: no core in between",
+        "conduit/apps/core: utils.py is Core, unlike most of conduit/apps/core (Inbound adapters): receives no requests and calls no external system. Does it belong here?",
+        "conduit/apps/profiles: models.py is Outbound adapters, unlike most of conduit/apps/profiles (Inbound adapters): calls sqlite directly. Does it belong here?",
+        "conduit/apps/profiles: serializers.py is Core, unlike most of conduit/apps/profiles (Inbound adapters): receives no requests and calls no external system. Does it belong here?",
+        "conduit/apps/profiles: views.py calls Profile, against the hexagonal style: a request handler using an outbound adapter directly: no core in between",
+      ]
+    `);
+  });
+
+  test("entry points are public names called from another file: a helper only a stray parent made look called isn't one", async () => {
+    // Go: lower-case is the package's own. Python: a leading underscore is. TypeScript: not exported.
+    const run = await loadFixtureRun("go-shop");
+    const web = buildFolderGuides(run, buildPlacements(run, ZoneRules.none()), [...new Set(run.catalog.map((fn) => fn.file))]).find((g) => g.folder === "internal/web")!;
+
+    expect(web.files[0]!.functions.map((f) => f.name)).toEqual(["Handler.ServeHTTP", "NewHandler"]);
+
+    // Python: FastAPI's dependency injection calls `_get_authorization_header` from its own
+    // files, yet the underscore says it's the module's own.
+    const api = await loadFixtureRun("fastapi");
+    const auth = buildFolderGuides(api, buildPlacements(api, ZoneRules.none()), [...new Set(api.catalog.map((fn) => fn.file))])
+      .find((g) => g.folder === "app/api/dependencies")!
+      .files.find((f) => f.name === "authentication.py")!;
+    expect(auth.functions.map((f) => f.name)).toMatchInlineSnapshot(`
+      [
+        "RWAPIKeyHeader.__call__",
+      ]
+    `);
   });
 
   test("a Go package is a folder: its files share the package's place", async () => {

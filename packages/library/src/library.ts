@@ -20,6 +20,8 @@ export interface RecordingMetadata {
   recorderSource: string;
   /** Where it was recorded: "host", or "docker:<image>" (`--sandbox`); absent means host. */
   environment?: string;
+  /** The working tree's fingerprint when it was recorded (HEAD and every change): unchanged means the same code. */
+  tree?: string;
   tests: { total: number; failed: number };
   /** The commit's runshape.json applied to this recording (placements in architecture.json); absent from recordings made before it was kept. */
   architecture?: ArchitectureSummary;
