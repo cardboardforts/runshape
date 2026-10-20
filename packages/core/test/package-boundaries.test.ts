@@ -35,7 +35,7 @@ const ALLOWED: Record<string, string[]> = {
   "recorder-ts": [],
 };
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
-const DISK = new Set(["packages/infra", "packages/cli", "packages/extension", "packages/webview", "recorder-ts"]);
+const DISK = new Set(["packages/infra", "packages/cli", "packages/extension", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
 const DOMAIN = new Set(["packages/trace", "packages/architecture", "packages/views", "packages/core"]);
 const NODE_BUILTINS = new Set(builtinModules);

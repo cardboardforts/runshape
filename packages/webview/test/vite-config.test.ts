@@ -15,7 +15,7 @@ const scripts = JSON.parse(readFileSync(join(WEBVIEW, "package.json"), "utf8")).
 
 describe("vite.config.ts", () => {
   test.each(["dev", "build"])("loads the way `npm run %s` loads it, with the recordings plugin", async (script) => {
-    const loader = scripts[script]!.match(/--configLoader (\w+)/)?.[1] as "bundle" | "runner" | "native" | undefined;
+    const loader = scripts[script]!.match(/--configLoader[ =](\w+)/)?.[1] as "bundle" | "runner" | "native" | undefined;
     const command = script === "dev" ? "serve" : "build";
 
     const loaded = await loadConfigFromFile({ command, mode: "development" }, join(WEBVIEW, "vite.config.ts"), WEBVIEW, "silent", undefined, loader);

@@ -49,7 +49,7 @@ export class RecordingStore {
     try {
       names = await this.files.list();
     } catch {
-      return { recordings: [], problems: [] }; // nothing recorded yet
+      return { recordings: [], problems: [] }; // a recordings folder that can't be read lists as empty (none yet is [] already)
     }
     const recordings: RecordingMetadata[] = [];
     const problems: string[] = [];
