@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
-import { RuleChange, RunSource, TraceDirectory, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
+import { RuleChange, Run, RunSource, TraceDirectory, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
@@ -57,9 +57,19 @@ function keptRecording(id: string): TraceDirectory {
 /** One kept recording, or two compared: the head's run is the latest, the base's the previous. */
 function keptRecordings(head: string, base: string | null): RunSource {
   return {
-    latest: () => keptRecording(head).latest(),
-    previous: async () => (base === null ? null : keptRecording(base).latest()),
+    latest: () => keptRun(head, "head"),
+    previous: async () => (base === null ? null : keptRun(base, "base")),
   };
+}
+
+/** A ?base= or ?head= that can't be read fails the page, saying which side and where to look. */
+async function keptRun(id: string, side: "head" | "base"): Promise<Run> {
+  try {
+    return await keptRecording(id).latest();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`the ${side} recording ${id} can't be read (npm run runshape -- list shows what's kept): ${reason}`);
+  }
 }
 
 /**

@@ -103,9 +103,10 @@ separately by the extension and by `cli/recordings.ts`.
    (moved from the extension). The CLI uses it. `view-diff`: no viewer response changes.
 2. **Done.** The demo's kept recordings as a `RunSource` (no fake pointer files). The extension
    moved to `RunSource` in PR 1. `SourceReader` stays as it is: its three implementations are
-   the extension's (VS Code's fs), the demo's (vite globs, and sources kept in a recording) and
-   view-diff's (which must still run against old revisions). None reads `node:fs` the way
-   infra would.
+   the extension's (VS Code's fs, a host's own), the demo's (vite globs, and sources kept in a
+   recording) and view-diff's. View-diff's does read `node:fs` directly, and could use
+   `NodeFiles`; it's a tool that loads core from a path per revision, so it's left alone until
+   it needs to change.
 3. Library, reviews and runshape.json reads and writes through infra (`write`, `list` and an
    in-memory store arrive here, with their first users).
 4. `TestConfig` and the `Recorder` port move out of `cli/recordings.ts`. `GitCli` and
@@ -195,6 +196,8 @@ that pays. A no-op change has no time callout.
 2. Python, then Go, write kept recordings and run in the sandbox.
 3. One sandbox image per language, built only when needed.
 4. Verify plain JS and jest, or list them as limits.
+5. `TraceDirectory`'s "no recording found" hint says `pytest --runshape` whatever the language:
+   each recorder says how it's run.
 
 ### Phase 8: The agent loop (3–4 PRs)
 
