@@ -113,13 +113,16 @@ separately by the extension and by `cli/recordings.ts`.
    adapter for its own domain, built on a small infra (`NodeFiles`: read, write, list,
    remove; then a directory swap and an exclusive lock). The CLI asks for "commit this
    recording", not "rename this folder".
-   - **3a.** `ReviewStore`: review bundles, explanations, the requested-reviews index, and
+   - **3a. Done.** `ReviewStore`: review bundles, explanations, the requested-reviews index, and
      forgetting a recording's reviews.
-   - **3b.** `RecordingStore`: the lock, a recording begun and committed atomically, its
-     metadata, rules and architecture, forgetting it, clearing interrupted ones.
+   - **3b. Done.** `RecordingStore`: the lock, a recording begun and committed atomically, its
+     metadata, rules and architecture, forgetting it, clearing interrupted ones. Infra holds
+     the folder operations (swap into place, pid lock, remove anyway, plain-files check).
+     What's left in `recordings.ts` on `node:fs` is the project's own working tree (README
+     guides, the recorder's source hash, the working tree's runshape.json): PR 4.
 4. `TestConfig` and the `Recorder` port move out of `cli/recordings.ts`. `GitCli` and
-   `RecordingLibrary` are injected into `Recordings`. The fs helpers leave
-   `docker-recorder.ts`. (These were the 2026-10-17 follow-ups.)
+   `RecordingLibrary` are injected into `Recordings`. The project's working-tree files go
+   through a store of their own. (The fs helpers left `docker-recorder.ts` in 3b.)
 5. Redo Runshape's own `runshape.json` for the new shape. Close `runshape-zones` without
    merging it. You approve the new placements in the diff. Refresh README and `design.md`
    "Next".
@@ -137,6 +140,8 @@ files. `runshape readmes` shows no "doesn't fit" questions you haven't decided.
 3. **Group by cause:** Runshape's review of its own PR 3a listed 66 "run differently" tests,
    every one because calls now go through `ReviewStore`. Threads with the same change
    collapse into one row ("66 tests: now save reviews through ReviewStore"), expandable.
+   A test whose title changed pairs with its old self, as moved tests do (PR 3b's renamed
+   test read as one removed and one new).
 4. **Structured CLI logging:** logfmt, with a run ID and PR number on every line, duration
    per PR, and the full error for each PR that fails.
 

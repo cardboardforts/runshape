@@ -1,7 +1,7 @@
 // npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
 import {
@@ -35,15 +35,13 @@ import {
   ZoneSource,
 } from "@runshape/core";
 import {
-  ARCHITECTURE_FILE,
   ArchitectureSummary,
   CommitSummary,
+  EXPLANATION_MARKDOWN,
   GitCli,
   GitError,
-  INCOMING_PREFIX,
+  IncomingRecording,
   LibraryOverview,
-  METADATA_FILE,
-  EXPLANATION_MARKDOWN,
   projectLibrary,
   RecordingLibrary,
   RecordingMetadata,
@@ -57,7 +55,7 @@ import {
   WORKING_TREE_ID,
 } from "@runshape/library";
 export type { PullRequestSummary } from "@runshape/library";
-import { holdingLock, LockHeld, NodeFiles, removeAnyway, swapIntoPlace } from "@runshape/infra";
+import { LockHeld } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
 import { assertPlainRecording } from "./docker-recorder";
 import type { ModelChoice } from "./models";
@@ -222,8 +220,6 @@ interface Plan {
   forkOf?: { tip: string; commitsSince: number };
 }
 
-/** Taken while recording or forgetting, so two runs can't write over each other's recordings. */
-const LOCK_FILE = ".lock";
 /** The recorder's own source, hashed into each recording: its tests don't change what it records. */
 const RECORDER_DIRECTORY = "recorder-ts";
 const RECORDER_SOURCE_SKIPPED = new Set(["node_modules", "test"]);
@@ -243,12 +239,8 @@ class Recordings {
 
   /** Runs `work` holding the library's lock, taking over a lock whose process is gone. */
   async exclusively(work: () => Promise<void>): Promise<void> {
-    await mkdir(this.library.directory, { recursive: true });
     try {
-      await holdingLock(join(this.library.directory, LOCK_FILE), async () => {
-        await this.clearInterrupted();
-        await work();
-      });
+      await this.library.store.exclusively(work, (name, error) => this.dependencies.print(`runshape: couldn't clear ${name}: ${error.message}`));
     } catch (error) {
       if (error instanceof LockHeld) throw new RecordingError(`another recording is running (process ${error.holder}); if it isn't, delete ${error.lockFile}`);
       throw error;
@@ -450,7 +442,7 @@ class Recordings {
    */
   async ensure(plan: Plan, { sameRecorder = false } = {}): Promise<void> {
     const { print } = this.dependencies;
-    let existing = (await this.library.recordings()).recordings.find((r) => r.id === plan.id);
+    let existing = await this.library.store.recording(plan.id);
     const recorder = await this.recorderFor(plan.target);
     let madeIn = existing?.environment ?? HOST_ENVIRONMENT;
     // Recorded in the sandbox before its recordings had ids of their own. Here, the commit is
@@ -551,15 +543,14 @@ class Recordings {
   }
 
   private runOf(id: string): Promise<Run> {
-    const directory = join(this.library.directory, id);
-    return new TraceDirectory(new NodeFiles(directory)).latest();
+    return new TraceDirectory(this.library.store.filesOf(id)).latest();
   }
 
   /** The rules a kept recording was made with: its runshape.json, none if it had none; null for one made before zones were kept. */
   private async rulesOf(id: string): Promise<ZoneRules | null> {
-    const recording = (await this.library.recordings()).recordings.find((r) => r.id === id);
+    const recording = await this.library.store.recording(id);
     if (recording?.architecture === undefined) return null;
-    const text = await readFile(join(this.library.directory, id, RULES_FILE), "utf8").catch(() => null);
+    const text = await this.library.store.keptRules(id);
     if (text === null || recording.architecture.problem !== null) return ZoneRules.none();
     try {
       return ZoneRules.parse(text.replace(/^\uFEFF/, ""));
@@ -573,16 +564,9 @@ class Recordings {
 
   /** Moves a sandboxed recording under a plain id to its own; if that's taken, the plain one goes. */
   private async keepAsSandboxed(id: string): Promise<void> {
-    const from = join(this.library.directory, id);
     // Made before recordings from the sandbox were checked: checked before it's touched.
-    await assertPlainRecording(from);
-    const to = join(this.library.directory, `${id}${SANDBOX_SUFFIX}`);
-    if (await readFile(join(to, METADATA_FILE)).then(() => true, () => false)) await removeAnyway(from);
-    else {
-      await rename(from, to);
-      const metadata = JSON.parse(await readFile(join(to, METADATA_FILE), "utf8")) as RecordingMetadata;
-      await writeFile(join(to, METADATA_FILE), `${JSON.stringify({ ...metadata, id: `${id}${SANDBOX_SUFFIX}` }, null, 2)}\n`);
-    }
+    await assertPlainRecording(this.library.store.pathOf(id));
+    await this.library.store.move(id, `${id}${SANDBOX_SUFFIX}`);
   }
 
   /**
@@ -595,7 +579,7 @@ class Recordings {
     await this.refuseCheckedOutPullRequest();
     const [working] = await this.place([await this.plan(WORKING_TREE_ID, { fetch: false })], { workingHead: true });
     // Preview, then --write: the second run writes what the first showed, from the same recording.
-    const kept = (await this.library.recordings()).recordings.find((r) => r.id === WORKING_TREE_ID);
+    const kept = await this.library.store.recording(WORKING_TREE_ID);
     const unchanged = kept?.tree !== undefined && kept.tree === (await this.treeFingerprint()) && kept.recorderSource === (await this.recorderSource());
     if (unchanged) this.dependencies.print(`the working tree hasn't changed since it was recorded (${kept!.recordedAt}): using that recording`);
     else await this.ensure(working!);
@@ -709,11 +693,11 @@ class Recordings {
   }
 
   async forget(id: string): Promise<void> {
-    const recording = (await this.library.recordings()).recordings.find((r) => r.id === id);
+    const recording = await this.library.store.recording(id);
     if (recording === undefined) throw new RecordingError(`no recording ${id}`);
     // Its reviews compare it, so they go too: first, so a failure leaves none pointing at nothing.
     const reviews = await this.library.reviews.forgetRecording(recording.id);
-    await rm(join(this.library.directory, recording.id), { recursive: true, force: true });
+    await this.library.store.forget(recording.id);
     this.dependencies.print(`forgot ${recording.id} (${recording.subject})${reviews > 0 ? ` and ${reviews} review${reviews === 1 ? "" : "s"} of it` : ""}`);
   }
 
@@ -727,15 +711,6 @@ class Recordings {
     // No tags: a tag pulled in with a fetch is someone else's word for a commit.
     await this.git.run(["fetch", "--quiet", "--no-tags", REMOTE, "--end-of-options", `refs/heads/${branch}:refs/remotes/${REMOTE}/${branch}`]);
     return `refs/remotes/${REMOTE}/${branch}`;
-  }
-
-  /** Half-written recordings an interrupted run left: nothing else writes while the lock is held. */
-  private async clearInterrupted(): Promise<void> {
-    for (const name of await readdir(this.library.directory)) {
-      if (!name.startsWith(INCOMING_PREFIX) && !name.startsWith(REPLACED_PREFIX)) continue;
-      // Whatever a sandboxed run left (an unreadable folder, say) mustn't stop this one.
-      await removeAnyway(join(this.library.directory, name)).catch((error: Error) => this.dependencies.print(`runshape: couldn't clear ${name}: ${error.message}`));
-    }
   }
 
   /** The recorder's source as it is now: what recorded a recording made now. */
@@ -785,15 +760,14 @@ class Recordings {
   /** Records into a directory of its own, and moves it into place only once it's complete. */
   private async make(plan: Plan): Promise<void> {
     const { id, target, summary, tree } = plan;
-    const incoming = join(this.library.directory, `${INCOMING_PREFIX}${id}`);
-    await mkdir(incoming, { recursive: true });
+    const incoming = await this.library.store.begin(id);
     try {
       const recorder = await this.recorderFor(target);
       const recorderSource = await this.recorderSourceFor(recorder);
       const rules = await this.rulesAt(target);
       if (rules.problem !== null) this.dependencies.print(`${RULES_FILE} at ${plan.label} is invalid, so every zone is inferred: ${rules.problem}`);
-      await recorder.record(target, incoming);
-      const run = await new TraceDirectory(new NodeFiles(incoming)).latest();
+      await recorder.record(target, incoming.directory);
+      const run = await new TraceDirectory(incoming.files).latest();
       const architecture = await this.keepArchitecture(incoming, run, rules);
       const metadata: RecordingMetadata = {
         id,
@@ -810,11 +784,10 @@ class Recordings {
         tests: { total: run.scenarios.length, failed: run.scenarios.filter((s) => FAILING.has(s.outcome)).length },
         architecture,
       };
-      await writeFile(join(incoming, METADATA_FILE), `${JSON.stringify(metadata, null, 2)}\n`);
-      await this.replace(id, incoming);
+      await incoming.commit(metadata);
       this.dependencies.print(`recorded ${id}: ${metadata.tests.total} tests, ${metadata.tests.failed} failed`);
     } catch (error) {
-      await removeAnyway(incoming).catch(() => {}); // the next run clears what's left, and says if it can't
+      await incoming.discard();
       throw new RecordingError(`recording ${plan.label} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -848,17 +821,11 @@ class Recordings {
   }
 
   /** Writes the rules as they were and where they put each class, for a person to read; returns the summary. */
-  private async keepArchitecture(directory: string, run: Run, committed: CommittedRules): Promise<ArchitectureSummary> {
+  private async keepArchitecture(incoming: IncomingRecording, run: Run, committed: CommittedRules): Promise<ArchitectureSummary> {
     const snapshot: ArchitectureSnapshot = buildPlacements(run, committed.rules);
-    if (committed.text !== null) await writeFile(join(directory, RULES_FILE), committed.text);
-    await writeFile(join(directory, ARCHITECTURE_FILE), `${JSON.stringify({ ...snapshot, problem: committed.problem }, null, 2)}\n`);
+    await incoming.keepArchitecture(committed.text, { ...snapshot, problem: committed.problem });
     const declared = snapshot.placements.filter((p) => p.source === ZoneSource.Rule).length;
     return { style: snapshot.style, rules: snapshot.rules.length, declared, inferred: snapshot.placements.length - declared, problem: committed.problem };
-  }
-
-  /** The old recording is set aside, not deleted, until the new one is in place. */
-  private async replace(id: string, incoming: string): Promise<void> {
-    await swapIntoPlace(incoming, join(this.library.directory, id), join(this.library.directory, `${REPLACED_PREFIX}${id}`));
   }
 }
 
@@ -926,8 +893,6 @@ const PULL_REQUEST_REFS = "refs/runshape/pr/";
 /** Where a recording was made when its metadata doesn't say (made before it did). */
 const HOST_ENVIRONMENT = "host";
 
-/** A recording being replaced, kept until its replacement is in place. */
-const REPLACED_PREFIX = ".replaced-";
 /** Enough of the recorder's source hash to tell two versions apart. */
 const RECORDER_SOURCE_DIGITS = 16;
 

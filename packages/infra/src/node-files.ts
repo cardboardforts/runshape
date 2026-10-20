@@ -18,6 +18,11 @@ export class NodeFiles {
     await writeFile(path, text);
   }
 
+  /** Makes a folder ("" for the root itself), and any above it. */
+  async makeFolder(relativePath = ""): Promise<void> {
+    await mkdir(this.pathOf(relativePath), { recursive: true });
+  }
+
   /** The names in a folder ("" for the root); none when the folder doesn't exist. */
   async list(relativePath = ""): Promise<string[]> {
     try {

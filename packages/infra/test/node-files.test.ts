@@ -35,20 +35,21 @@ describe("NodeFiles", () => {
 });
 
 describe("NodeFiles writing", () => {
-  test("writes make their folders, lists name what's there, removes take folders whole and refuse the root", async () => {
+  test("writes make their folders (or makeFolder does), lists name what's there, removes take folders whole and refuse the root", async () => {
     const root = await mkdtemp(join(tmpdir(), "runshape-infra-"));
     const files = new NodeFiles(root);
 
     await files.writeText("a..b/review.md", "## Behaviour changes\n");
     await files.writeText("a..b/review.json", "{}\n");
     await files.writeText("c..d/review.md", "## Behaviour changes\n");
+    await files.makeFolder("empty/inside");
     const before = { root: (await files.list()).sort(), review: (await files.list("a..b")).sort(), missing: await files.list("nothing-here") };
     await files.remove("a..b");
     await files.remove("never-written");
 
-    expect({ before, after: await readdir(root), text: await files.readText("c..d/review.md") }).toEqual({
-      before: { root: ["a..b", "c..d"], review: ["review.json", "review.md"], missing: [] },
-      after: ["c..d"],
+    expect({ before, after: (await readdir(root)).sort(), text: await files.readText("c..d/review.md") }).toEqual({
+      before: { root: ["a..b", "c..d", "empty"], review: ["review.json", "review.md"], missing: [] },
+      after: ["c..d", "empty"],
       text: "## Behaviour changes\n",
     });
     // A folder named ".." is refused like any climb; "a..b" above is a name, not a climb.
