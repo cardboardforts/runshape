@@ -5,14 +5,14 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { buildFolderGuides, buildPlacements } from "@runshape/views";
 import { folderGuideMarkdown, mergeIntoReadme } from "../src/folder-readme";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import { fixtureRuns } from "../../trace/test/fixtures";
 
 async function webGuide() {
-  const run = await loadLatestRun(fixtureFiles("go-shop"));
+  const run = await fixtureRuns("go-shop").latest();
   const snapshot = buildPlacements(run, ZoneRules.none());
   return { guide: buildFolderGuides(run, snapshot, [...new Set(run.catalog.map((fn) => fn.file))]).find((g) => g.folder === "internal/web")!, snapshot };
 }

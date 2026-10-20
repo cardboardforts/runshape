@@ -7,19 +7,19 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle, reviewBundleMarkdown } from "../src/review-bundle";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import { fixtureRuns } from "../../trace/test/fixtures";
 
 const CREATED = "2026-10-16T09:00:00Z";
 const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit`, dirty: false, forkOf: null });
 
 describe("buildReviewBundle", () => {
   test("a refactor: the tests that now run differently, the routes they changed, and an architecture nobody touched", async () => {
-    const files = fixtureFiles("fastapi-slug-refactor");
-    const base = (await loadPreviousRun(files))!;
-    const head = await loadLatestRun(files);
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const base = (await runs.previous())!;
+    const head = await runs.latest();
 
     const bundle = buildReviewBundle({ base, head, baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
 
@@ -71,7 +71,7 @@ describe("buildReviewBundle", () => {
   });
 
   test("a branch that adds a zone rule: the Markdown says what was decided, by whom, and what it moved", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const rules = ZoneRules.parse(
       JSON.stringify({ version: 2, style: "hexagonal", zones: [{ match: "example\\.com.shop.internal.storage.**", zone: "outbound-adapter", reason: "stores orders", by: "llm" }] }),
     );
@@ -94,8 +94,8 @@ describe("buildReviewBundle", () => {
   test("names only: no query text, no request as sent, and unchanged routes counted, not copied (second-model review)", async () => {
     // A bundle may be stored centrally by commit: a query's text and a request's path (ids,
     // emails) stay in the recordings on the machine that made them.
-    const files = fixtureFiles("django-feed-fix");
-    const bundle = buildReviewBundle({ base: (await loadPreviousRun(files))!, head: await loadLatestRun(files), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
+    const runs = fixtureRuns("django-feed-fix");
+    const bundle = buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
     const json = JSON.stringify(bundle);
 
     expect({
@@ -114,7 +114,7 @@ describe("buildReviewBundle", () => {
   });
 
   test("the base is where the branch left main, and the Markdown says so, not 'main'", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const fork = { ...side("main", "bbbbbbbbbbbb"), forkOf: { tip: "fedcba9876543210fedcba9876543210fedcba98", commitsSince: 3 } };
     const dirtyHead = { ...side("working", "working"), dirty: true };
 
@@ -126,7 +126,7 @@ describe("buildReviewBundle", () => {
   });
 
   test("when the base's rules aren't known, the bundle and its Markdown say both sides used head's", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
 
     const bundle = buildReviewBundle({ base: run, head: run, baseSide: side("main", "bbbbbbbbbbbb"), headSide: side("working", "working"), baseRules: null, rules: ZoneRules.none(), createdAt: CREATED });
 

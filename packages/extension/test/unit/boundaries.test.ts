@@ -1,25 +1,13 @@
 /**
- * The extension's two trust-boundary controls. Trace files and webview messages are data
- * that could have been written by anyone who can commit to the repo being viewed.
+ * The extension's trust-boundary control on its log. Trace files and webview messages are data
+ * that could have been written by anyone who can commit to the repo being viewed. (Its other
+ * control, refusing paths that climb out of the project, is infra's safeSegments: tested there.)
  */
 import { describe, expect, test, vi } from "vitest";
 
 vi.mock("vscode", () => ({ Uri: {}, workspace: {} }));
 
 import { Logger } from "../../src/logger";
-import { safeSegments } from "../../src/workspace-files";
-
-describe("safeSegments (path traversal)", () => {
-  test("keeps project-relative paths, refuses anything that escapes the project", () => {
-    expect(safeSegments("app/api/routes/users.py")).toEqual(["app", "api", "routes", "users.py"]);
-    expect(safeSegments("./app//main.py")).toEqual(["app", "main.py"]);
-
-    for (const escaping of ["../secrets.env", "app/../../etc/passwd", "/etc/passwd", "C:\\Windows\\win.ini", "app\\..\\..\\x"]) {
-      expect(() => safeSegments(escaping), escaping).toThrowError(/refusing a path outside the project/);
-    }
-  });
-});
-
 describe("Logger (log injection)", () => {
   test("a value with a newline cannot start a forged log line", () => {
     const lines: string[] = [];

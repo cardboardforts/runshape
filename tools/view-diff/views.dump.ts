@@ -33,7 +33,7 @@ const echoAdvisor = {
 
 test("dump every view", async () => {
   // Everything through core's index: modules move between packages, the index keeps exporting them.
-  const { ViewerSession, PROFILES, loadLatestRun, loadPreviousRun } = await import(join(CORE_SRC, "index.ts"));
+  const { ViewerSession, PROFILES, TraceDirectory, loadLatestRun, loadPreviousRun } = await import(join(CORE_SRC, "index.ts"));
   const phases = PHASE_SETS.call;
   const responses: Record<string, unknown> = {};
 
@@ -42,8 +42,10 @@ test("dump every view", async () => {
     // "<app>-<change>" fixtures share the app's source, as in the webview demo; django has none.
     const sourceRoot = join(FIXTURES, app.split("-")[0]!, "source");
     const sources = { readLines: (file: string) => readFile(join(sourceRoot, file), "utf8").then((text) => text.split("\n"), () => null) };
-    const run = await loadLatestRun(files);
-    const baseline = await loadPreviousRun(files);
+    // Runs loaded the way each revision loads them: a TraceDirectory, or the functions before it.
+    const runs = TraceDirectory ? new TraceDirectory(files) : { latest: () => loadLatestRun(files), previous: () => loadPreviousRun(files) };
+    const run = await runs.latest();
+    const baseline = await runs.previous();
     const session = new ViewerSession(run, { sources, baseline, advisor: echoAdvisor, ruleStore: { save: async () => true } });
     const ask = async (label: string, request: unknown) => {
       try {

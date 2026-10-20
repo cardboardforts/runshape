@@ -1,16 +1,16 @@
 // runshape-review-md [traces directory]: the behaviour review of the latest recording against
 // the previous one (as runshape-review leaves them), as Markdown for a pull request comment.
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { buildReview, loadLatestRun, loadPreviousRun, reviewMarkdown, TraceFiles } from "@runshape/core";
+import { buildReview, reviewMarkdown, TraceDirectory } from "@runshape/core";
+import { NodeFiles } from "@runshape/infra";
 
 const DEFAULT_TRACES = ".runshape/traces";
 
 export async function reviewFromDirectory(tracesDirectory: string): Promise<string> {
-  const files: TraceFiles = { readText: (path) => readFile(join(tracesDirectory, path), "utf8") };
-  const head = await loadLatestRun(files);
-  const base = await loadPreviousRun(files);
+  const runs = new TraceDirectory(new NodeFiles(tracesDirectory));
+  const head = await runs.latest();
+  const base = await runs.previous();
   if (base === null) {
     throw new Error(`${tracesDirectory} has only one recording; run runshape-review --base <ref> to record a base to compare with`);
   }

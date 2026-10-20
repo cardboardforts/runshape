@@ -8,16 +8,16 @@ import { describe, expect, test } from "vitest";
 import { Phase } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { ViewerSession } from "../src/session";
-import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import {  } from "@runshape/trace";
+import { fixtureRuns } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 const GROUPING = { collapseMiddleware: true };
 
 async function refactorSession(): Promise<ViewerSession> {
-  const files = fixtureFiles("fastapi-slug-refactor");
-  const baseline = await loadPreviousRun(files);
-  return new ViewerSession(await loadLatestRun(files), { sources: { readLines: async () => null }, baseline });
+  const runs = fixtureRuns("fastapi-slug-refactor");
+  const baseline = await runs.previous();
+  return new ViewerSession(await runs.latest(), { sources: { readLines: async () => null }, baseline });
 }
 
 describe("naming functions on the wire", () => {
@@ -75,7 +75,7 @@ describe("the route view on the wire", () => {
   });
 
   test("comparing with no earlier recording is an error, not an empty diff", async () => {
-    const session = new ViewerSession(await loadLatestRun(fixtureFiles("go-shop-running")), { sources: { readLines: async () => null } });
+    const session = new ViewerSession(await fixtureRuns("go-shop-running").latest(), { sources: { readLines: async () => null } });
 
     expect(await session.handle({ type: "routes", phases: [Phase.Call], compare: true })).toEqual({
       type: "error",
@@ -89,7 +89,7 @@ describe("comparing two commits' architecture on the wire", () => {
   const STORAGE = { match: "example\\.com.shop.internal.storage.**", zone: "outbound-adapter", reason: "stores orders", by: "llm" };
 
   test("each side drawn with its own rules: the branch's new rule is a decision in the diff", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]), baselineRules: shopRules([]) });
 
     const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });
@@ -107,7 +107,7 @@ describe("comparing two commits' architecture on the wire", () => {
   });
 
   test("a style changed in the branch is one change, not every class moving", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const mvc = ZoneRules.parse(JSON.stringify({ version: 2, style: "mvc", zones: [] }));
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([]), baselineRules: mvc });
 
@@ -119,7 +119,7 @@ describe("comparing two commits' architecture on the wire", () => {
   });
 
   test("the zones are named in the commit's own style, whatever style the graph previews", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]), baselineRules: shopRules([]) });
 
     const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING, style: "mvc" });
@@ -129,7 +129,7 @@ describe("comparing two commits' architecture on the wire", () => {
   });
 
   test("a head runshape.json that can't be read isn't 'every rule removed': both sides use what the session has, and the response says so", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rulesProblem: "not valid JSON", baselineRules: shopRules([STORAGE]) });
 
     const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });
@@ -139,7 +139,7 @@ describe("comparing two commits' architecture on the wire", () => {
   });
 
   test("without the base's rules both sides use the current ones, and the response says so", async () => {
-    const run = await loadLatestRun(fixtureFiles("go-shop"));
+    const run = await fixtureRuns("go-shop").latest();
     const session = new ViewerSession(run, { sources: { readLines: async () => null }, baseline: run, rules: shopRules([STORAGE]) });
 
     const response = await session.handle({ type: "diff", phases: [Phase.Call], grouping: GROUPING });

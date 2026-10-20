@@ -9,12 +9,12 @@
 import { describe, expect, test } from "vitest";
 
 import { Run } from "@runshape/trace";
-import { loadLatestRun, loadPreviousRun, TraceFiles } from "@runshape/trace";
+import { TraceDirectory, TraceFiles } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
 import { ManifestDto, ScenarioDto } from "@runshape/trace";
 import { diffRuns } from "../src";
 import { buildSystemGraph } from "../src";
-import { FixtureApp, fixtureFiles } from "../../trace/test/fixtures";
+import { FixtureApp, fixtureFiles, fixtureRuns } from "../../trace/test/fixtures";
 
 /** A v1 trace directory, served as v2: what a recorder writing v2 would have produced. */
 function asVersion2(v1: TraceFiles): TraceFiles {
@@ -52,10 +52,10 @@ function asVersion2(v1: TraceFiles): TraceFiles {
 async function bothVersions(app: FixtureApp): Promise<{ v1: Run; v2: Run; v1Before: Run | null; v2Before: Run | null }> {
   const files = fixtureFiles(app);
   return {
-    v1: await loadLatestRun(files),
-    v2: await loadLatestRun(asVersion2(files)),
-    v1Before: await loadPreviousRun(files),
-    v2Before: await loadPreviousRun(asVersion2(files)),
+    v1: await new TraceDirectory(files).latest(),
+    v2: await new TraceDirectory(asVersion2(files)).latest(),
+    v1Before: await new TraceDirectory(files).previous(),
+    v2Before: await new TraceDirectory(asVersion2(files)).previous(),
   };
 }
 
@@ -90,31 +90,31 @@ describe("trace format version 2", () => {
     };
     const firstScenario = (path: string) => path.endsWith("/scenarios/0003.json");
 
-    await expect(loadLatestRun(tampered((path, data) => path.endsWith("manifest.json") && delete data.language))).rejects.toThrowError(
+    await expect(new TraceDirectory(tampered((path, data) => path.endsWith("manifest.json") && delete data.language)).latest()).rejects.toThrowError(
       /version 2 says which language recorded it: "language" is missing/,
     );
-    const badCatalog = await loadLatestRun(
+    const badCatalog = await new TraceDirectory(
       tampered((path, data) => {
         if (path.endsWith("manifest.json")) data.catalog[0].symbol.kind = "lambda";
       }),
-    );
-    const badScenario = await loadLatestRun(
+    ).latest();
+    const badScenario = await new TraceDirectory(
       tampered((path, data) => {
         if (path.includes("/scenarios/") && firstScenario(path)) data.functions[0].symbol.namespace = "app.main";
       }),
-    );
-    const pythonNamesInV2 = await loadLatestRun(
+    ).latest();
+    const pythonNamesInV2 = await new TraceDirectory(
       tampered((path, data) => {
         if (path.includes("/scenarios/") && firstScenario(path)) data.functions[0] = { ...data.functions[0], symbol: undefined, module: "app.main", qualname: "f" };
       }),
-    );
+    ).latest();
 
     expect([badCatalog, badScenario, pythonNamesInV2].map((run) => run.problems.map((problem) => problem.replace(/^.*\/scenarios\//, "scenarios/")))).toEqual([
       [expect.stringMatching(/^catalog entry 0 \(app\/.*\) skipped: symbol kind "lambda" is not one of function, method, constructor, initializer, nested$/)],
       ["scenarios/0003.json: skipped, function 0: symbol namespace is not a list of strings"],
       ["scenarios/0003.json: skipped, function 0: version 2 names code by symbol, not module and qualname"],
     ]);
-    expect(badCatalog.catalog.length).toBe((await loadLatestRun(fixtureFiles("fastapi"))).catalog.length - 1);
+    expect(badCatalog.catalog.length).toBe((await fixtureRuns("fastapi").latest()).catalog.length - 1);
   });
 
   test("the run says which language and runtime recorded it; v1 recordings are Python", async () => {

@@ -12,8 +12,10 @@ Mostly **Core** code. Drawn hexagonal, every zone inferred from what the code di
 | `architecture-advice.ts` | Core | — | `parseArchitectureAdvice`, `architecturePrompt` |
 | `architecture.ts` | Core | — | `detectArchitecture`, `proposedRules`, `projectPackages` |
 | `explainer.ts` | Core | `ExplanationError` | `explainChange`, `explanationInputs`, `explanationMarkdown`, `parseExplanation`, `ExplanationError.constructor` |
-| `folder-readme.ts` | Core | — | `mergeIntoReadme`, `folderGuideMarkdown` |
+| `folder-description.ts` | Core | `DescriptionError` | `openingComment`, `describeFolder`, `parseFolderDescription`, `DescriptionError.constructor` |
+| `folder-readme.ts` | Core | — | `folderGuideMarkdown`, `mergeIntoReadme`, `needsDescription`, `describeReadme` |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
+| `json-answer.ts` | Core | — | `firstJsonObject` |
 | `language-model.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `review-bundle.ts` | Core | — | `reviewBundleMarkdown`, `buildReviewBundle` |
 | `session.ts` | Core | `ViewerSession` | `ViewerSession.handle`, `ViewerSession.constructor`, `ViewerSession.summary` |

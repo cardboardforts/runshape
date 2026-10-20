@@ -11,13 +11,13 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { buildFolderGuides, buildPlacements } from "@runshape/views";
 import { DescriptionError, describeFolder, openingComment, parseFolderDescription } from "../src/folder-description";
 import { describeReadme, mergeIntoReadme, needsDescription, README_PLACEHOLDER } from "../src/folder-readme";
 import { LanguageModel } from "../src/language-model";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import { fixtureRuns } from "../../trace/test/fixtures";
 
 class FakeModel implements LanguageModel {
   readonly name = "fake-model";
@@ -31,7 +31,7 @@ class FakeModel implements LanguageModel {
 }
 
 async function webGuide() {
-  const run = await loadLatestRun(fixtureFiles("go-shop"));
+  const run = await fixtureRuns("go-shop").latest();
   const snapshot = buildPlacements(run, ZoneRules.none());
   const guide = buildFolderGuides(run, snapshot, [...new Set(run.catalog.map((fn) => fn.file))]).find((g) => g.folder === "internal/web")!;
   return { guide, context: { style: snapshot.style, rules: snapshot.rules.length } };

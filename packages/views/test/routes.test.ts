@@ -9,9 +9,9 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { CodeSymbol, FunctionInfo, loadLatestRun, loadPreviousRun, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind } from "@runshape/trace";
+import { CodeSymbol, FunctionInfo, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind } from "@runshape/trace";
 import { buildRouteMap, Change, Op, detectMoves, diffRouteMaps, readablePattern, RouteMap, RouteMapDiff, routeForPath, RouteVariant } from "../src";
-import { FixtureApp, fixtureFiles, loadFixtureRun } from "../../trace/test/fixtures";
+import { FixtureApp, fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
 
 function render(map: RouteMap): string {
   const lines: string[] = [];
@@ -489,9 +489,9 @@ describe("buildRouteMap", () => {
 
 describe("diffRouteMaps", () => {
   async function diff(app: FixtureApp) {
-    const files = fixtureFiles(app);
-    const base = (await loadPreviousRun(files))!;
-    const head = await loadLatestRun(files);
+    const runs = fixtureRuns(app);
+    const base = (await runs.previous())!;
+    const head = await runs.latest();
     return renderDiff(diffRouteMaps(base, head, { moves: detectMoves(base, head) }));
   }
 
@@ -506,9 +506,9 @@ describe("diffRouteMaps", () => {
   });
 
   test("a changed variant's path marks what it now runs and what it no longer runs, in place", async () => {
-    const files = fixtureFiles("fastapi-slug-refactor");
-    const base = (await loadPreviousRun(files))!;
-    const head = await loadLatestRun(files);
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const base = (await runs.previous())!;
+    const head = await runs.latest();
     const created = diffRouteMaps(base, head, { moves: detectMoves(base, head) }).routes[0]!.variants[0]!;
 
     const marks = { [Op.Same]: " ", [Op.Added]: "+", [Op.Removed]: "-" };
@@ -526,9 +526,9 @@ describe("diffRouteMaps", () => {
   });
 
   test("read backwards, the refactor's variants no longer call what it added", async () => {
-    const files = fixtureFiles("fastapi-slug-refactor");
-    const base = (await loadPreviousRun(files))!;
-    const head = await loadLatestRun(files);
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const base = (await runs.previous())!;
+    const head = await runs.latest();
 
     const undone = diffRouteMaps(head, base).routes[0]!.variants.map(({ change, nowCalls, noLongerCalls }) => ({ change, nowCalls, noLongerCalls }));
     expect(undone).toEqual([

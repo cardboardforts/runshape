@@ -12,10 +12,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun, QualifiedName } from "@runshape/trace";
+import { QualifiedName } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { ArchitectureDiff, ArchitectureSnapshot, buildPlacements, detectMoves, diffArchitecture, diffRuns, Moves, Placement, ZoneSource } from "../src";
-import { fixtureFiles, loadFixtureRun } from "../../trace/test/fixtures";
+import { fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
 
 const rules = (zones: { match: string; zone: string; reason: string; by: string }[]) => ZoneRules.parse(JSON.stringify({ version: 2, style: "hexagonal", zones }));
 const ORDERS = { match: "example\\.com.shop.internal.orders.**", zone: "core", reason: "the order rules", by: "user" };
@@ -71,9 +71,9 @@ describe("diffArchitecture", () => {
   test("the same rules, the code changed: code no rule covers that the base's tests never reached needs a decision", async () => {
     // The routing fix: the feed view existed in the base, but a misrouted URL meant no test reached
     // it. Placements cover what the tests ran, so to the architecture it's new.
-    const files = fixtureFiles("django-feed-fix");
-    const base = (await loadPreviousRun(files))!;
-    const head = await loadLatestRun(files);
+    const runs = fixtureRuns("django-feed-fix");
+    const base = (await runs.previous())!;
+    const head = await runs.latest();
 
     const diff = diffArchitecture(buildPlacements(base, ZoneRules.none()), buildPlacements(head, ZoneRules.none()), detectMoves(base, head));
 

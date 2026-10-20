@@ -14,7 +14,7 @@ import {
   Span,
   SymbolKind,
   Topology,
-} from "./model";
+} from "../model/trace";
 import { CatalogFunctionDto, CodeNameDto, ManifestDto, ScenarioDto, SUPPORTED_VERSIONS, TRACE_FORMAT } from "./wire";
 
 export class TraceFormatError extends Error {

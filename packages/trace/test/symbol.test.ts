@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun, pythonSymbol } from "../src";
-import { fixtureFiles, loadFixtureRun } from "./fixtures";
+import { pythonSymbol } from "../src";
+import { fixtureRuns, loadFixtureRun } from "./fixtures";
 
 describe("CodeSymbol", () => {
   test("Python names split into namespace, container and name, whatever the nesting", async () => {
@@ -107,9 +107,9 @@ describe("CodeSymbol", () => {
   });
 
   test("the same function in two recordings has the same key, so diffs can pair them up", async () => {
-    const files = fixtureFiles("django-feed-fix");
-    const before = (await loadPreviousRun(files))!;
-    const after = await loadLatestRun(files);
+    const runs = fixtureRuns("django-feed-fix");
+    const before = (await runs.previous())!;
+    const after = await runs.latest();
 
     const keysBefore = new Set(before.catalog.map((fn) => fn.symbol.key));
     const unmatched = after.catalog.filter((fn) => !keysBefore.has(fn.symbol.key)).map((fn) => fn.symbol.localName.text);

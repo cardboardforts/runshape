@@ -9,17 +9,17 @@ import { describe, expect, test } from "vitest";
 
 import { Op } from "../src";
 import { CodeSymbol, FunctionInfo, Phase, Role, Run, Span, SymbolKind } from "@runshape/trace";
-import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { pythonSymbol } from "@runshape/trace";
 import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src";
 import { diffRuns } from "../src";
-import { fixtureFiles, loadFixtureRun } from "../../trace/test/fixtures";
+import { fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 
 async function loadRefactor(): Promise<{ before: Run; after: Run }> {
-  const files = fixtureFiles("fastapi-slug-refactor");
-  return { before: (await loadPreviousRun(files))!, after: await loadLatestRun(files) };
+  const runs = fixtureRuns("fastapi-slug-refactor");
+  return { before: (await runs.previous())!, after: await runs.latest() };
 }
 
 const mark = { [Op.Same]: " ", [Op.Added]: "+", [Op.Removed]: "-" };
@@ -182,9 +182,9 @@ describe("functions are told apart by symbol", () => {
 
     // Neither runs in a recorded scenario, so for the execution diff, plant a namesake of
     // check_article_exists from another module in the "after" recording.
-    const files = fixtureFiles("fastapi-slug-refactor");
-    const before = (await loadPreviousRun(files))!;
-    const after = await loadLatestRun(files);
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const before = (await runs.previous())!;
+    const after = await runs.latest();
     const create = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
     const calls = (symbol: CodeSymbol) => {
       const diff = diffFunctionExecution(before, after, create, symbol);

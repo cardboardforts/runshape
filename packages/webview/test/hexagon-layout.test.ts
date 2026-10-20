@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, FixedZone, HEXAGONAL, HexagonalZone, loadLatestRun } from "@runshape/core";
+import { buildSystemGraph, FixedZone, HEXAGONAL, HexagonalZone, TraceDirectory } from "@runshape/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -14,7 +14,7 @@ import { overlappingTiles } from "./tiles";
 
 async function fastapiGraph() {
   const fixtures = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "fastapi");
-  const run = await loadLatestRun({ readText: (path) => readFile(join(fixtures, path), "utf8") });
+  const run = await new TraceDirectory({ readText: (path) => readFile(join(fixtures, path), "utf8") }).latest();
   return buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
 }
 

@@ -11,7 +11,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, Run, TraceFiles } from "@runshape/trace";
+import { Run, TraceDirectory, TraceFiles } from "@runshape/trace";
 import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Scenario, Span, SymbolKind } from "@runshape/trace";
 import { buildReview, Change, detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "../src";
 import { fixtureFiles } from "../../trace/test/fixtures";
@@ -66,9 +66,9 @@ const SLUG = () => fixtureFiles("fastapi-slug-refactor");
 
 /** The base as recorded, head as if app/services/articles.py had moved to app/domain/articles.py. */
 async function baseAndMoved(options?: { keepSources: boolean }): Promise<{ base: Run; head: Run }> {
-  const base = await loadLatestRun(SLUG());
+  const base = await new TraceDirectory(SLUG()).latest();
   if (options?.keepSources === false) (base as { sources: unknown }).sources = null;
-  return { base, head: await loadLatestRun(rewritten(SLUG(), { modules: { [FROM]: TO }, keepSources: options?.keepSources })) };
+  return { base, head: await new TraceDirectory(rewritten(SLUG(), { modules: { [FROM]: TO }, keepSources: options?.keepSources })).latest() };
 }
 
 /** Boxes and edges that appear or disappear between the runs: none, for a pure move. */
@@ -136,16 +136,16 @@ describe("moves the first version got wrong (second-model review)", () => {
   test("a parent namespace moving into a submodule renames only itself, not the modules beside it", async () => {
     // BaseRepository moves from app.db.repositories into app.db.repositories.base: the users,
     // articles, profiles and tags repositories, also under app.db.repositories, stay put.
-    const base = await loadLatestRun(rewritten(SLUG(), { modules: { "app.db.repositories.base": "app.db.repositories" } }));
-    const head = await loadLatestRun(SLUG());
+    const base = await new TraceDirectory(rewritten(SLUG(), { modules: { "app.db.repositories.base": "app.db.repositories" } })).latest();
+    const head = await new TraceDirectory(SLUG()).latest();
 
     expect(detectMoves(base, head).describe()).toEqual(["app.db.repositories -> app.db.repositories.base (2 functions)"]);
     expect(churn(base, head)).toEqual([]);
   });
 
   test("a module merged into one that already existed is one box, with the calls of both", async () => {
-    const base = await loadLatestRun(SLUG());
-    const head = await loadLatestRun(rewritten(SLUG(), { modules: { "app.services.authentication": "app.services.jwt" } }));
+    const base = await new TraceDirectory(SLUG()).latest();
+    const head = await new TraceDirectory(rewritten(SLUG(), { modules: { "app.services.authentication": "app.services.jwt" } })).latest();
 
     const jwt = diffRuns(base, head).nodes.find((node) => node.id === "module:app.services.jwt")!;
     expect([jwt.change, churn(base, head)]).toEqual([Change.Unchanged, []]);
@@ -153,23 +153,23 @@ describe("moves the first version got wrong (second-model review)", () => {
 
   test("a class moved to another module that stays is the same box", async () => {
     const authentication = "app.api.dependencies.authentication";
-    const base = await loadLatestRun(SLUG());
-    const head = await loadLatestRun(
+    const base = await new TraceDirectory(SLUG()).latest();
+    const head = await new TraceDirectory(
       rewritten(SLUG(), {
         functions: { [`${authentication}:RWAPIKeyHeader.__call__`]: "app.api.dependencies.database" },
         classes: { [`${authentication}.RWAPIKeyHeader`]: "app.api.dependencies.database.RWAPIKeyHeader" },
       }),
-    );
+    ).latest();
 
     expect(detectMoves(base, head).describe()).toEqual([`RWAPIKeyHeader.__call__: ${authentication} -> app.api.dependencies.database`]);
     expect(churn(base, head)).toEqual([]);
   });
 
   test("a function moved and edited with its module is paired as edited, so its real change shows", async () => {
-    const base = await loadLatestRun(SLUG());
-    const head = await loadLatestRun(
+    const base = await new TraceDirectory(SLUG()).latest();
+    const head = await new TraceDirectory(
       rewritten(SLUG(), { modules: { [FROM]: TO }, lines: { "app/services/articles.py": { 15: "        await articles_repo.get_article_by_slug(slug)" } } }),
-    );
+    ).latest();
 
     const moves = detectMoves(base, head);
     const create = diffRuns(base, head).scenarios.find((scenario) => scenario.id === CREATE)!;
@@ -194,8 +194,8 @@ describe("moves the first version got wrong (second-model review)", () => {
 
   test("a one-line body pairs only inside a namespace that moved, never on its text alone", async () => {
     // _get_db_pool is `return request.app.state.pool`: a namesake anywhere with that body isn't a move.
-    const base = await loadLatestRun(SLUG());
-    const head = await loadLatestRun(rewritten(SLUG(), { functions: { "app.api.dependencies.database:_get_db_pool": "app.services.jwt" } }));
+    const base = await new TraceDirectory(SLUG()).latest();
+    const head = await new TraceDirectory(rewritten(SLUG(), { functions: { "app.api.dependencies.database:_get_db_pool": "app.services.jwt" } })).latest();
 
     expect(detectMoves(base, head).functions).toEqual([]);
   });
@@ -224,8 +224,8 @@ describe("moved tests", () => {
   }
 
   test("a moved test file's tests pair with themselves by name, and compare as unchanged", async () => {
-    const base = await loadLatestRun(SLUG());
-    const head = await loadLatestRun(movedTests(SLUG()));
+    const base = await new TraceDirectory(SLUG()).latest();
+    const head = await new TraceDirectory(movedTests(SLUG())).latest();
     const movedCreate = CREATE.replace(FROM_FILE, TO_FILE);
 
     const diff = diffRuns(base, head);

@@ -1,0 +1,93 @@
+import { RunSource } from "../model/run-source";
+import { Run } from "../model/trace";
+import { LoadedScenario, parseRun, TraceFormatError } from "./parse";
+import { ManifestDto, ScenarioDto } from "./wire";
+
+/**
+ * Port: the text of a file, by path relative to a traces directory (.runshape/traces).
+ * Declared here, where it's needed; infra's file stores fit it without importing trace.
+ */
+export interface TraceFiles {
+  readText(relativePath: string): Promise<string>;
+}
+
+export const LATEST_POINTER = "latest.json";
+export const PREVIOUS_POINTER = "previous.json";
+
+export const HOW_TO_RECORD = "record one by running your tests with `pytest --runshape` (see the Runshape README)";
+
+/**
+ * A traces directory as the recorders write it (docs/trace-format.md): pointer files naming
+ * the latest and previous run directories, each a manifest and one file per scenario.
+ */
+export class TraceDirectory implements RunSource {
+  constructor(private readonly files: TraceFiles) {}
+
+  async latest(): Promise<Run> {
+    let pointerText: string;
+    try {
+      pointerText = await this.files.readText(LATEST_POINTER);
+    } catch (error) {
+      throw new TraceFormatError([`no recording found (${describe(error)}); ${HOW_TO_RECORD}`]);
+    }
+    return this.load(runDirectoryIn(pointerText, LATEST_POINTER));
+  }
+
+  async previous(): Promise<Run | null> {
+    let pointerText: string;
+    try {
+      pointerText = await this.files.readText(PREVIOUS_POINTER);
+    } catch {
+      return null;
+    }
+    return this.load(runDirectoryIn(pointerText, PREVIOUS_POINTER));
+  }
+
+  private async load(runDirectory: string): Promise<Run> {
+    const manifest = await this.readJson<ManifestDto>(`${runDirectory}/manifest.json`);
+    const loaded: LoadedScenario[] = [];
+    const unreadable: string[] = [];
+    for (const entry of manifest.scenarios ?? []) {
+      const path = `${runDirectory}/${entry.file}`;
+      try {
+        loaded.push({ file: path, dto: await this.readJson<ScenarioDto>(path) });
+      } catch (error) {
+        unreadable.push(`skipped ${path}: ${describe(error)}`);
+      }
+    }
+    const run = parseRun(manifest, loaded);
+    run.problems.push(...unreadable);
+    return run;
+  }
+
+  private async readJson<T>(path: string): Promise<T> {
+    let text: string;
+    try {
+      text = await this.files.readText(path);
+    } catch (error) {
+      throw new TraceFormatError([`could not read ${path}: ${describe(error)}`]);
+    }
+    return parseJson<T>(text, path);
+  }
+}
+
+function runDirectoryIn(pointerText: string, pointerFile: string): string {
+  const pointer = parseJson<{ run?: unknown }>(pointerText, pointerFile);
+  if (typeof pointer.run !== "string" || pointer.run === "") {
+    throw new TraceFormatError([`${pointerFile} does not name a run directory`]);
+  }
+  return pointer.run;
+}
+
+function parseJson<T>(text: string, path: string): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new TraceFormatError([`${path} is not valid JSON: ${describe(error)}`]);
+  }
+}
+
+function describe(error: unknown): string {
+  if (error instanceof TraceFormatError) return error.problems.join("; ");
+  return error instanceof Error ? error.message : String(error);
+}

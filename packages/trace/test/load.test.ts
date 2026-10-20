@@ -4,9 +4,9 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, TraceFiles } from "../src";
+import { TraceDirectory, TraceFiles } from "../src";
 import { TraceFormatError } from "../src";
-import { fixtureFiles } from "./fixtures";
+import { fixtureFiles, fixtureRuns } from "./fixtures";
 
 function filesWith(overrides: Record<string, string | Error>, fallback: TraceFiles): TraceFiles {
   return {
@@ -18,9 +18,9 @@ function filesWith(overrides: Record<string, string | Error>, fallback: TraceFil
   };
 }
 
-describe("loadLatestRun", () => {
+describe("TraceDirectory", () => {
   test("follows latest.json to the newest run and parses every scenario", async () => {
-    const run = await loadLatestRun(fixtureFiles("django"));
+    const run = await fixtureRuns("django").latest();
 
     expect({
       backend: run.backend,
@@ -54,8 +54,8 @@ describe("loadLatestRun", () => {
       django,
     );
 
-    await expect(loadLatestRun(files)).rejects.toThrowError(TraceFormatError);
-    await expect(loadLatestRun(files)).rejects.toThrowErrorMatchingInlineSnapshot(`
+    await expect(new TraceDirectory(files).latest()).rejects.toThrowError(TraceFormatError);
+    await expect(new TraceDirectory(files).latest()).rejects.toThrowErrorMatchingInlineSnapshot(`
       [Error: not a readable runshape trace:
         - format is "something-else", expected "runshape-trace"
         - version 99 is not supported (this viewer reads versions 1 and 2)]
@@ -71,7 +71,7 @@ describe("loadLatestRun", () => {
       fixtureFiles("django"),
     );
 
-    const run = await loadLatestRun(files);
+    const run = await new TraceDirectory(files).latest();
 
     expect(run.scenarios).toHaveLength(6);
     expect(run.problems).toMatchInlineSnapshot(`
@@ -85,7 +85,7 @@ describe("loadLatestRun", () => {
   test("a missing traces folder explains what to run", async () => {
     const files: TraceFiles = { readText: async () => Promise.reject(new Error("ENOENT: no such file")) };
 
-    await expect(loadLatestRun(files)).rejects.toThrowErrorMatchingInlineSnapshot(`
+    await expect(new TraceDirectory(files).latest()).rejects.toThrowErrorMatchingInlineSnapshot(`
       [Error: not a readable runshape trace:
         - no recording found (ENOENT: no such file); record one by running your tests with \`pytest --runshape\` (see the Runshape README)]
     `);

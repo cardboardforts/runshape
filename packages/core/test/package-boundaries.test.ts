@@ -4,12 +4,15 @@
  *
  *   trace  <-  architecture  <-  views  <-  core  <-  webview, extension, cli
  *                                                     library  <-  cli
+ *                                                     infra    <-  extension, cli
  *
  * Each package may import only the packages before it, and lists each one it imports in its
  * package.json. The domain packages import nothing from Node, VS Code or React; the adapters
- * reach the domain only through @runshape/core. The library (recordings on disk, git refs) is a
- * Node adapter of its own, for the CLI and the demo's dev server. The TypeScript recorder stands alone: it writes
- * the trace format, it doesn't share code with the viewer.
+ * reach the domain only through @runshape/core. Infra keeps files and imports no Runshape
+ * package: trace declares the port it reads through, and infra's stores fit it by shape. The
+ * library (recordings on disk, git refs) is a Node adapter of its own, for the CLI and the
+ * demo's dev server. The TypeScript recorder stands alone: it writes the trace format, it
+ * doesn't share code with the viewer.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { builtinModules } from "node:module";
@@ -21,12 +24,13 @@ const ROOT = join(import.meta.dirname, "..", "..", "..");
 /** Which @runshape packages each one may import. */
 const ALLOWED: Record<string, string[]> = {
   "packages/trace": [],
+  "packages/infra": [],
   "packages/architecture": ["trace"],
   "packages/views": ["trace", "architecture"],
   "packages/core": ["trace", "architecture", "views"],
   "packages/webview": ["core"],
-  "packages/extension": ["core"],
-  "packages/cli": ["core", "library"],
+  "packages/extension": ["core", "infra"],
+  "packages/cli": ["core", "library", "infra"],
   "packages/library": [],
   "recorder-ts": [],
 };

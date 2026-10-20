@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
-import { loadLatestRun, loadPreviousRun, RuleChange, TraceFiles, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
+import { RuleChange, TraceDirectory, TraceFiles, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
@@ -119,7 +119,8 @@ function demoHost(params: URLSearchParams): Host {
     const local = exampleSources[`../../../examples/${baseApp}-realworld/${file}`];
     return local ? ((await local()) as string) : readFixtureSource(file);
   };
-  const latest = loadLatestRun(traces);
+  const runs = new TraceDirectory(traces);
+  const latest = runs.latest();
   // Runshape's own recordings carry their source; the example apps' comes from fixtures or examples/.
   const sources = {
     readLines: async (file: string) =>
@@ -131,7 +132,7 @@ function demoHost(params: URLSearchParams): Host {
   const headId = pair?.head ?? single;
   const rules = headId === null ? Promise.resolve(null) : recordingRules(headId);
   const baselineRules = pair === null ? Promise.resolve(null) : recordingRules(pair.base);
-  const session = Promise.all([latest, loadPreviousRun(traces), rules, baselineRules]).then(
+  const session = Promise.all([latest, runs.previous(), rules, baselineRules]).then(
     // Head's rules unknown: then neither side's are, or the base's would all read as removed.
     ([run, baseline, headRules, baseRules]) =>
       new ViewerSession(run, { sources, baseline, ruleStore, rules: headRules ?? undefined, baselineRules: headRules === null ? null : baseRules }),

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { loadLatestRun, loadPreviousRun, Phase, ZoneSource, Run, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
+import { Phase, ZoneSource, Run, RunSource, TraceDirectory, UiRequest, UiResponse, ViewerSession } from "@runshape/core";
 
 import type { Logger } from "./logger";
 import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./zone-adapters";
@@ -170,9 +170,9 @@ export class RuntimePanel {
 
   private async load(requestId: number): Promise<ViewerSession> {
     const started = Date.now();
-    const traces = traceFilesAt(vscode.Uri.joinPath(this.projectRoot, ".runshape", "traces"));
-    const run = await loadLatestRun(traces);
-    const baseline = await this.loadBaseline(traces, requestId);
+    const runs = new TraceDirectory(traceFilesAt(vscode.Uri.joinPath(this.projectRoot, ".runshape", "traces")));
+    const run = await runs.latest();
+    const baseline = await this.loadBaseline(runs, requestId);
     const { rules, problem } = await readRules(this.projectRoot);
     this.logger.info("run.loaded", {
       request: requestId,
@@ -201,9 +201,9 @@ export class RuntimePanel {
   }
 
   /** The comparison is optional: a missing or unreadable previous run must not block the view. */
-  private async loadBaseline(traces: Parameters<typeof loadPreviousRun>[0], requestId: number): Promise<Run | null> {
+  private async loadBaseline(runs: RunSource, requestId: number): Promise<Run | null> {
     try {
-      return await loadPreviousRun(traces);
+      return await runs.previous();
     } catch (error) {
       this.logger.error("baseline.unreadable", error, { request: requestId, project: this.projectRoot.fsPath });
       return null;

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import { SourceReader, TraceFiles } from "@runshape/core";
+import { safeSegments } from "@runshape/infra";
 
 /** TraceFiles over a .runshape/traces directory, read through VS Code's file system API. */
 export function traceFilesAt(tracesDirectory: vscode.Uri): TraceFiles {
@@ -28,16 +29,4 @@ export function sourceReaderAt(projectRoot: vscode.Uri): SourceReader {
 
 export function childUri(base: vscode.Uri, relativePath: string): vscode.Uri {
   return vscode.Uri.joinPath(base, ...safeSegments(relativePath));
-}
-
-/**
- * Paths come from trace files and the webview, which are data: refuse anything that would
- * climb out of the directory it's meant to be inside.
- */
-export function safeSegments(relativePath: string): string[] {
-  const segments = relativePath.split(/[\\/]/);
-  if (/^([a-zA-Z]:)?[\\/]/.test(relativePath) || segments.some((segment) => segment === "..")) {
-    throw new Error(`refusing a path outside the project: ${relativePath}`);
-  }
-  return segments.filter((segment) => segment !== "" && segment !== ".");
 }

@@ -13,19 +13,19 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle } from "../src/review-bundle";
 import { ChangeContext, explainChange, explanationMarkdown, ExplanationError, explanationPrompt, LanguageModel, parseExplanation } from "../src";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import { fixtureRuns } from "../../trace/test/fixtures";
 
 const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit`, dirty: false, forkOf: null });
 
 async function refactorBundle() {
-  const files = fixtureFiles("fastapi-slug-refactor");
+  const runs = fixtureRuns("fastapi-slug-refactor");
   return buildReviewBundle({
-    base: (await loadPreviousRun(files))!,
-    head: await loadLatestRun(files),
+    base: (await runs.previous())!,
+    head: await runs.latest(),
     baseSide: side("main", "aaaaaaaaaaaa"),
     headSide: side("working", "working"),
     baseRules: ZoneRules.none(),

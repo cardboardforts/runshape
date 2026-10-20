@@ -44,11 +44,18 @@ viewer:     packages/extension (composition root, VS Code adapter) ─┐
 ```
 
 - `packages/core` imports nothing outside itself: no `vscode`, no React, no Node `fs`. File
-  access comes in through two ports, `TraceFiles` and `SourceReader`.
+  access comes in through two ports, `TraceFiles` (declared by `packages/trace`'s data layer)
+  and `SourceReader`.
+- Storage, format and translation have separate owners. `packages/infra` keeps files and
+  knows no format: it imports no other Runshape package, and its stores fit the domain's ports
+  by shape. `packages/trace` owns the format: `model/` is the run in memory and the
+  `RunSource` port, `data/` the wire shape, its parsing and a traces directory's layout. Each
+  recorder translates its language's own trace into the format before writing it, so nothing
+  past the recorder sees a language's native trace.
 - `ViewerSession` (core) answers every request the webview can make. The extension forwards
   messages to it; the demo calls it directly. So the webview behaves identically in both.
 - The trace format is the wire format between the Python and TypeScript halves. It is bent
-  for size (tagged arrays); `parse.ts` maps it into named domain types at the boundary.
+  for size (tagged arrays); `packages/trace/src/data/parse.ts` maps it into named domain types at the boundary.
 
 Check with: `grep -rn "from \"vscode\"\|from \"react\"\|node:" packages/core/src` (expect nothing).
 
@@ -135,7 +142,7 @@ in a webview.
 
 | boundary | threat | control | gap if absent |
 |---|---|---|---|
-| trace file → extension | **T/E**: a crafted trace (committed by anyone with repo access) names `../../.ssh/id_rsa` as a source file | `safeSegments` refuses absolute paths and `..` for every path from traces or the webview (unit-tested) | the viewer reads, and a click opens, arbitrary files |
+| trace file → extension | **T/E**: a crafted trace (committed by anyone with repo access) names `../../.ssh/id_rsa` as a source file | `safeSegments` (packages/infra) refuses absolute paths and `..` for every path from traces or the webview, in the extension's reads and the CLI's (`NodeFiles`); unit-tested | the viewer reads, and a click opens, arbitrary files |
 | trace file → webview | **T**: crafted strings become markup | React escapes all text; CSP allows scripts only with a per-load nonce, no inline or remote code; `localResourceRoots` limits the webview to the bundle | script injection into a webview with access to the extension's message API |
 | trace file → log | **T/R**: a value with a newline forges a log line | logger escapes newlines and quotes (unit-tested) | misleading audit trail |
 | recorder → disk | **I**: traces capture data from the test run | SQL text but never parameters; URLs without query strings (API keys); request method and path only, no headers or bodies; traces live under `.runshape/`, which projects should git-ignore | credentials and personal data from test fixtures land in files people commit or share |

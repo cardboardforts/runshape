@@ -10,13 +10,13 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { ArchitectureStyle, buildSystemGraph, FixedZone, GraphNode, loadLatestRun, PROFILES, profileFor, SystemGraph } from "@runshape/core";
+import { ArchitectureStyle, buildSystemGraph, FixedZone, GraphNode, profileFor, PROFILES, SystemGraph, TraceDirectory } from "@runshape/core";
 
 import { layoutGraph } from "../src/layout";
 
 async function fixtureRun(app: string) {
   const directory = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", app);
-  return loadLatestRun({ readText: (path) => readFile(join(directory, path), "utf8") });
+  return new TraceDirectory({ readText: (path) => readFile(join(directory, path), "utf8") }).latest();
 }
 
 describe("2D layout", () => {

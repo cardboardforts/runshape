@@ -79,7 +79,7 @@ separately by the extension and by `cli/recordings.ts`.
                            │
    ┌──────────── trace ────┼─────────────────────┐
    │  data/  codec + layout; declares TraceFiles ◄──── infra's NodeFiles fits it structurally
-   │  model/ Run, RunSource (imports nothing)    │     (wired with `satisfies` at composition roots)
+   │  model/ Run, RunSource (imports nothing)    │     (the compiler checks the fit where they're wired)
    └─────────────────────────────────────────────┘
                            ▲
           views, architecture, core: see only Run

@@ -24,12 +24,12 @@ import {
   mergeIntoReadme,
   needsDescription,
   openingComment,
-  loadLatestRun,
-  ReviewBundle,
   Outcome,
+  ReviewBundle,
   reviewBundleMarkdown,
   RULES_FILE,
   Run,
+  TraceDirectory,
   ZoneRules,
   ZoneRulesError,
   ZoneSource,
@@ -54,6 +54,7 @@ import {
   WORKING_TREE_ID,
 } from "@runshape/library";
 export type { PullRequestSummary } from "@runshape/library";
+import { NodeFiles } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
 import { assertPlainFiles, removeAnyway } from "./docker-recorder";
 import type { ModelChoice } from "./models";
@@ -562,7 +563,7 @@ class Recordings {
 
   private runOf(id: string): Promise<Run> {
     const directory = join(this.library.directory, id);
-    return loadLatestRun({ readText: (path) => readFile(join(directory, path), "utf8") });
+    return new TraceDirectory(new NodeFiles(directory)).latest();
   }
 
   /** The rules a kept recording was made with: its runshape.json, none if it had none; null for one made before zones were kept. */
@@ -805,7 +806,7 @@ class Recordings {
       const rules = await this.rulesAt(target);
       if (rules.problem !== null) this.dependencies.print(`${RULES_FILE} at ${plan.label} is invalid, so every zone is inferred: ${rules.problem}`);
       await recorder.record(target, incoming);
-      const run = await loadLatestRun({ readText: (path) => readFile(join(incoming, path), "utf8") });
+      const run = await new TraceDirectory(new NodeFiles(incoming)).latest();
       const architecture = await this.keepArchitecture(incoming, run, rules);
       const metadata: RecordingMetadata = {
         id,

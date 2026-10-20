@@ -4,15 +4,15 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { Outcome } from "@runshape/trace";
 import { Change } from "../src";
 import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src";
-import { FixtureApp, fixtureFiles } from "../../trace/test/fixtures";
+import { FixtureApp, fixtureRuns } from "../../trace/test/fixtures";
 
 async function review(app: FixtureApp) {
-  const files = fixtureFiles(app);
-  return buildReview((await loadPreviousRun(files))!, await loadLatestRun(files));
+  const runs = fixtureRuns(app);
+  return buildReview((await runs.previous())!, await runs.latest());
 }
 
 describe("buildReview", () => {
@@ -107,8 +107,8 @@ describe("a new test has no base to differ from", () => {
   test("so its lines aren't listed as 'different lines run': every line it ran is new", async () => {
     // Two different apps' tests: every head test is new. Listing "different lines run in …
     // and 128 more" for each said nothing and filled every PR comment.
-    const base = await loadLatestRun(fixtureFiles("go-shop"));
-    const head = await loadLatestRun(fixtureFiles("go-shop-running"));
+    const base = await fixtureRuns("go-shop").latest();
+    const head = await fixtureRuns("go-shop-running").latest();
 
     const added = buildReview(base, head).items.filter((item) => item.outcomeBefore === null);
 

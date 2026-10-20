@@ -6,14 +6,14 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { loadLatestRun, loadPreviousRun } from "@runshape/trace";
+import {  } from "@runshape/trace";
 import { Change, diffRuns } from "../src";
-import { fixtureFiles } from "../../trace/test/fixtures";
+import { fixtureRuns } from "../../trace/test/fixtures";
 
 async function loadFeedFix() {
-  const files = fixtureFiles("django-feed-fix");
-  const before = await loadPreviousRun(files);
-  const after = await loadLatestRun(files);
+  const runs = fixtureRuns("django-feed-fix");
+  const before = await runs.previous();
+  const after = await runs.latest();
   if (before === null) throw new Error("fixture has no previous run");
   return { before, after };
 }
@@ -206,6 +206,6 @@ describe("diffRuns", () => {
   });
 
   test("with only one recording there is nothing to compare against", async () => {
-    expect(await loadPreviousRun(fixtureFiles("django"))).toBeNull();
+    expect(await fixtureRuns("django").previous()).toBeNull();
   });
 });
