@@ -718,9 +718,9 @@ class Recordings {
   async forget(id: string): Promise<void> {
     const recording = (await this.library.recordings()).recordings.find((r) => r.id === id);
     if (recording === undefined) throw new RecordingError(`no recording ${id}`);
-    await rm(join(this.library.directory, recording.id), { recursive: true, force: true });
-    // Its reviews compare a recording that's gone: they go with it.
+    // Its reviews compare it, so they go too: first, so a failure leaves none pointing at nothing.
     const reviews = await this.library.reviews.forgetRecording(recording.id);
+    await rm(join(this.library.directory, recording.id), { recursive: true, force: true });
     this.dependencies.print(`forgot ${recording.id} (${recording.subject})${reviews > 0 ? ` and ${reviews} review${reviews === 1 ? "" : "s"} of it` : ""}`);
   }
 
@@ -885,8 +885,6 @@ interface CommittedRules {
   /** Why the text couldn't be used; the rules are then none, and every zone inferred. */
   problem: string | null;
 }
-
-/** A comparison's bundle (docs/review-bundle.md) and its Markdown; a model's explanation of it. */
 
 function reviewSummary(bundle: ReviewBundle): ReviewHighlights {
   return {

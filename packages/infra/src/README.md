@@ -10,7 +10,7 @@ Mostly **Core** code. Drawn hexagonal, every zone inferred from what the code di
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `node-files.ts` | Core | `NodeFiles` | `NodeFiles.readText`, `NodeFiles.constructor` |
+| `node-files.ts` | Core | `NodeFiles` | `NodeFiles.readText`, `NodeFiles.constructor`, `NodeFiles.writeText`, `NodeFiles.remove`, `NodeFiles.list` |
 | `paths.ts` | Core | — | `safeSegments` |
 
 <!-- runshape:end -->

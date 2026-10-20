@@ -98,7 +98,6 @@ export interface RequestedReviews {
   pullRequests: RequestedReview[];
 }
 
-
 export interface LibraryOverview {
   working: { branch: string | null; commit: string; dirty: boolean };
   /** Newest first. */
