@@ -146,3 +146,15 @@ function doesn't fit the folder's theme". Those findings prompt refactoring deci
   placements with no model involved; only the plain-language prose needs one. Placements
   cover what the recorded tests ran, so a folder's untested files would be missing from its
   README: worth listing them as "not seen running" rather than leaving them out.
+
+## 7. A C++ recorder
+
+GOALS.md names C++ among the languages to review. In scope eventually, not soon (decided
+2026-10-19; PLAN.md builds C# first).
+
+- **Already there:** recorders for Python (settrace / sys.monitoring), TypeScript (compiler API
+  rewrite) and Go (go/ast rewrite), and the Docker sandbox they record in.
+- **To decide:** how to instrument: `-finstrument-functions` with symbolisation, clang's own
+  instrumentation, or a source rewrite (as for Go and TS, but C++ has no parser in its standard
+  toolchain); how build systems (CMake, Bazel) are driven; which test frameworks become
+  scenarios (GoogleTest, Catch2); how heavy the sandbox image gets.
