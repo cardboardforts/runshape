@@ -136,8 +136,31 @@ separately by the extension and by `cli/recordings.ts`.
 5. Redo Runshape's own `runshape.json` for the new shape. Close `runshape-zones` without
    merging it. You approve the new placements in the diff. Refresh README and `design.md`
    "Next".
+   - **Drafted** on branch `runshape-zones-2` (2026-10-20), waiting on your approval. With
+     the rules in force, the folder guides ask 21 questions:
+     1. `recordings.ts` (inbound) calls the stores, git and recorders directly: the CLI's
+        workflow is application logic inside the inbound adapter (9 questions).
+     2. `serve.ts` (inbound, the demo dev server's routes) calls the stores directly and
+        sits in the library's outbound folder (5).
+     3. `cli/src` holds outbound adapters (docker, shell, models, pull-requests) beside the
+        inbound code (3).
+     4. Runshape misreadings: `main.ts` is a composition root wiring an adapter; `explainer.ts`
+        and `folders.ts` only call back what they were handed (a hash function, the locked
+        work) (3). See Phase 2.
+     5. `shell-recorder.ts` never runs in a test (1).
+   - **Decided (2026-10-20):** trace's data layer is an outbound adapter. The rest of the
+     placements wait on your approval in the diff; when given, each rule's `by` becomes
+     `user`.
+6. **`serve.ts` moves to the webview demo** (decided 2026-10-20): only the demo's dev server
+   uses it, so it joins that host, and the library is outbound only. Its rule goes with it.
+7. **The recordings workflow moves into core** (decided 2026-10-20): `Recordings` becomes an
+   application service behind ports (`RecordingStore`, `ReviewStore`, git, `Recorder`,
+   `PullRequests`). The CLI keeps argument parsing, printing and its composition root. Split
+   into reviewable steps; Phase 1's PR page builds on it. After it, the CLI's outbound
+   adapters leave `cli/src`: the recorders for Phase 7's recorder modules, and models and gh
+   for an adapters package. That move is not made earlier, so nothing moves twice.
 
-**Done when:** `grep node:fs` finds only infra and the hosts. The demo has no fake pointer
+**Done when:** `grep node:fs` finds only infra and the hosts (done: the boundary test holds it). The demo has no fake pointer
 files. `runshape readmes` shows no "doesn't fit" questions you haven't decided.
 
 ### Phase 1: The PR page and threads to follow (3–4 PRs)
@@ -172,6 +195,9 @@ behave differently" works on a real Runshape PR.
    placement, committed to the branch for approval in the diff. A function now doing another
    zone's work is called out, with renames recognised (`moves.ts`) so a rename isn't mistaken
    for a new function.
+6. **Two misreadings Runshape's own folder guides showed (Phase 0, PR 5):** a composition
+   root wiring adapters is not a handler skipping the core, and calling a function you were
+   handed (a callback) is not a dependency pointing outward.
 
 **Done when:** Runshape opens at its modules (recorders, trace, infra, architecture, …), a
 changed module is marked, and clicking down reaches a function's diff.

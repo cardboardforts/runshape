@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "style": "hexagonal",
+  "zones": [
+    { "match": "packages.infra.**", "zone": "outbound-adapter", "reason": "the disk: text files, folders, the swap into place, the lock; storage only, no formats, and no other Runshape package", "by": "llm" },
+    { "match": "packages.trace.src.data.**", "zone": "outbound-adapter", "reason": "the trace format's codec and a traces directory's layout: implements RunSource (model/) over the TraceFiles port infra's stores fit", "by": "llm" },
+    { "match": "packages.trace.**", "zone": "core", "reason": "the universal trace in memory and the RunSource port: imports nothing", "by": "llm" },
+    { "match": "packages.architecture.**", "zone": "core", "reason": "styles, zones and their rules: pure domain", "by": "llm" },
+    { "match": "packages.views.**", "zone": "core", "reason": "what the viewer and reviews show, computed from runs: pure", "by": "llm" },
+    { "match": "packages.core.**", "zone": "core", "reason": "the application: the viewer session, review bundles, advice and explanations through the LanguageModel port", "by": "llm" },
+    { "match": "packages.library.src.serve.**", "zone": "inbound-adapter", "reason": "answers the demo dev server's requests for the library's overview and files", "by": "llm" },
+    { "match": "packages.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "llm" },
+    { "match": "packages.cli.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (ports.ts)", "by": "llm" },
+    { "match": "packages.cli.src.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (ports.ts)", "by": "llm" },
+    { "match": "packages.cli.src.models.**", "zone": "outbound-adapter", "reason": "the LanguageModel port's adapters: claude -p and the Anthropic API", "by": "llm" },
+    { "match": "packages.cli.src.pull-requests.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (ports.ts)", "by": "llm" },
+    { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing, the commands' workflow (recordings.ts), the launchd job it prints, the composition root", "by": "llm" }
+  ]
+}
