@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 
-import { Recorder, RecordTarget } from "./recordings";
+import { Recorder, RecordTarget } from "./ports";
 
 /** Records with the TypeScript recorder's script (recorder-ts/record-tree.sh), its output passed through. */
 export class ShellRecorder implements Recorder {

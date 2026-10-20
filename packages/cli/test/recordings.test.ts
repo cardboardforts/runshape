@@ -19,7 +19,9 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import type { LanguageModel } from "@runshape/core";
-import { PullRequestSummary, Recorder, RecordTarget, runRecordings } from "../src/recordings";
+import { GitCli, projectLibrary, PullRequestSummary } from "@runshape/library";
+import { Recorder, RecordTarget } from "../src/ports";
+import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
 const FIXTURE = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "go-shop");
@@ -72,7 +74,9 @@ async function run(
     return model;
   };
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
-  const code = await runRecordings(argv, { root, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
+  const git = new GitCli(root);
+  const library = projectLibrary(root, git);
+  const code = await runRecordings(argv, { root, git, library, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
   return { code, lines, recorder, model, chosen, sandbox };
 }
 

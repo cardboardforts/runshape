@@ -7,7 +7,7 @@ import { basename, isAbsolute, join, normalize } from "node:path";
 
 import { assertPlainFiles, NotPlainFiles, removeAnyway } from "@runshape/infra";
 
-import { Recorder, RecordTarget } from "./recordings";
+import { Recorder, RecordTarget } from "./ports";
 
 export interface CommandResult {
   code: number | null;

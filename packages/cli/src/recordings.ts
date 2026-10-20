@@ -42,7 +42,6 @@ import {
   GitError,
   IncomingRecording,
   LibraryOverview,
-  projectLibrary,
   RecordingLibrary,
   RecordingMetadata,
   recordingIdFor,
@@ -54,33 +53,19 @@ import {
   ReviewHighlights,
   WORKING_TREE_ID,
 } from "@runshape/library";
-export type { PullRequestSummary } from "@runshape/library";
 import { LockHeld } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
 import { assertPlainRecording } from "./docker-recorder";
+import { PullRequests, Recorder, RecordTarget } from "./ports";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
-/** What to record: a commit (checked out on its own, the working tree untouched) or the working tree as it is. */
-export type RecordTarget = { kind: "commit"; commit: string } | { kind: "working" };
-
-/** Port: records one target's tests into a directory, leaving latest.json and its run there. */
-export interface Recorder {
-  /** Where it records ("host", "docker:<image>"): recordings made in different places differ for that alone. */
-  readonly environment: string;
-  record(target: RecordTarget, outDirectory: string): Promise<void>;
-}
-
-/** Port: the open pull requests asking for the person's review (gh in pull-requests.ts). */
-export interface PullRequests {
-  requestingMyReview(limit: number): Promise<PullRequestSummary[]>;
-  /** Where they're listed from, to fetch them from: in a fork workflow that's not origin. */
-  repository(): Promise<string>;
-}
-
 export interface RecordingsDependencies {
-  /** The project's root: its git repository, and where .runshape/recordings lives. */
+  /** The project's root: its git repository. */
   root: string;
+  git: GitCli;
+  /** Its recordings and reviews (projectLibrary: .runshape/recordings and .runshape/reviews). */
+  library: RecordingLibrary;
   recorder: Recorder;
   /** Records commits in a container (`--sandbox`), given the recorder's version (docker-recorder.ts). */
   sandbox: (recorderVersion: string) => Recorder;
@@ -233,8 +218,8 @@ class Recordings {
     private readonly dependencies: RecordingsDependencies,
     private readonly options: { fetch: boolean; again: boolean; explainAgain: boolean; sandbox: boolean },
   ) {
-    this.git = new GitCli(dependencies.root);
-    this.library = projectLibrary(dependencies.root, this.git);
+    this.git = dependencies.git;
+    this.library = dependencies.library;
   }
 
   /** Runs `work` holding the library's lock, taking over a lock whose process is gone. */
