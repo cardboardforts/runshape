@@ -40,7 +40,6 @@ export interface ArchitectureSummary {
   problem: string | null;
 }
 
-
 /** A branch tip, and the recording of exactly that commit if there is one. */
 export interface RefSummary {
   name: string;

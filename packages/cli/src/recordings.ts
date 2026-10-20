@@ -713,7 +713,6 @@ class Recordings {
     return `refs/remotes/${REMOTE}/${branch}`;
   }
 
-  /** The recorder's source as it is now: what recorded a recording made now. */
   /** The container for commits with --sandbox (the working tree is always recorded here). */
   private async recorderFor(target: RecordTarget): Promise<Recorder> {
     if (!this.options.sandbox || target.kind === "working") return this.dependencies.recorder;
@@ -895,7 +894,6 @@ const HOST_ENVIRONMENT = "host";
 
 /** Enough of the recorder's source hash to tell two versions apart. */
 const RECORDER_SOURCE_DIGITS = 16;
-
 
 /** The list command's text: the working tree, what's recorded, what could be. */
 function listing(overview: LibraryOverview): string[] {

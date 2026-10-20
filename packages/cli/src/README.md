@@ -10,7 +10,7 @@ Mostly **Core** code. Drawn hexagonal, every zone inferred from what the code di
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
 | `bin.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `docker-recorder.ts` | Core | `DockerRecorder` | `DockerRecorder.constructor`, `DockerRecorder.record`, `removeAnyway`, `assertPlainFiles` |
+| `docker-recorder.ts` | Core | `DockerRecorder` | `DockerRecorder.constructor`, `DockerRecorder.record`, `assertPlainRecording` |
 | `main.ts` | Core | — | `reviewFromDirectory` |
 | `models.ts` | Core | `AnthropicApiModel`, `ClaudeCliModel` | `chooseModel`, `ClaudeCliModel.complete`, `ClaudeCliModel.constructor`, `AnthropicApiModel.complete`, `AnthropicApiModel.constructor` |
 | `pull-requests.ts` | Core | `GhPullRequests` | `GhPullRequests.constructor`, `GhPullRequests.requestingMyReview` |

@@ -9,8 +9,9 @@ Mostly **Core** code. Drawn hexagonal, every zone inferred from what the code di
 
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
+| `folders.ts` | Core | `LockHeld`, `NotPlainFiles` | `holdingLock`, `swapIntoPlace`, `removeAnyway`, `assertPlainFiles` |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `node-files.ts` | Core | `NodeFiles` | `NodeFiles.readText`, `NodeFiles.constructor`, `NodeFiles.writeText`, `NodeFiles.remove`, `NodeFiles.list` |
+| `node-files.ts` | Core | `NodeFiles` | `NodeFiles.readText`, `NodeFiles.constructor`, `NodeFiles.writeText`, `NodeFiles.makeFolder`, `NodeFiles.remove` |
 | `paths.ts` | Core | — | `safeSegments` |
 
 <!-- runshape:end -->

@@ -11,7 +11,8 @@ Mostly **Core** code. Drawn hexagonal, every zone inferred from what the code di
 |---|---|---|---|
 | `git.ts` | Core | `GitCli` | `GitCli.run`, `GitCli.constructor` |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `library.ts` | Core | `RecordingLibrary` | `RecordingLibrary.recordings`, `recordingIdFor`, `RecordingLibrary.resolve`, `projectLibrary`, `RecordingLibrary.workingTree` |
+| `library.ts` | Core | `RecordingLibrary` | `RecordingLibrary.resolve`, `projectLibrary`, `RecordingLibrary.workingTree`, `RecordingLibrary.overview` |
+| `recording-store.ts` | Core | `IncomingRecording`, `RecordingStore` | `RecordingStore.recording`, `recordingIdFor`, `RecordingStore.constructor`, `RecordingStore.exclusively`, `RecordingStore.begin` |
 | `review-store.ts` | Core | `ReviewStore` | `ReviewStore.constructor`, `ReviewStore.explanation`, `ReviewStore.get directory`, `ReviewStore.saveReview`, `reviewName` |
 | `serve.ts` | Core | — | `handleLibraryRequest`, `serveLibraryFile` |
 
