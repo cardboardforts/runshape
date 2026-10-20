@@ -98,7 +98,7 @@ separately by the extension and by `cli/recordings.ts`.
 
 **PRs:**
 
-1. `trace` split into `model/` and `data/`. `RunSource` with `TraceDirectory` replaces
+1. **Done (10fb440 and its review fixes).** `trace` split into `model/` and `data/`. `RunSource` with `TraceDirectory` replaces
    `loadLatestRun`/`loadPreviousRun`. `@runshape/infra` with `NodeFiles` and the path guard
    (moved from the extension). The CLI uses it. `view-diff`: no viewer response changes.
 2. Hosts: the demo's library pair as a `RunSource` (no fake pointer files), the extension

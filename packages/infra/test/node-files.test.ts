@@ -11,12 +11,12 @@ import { describe, expect, test } from "vitest";
 import { NodeFiles, safeSegments } from "../src";
 
 describe("safeSegments (path traversal)", () => {
-  test("keeps project-relative paths, refuses anything that escapes the project", () => {
+  test("keeps relative paths, refuses anything that escapes the directory", () => {
     expect(safeSegments("app/api/routes/users.py")).toEqual(["app", "api", "routes", "users.py"]);
     expect(safeSegments("./app//main.py")).toEqual(["app", "main.py"]);
 
     for (const escaping of ["../secrets.env", "app/../../etc/passwd", "/etc/passwd", "C:\\Windows\\win.ini", "app\\..\\..\\x"]) {
-      expect(() => safeSegments(escaping), escaping).toThrowError(/refusing a path outside the project/);
+      expect(() => safeSegments(escaping), escaping).toThrowError(/refusing a path outside its directory/);
     }
   });
 });
@@ -29,7 +29,7 @@ describe("NodeFiles", () => {
 
     expect(await files.readText("latest.json")).toBe('{"run": "r1"}');
     // A manifest naming "../../.ssh/id_rsa" as a scenario file: refused before the disk is touched.
-    await expect(files.readText("r1/../../outside.json")).rejects.toThrowError(/refusing a path outside the project/);
+    await expect(files.readText("r1/../../outside.json")).rejects.toThrowError(/refusing a path outside its directory/);
     await expect(files.readText("missing.json")).rejects.toThrowError(/ENOENT/);
   });
 });
