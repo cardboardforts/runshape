@@ -1,5 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { NodeFiles } from "@runshape/infra";
 
 import { RecordingLibrary } from "./library";
 
@@ -13,18 +12,11 @@ export interface ServedFile {
  * server: nothing outside it, whatever "..", and no directory listings.
  */
 export async function serveLibraryFile(directory: string, relativePath: string): Promise<ServedFile> {
-  const root = resolve(directory);
-  const target = resolve(root, relativePath);
-  if (!target.startsWith(root + sep)) return { status: 404, body: "" };
-  try {
-    // Where it really is, links followed: a link a sandboxed recording left can't serve a file outside.
-    const [realRoot, realTarget] = await Promise.all([realpath(root), realpath(target)]);
-    if (!realTarget.startsWith(realRoot + sep)) return { status: 404, body: "" };
-    // A directory fails to read like a missing file: no listings.
-    return { status: 200, body: await readFile(realTarget, "utf8") };
-  } catch {
-    return { status: 404, body: "" };
-  }
+  // Outside it, a link out of it, a folder (no listings) or nothing there: all just not found.
+  return new NodeFiles(directory).readTextWithin(relativePath).then(
+    (body) => ({ status: 200, body }),
+    () => ({ status: 404, body: "" }),
+  );
 }
 
 export interface LibraryResponse {

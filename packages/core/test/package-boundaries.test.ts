@@ -34,6 +34,8 @@ const ALLOWED: Record<string, string[]> = {
   "packages/library": ["infra"],
   "recorder-ts": [],
 };
+/** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
+const DISK = new Set(["packages/infra", "packages/cli", "packages/extension", "packages/webview", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
 const DOMAIN = new Set(["packages/trace", "packages/architecture", "packages/views", "packages/core"]);
 const NODE_BUILTINS = new Set(builtinModules);
@@ -78,6 +80,8 @@ describe("package boundaries", () => {
             if (!allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
           } else if (DOMAIN.has(pkg) && isPlatform(specifier)) {
             violations.push(`${where} imports ${specifier}: domain packages run on any platform`);
+          } else if (!DISK.has(pkg) && /^(node:)?fs(\/|$)/.test(specifier)) {
+            violations.push(`${where} imports ${specifier}: only infra and the hosts touch the disk (use @runshape/infra)`);
           }
         }
       }

@@ -3,7 +3,7 @@
  * (a manifest names its scenario files) and from the webview, and anyone who can commit to
  * the repository being viewed can write those.
  */
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -56,5 +56,27 @@ describe("NodeFiles writing", () => {
     await expect(files.remove("")).rejects.toThrowError(/refusing to remove the whole of/);
     await expect(files.remove(".")).rejects.toThrowError(/refusing to remove the whole of/);
     await expect(files.writeText("../escaped.md", "x")).rejects.toThrowError(/refusing a path outside its directory/);
+  });
+});
+
+describe("NodeFiles.readTextWithin (the demo's dev server)", () => {
+  test("reads a file inside; refuses a climb, a link out (even one inside that points out), and a folder", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "runshape-outside-"));
+    await writeFile(join(outside, "secret.json"), "{}");
+    const root = await mkdtemp(join(tmpdir(), "runshape-infra-"));
+    await mkdir(join(root, "r1"));
+    await writeFile(join(root, "r1", "manifest.json"), '{"ok": true}');
+    // What a sandboxed recording could leave: a link to a file outside the library.
+    await symlink(join(outside, "secret.json"), join(root, "r1", "leak.json"));
+    const files = new NodeFiles(root);
+
+    const read = (path: string) => files.readTextWithin(path).then((text) => text, (error: Error) => error.message.split(":")[0]!);
+
+    expect({
+      inside: await read("r1/manifest.json"),
+      climb: await read("../secret.json"),
+      linkOut: await read("r1/leak.json"),
+      folder: (await read("r1")).startsWith("EISDIR"),
+    }).toEqual({ inside: '{"ok": true}', climb: "refusing a path outside its directory", linkOut: "refusing a link out of its directory", folder: true });
   });
 });

@@ -115,7 +115,7 @@ export interface CommitSummary {
 /** A project's library as runshape keeps it: .runshape/recordings, and the reviews beside them. */
 export function projectLibrary(root: string, git: Git): RecordingLibrary {
   const runshape = join(root, ".runshape");
-  return new RecordingLibrary(new RecordingStore(join(runshape, "recordings")), git, new ReviewStore(new NodeFiles(join(runshape, "reviews"))));
+  return new RecordingLibrary(new RecordingStore(new NodeFiles(join(runshape, "recordings"))), git, new ReviewStore(new NodeFiles(join(runshape, "reviews"))));
 }
 
 /** A project's recordings (.runshape/recordings) and the git refs they could be compared against. */

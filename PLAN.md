@@ -120,9 +120,19 @@ separately by the extension and by `cli/recordings.ts`.
      the folder operations (swap into place, pid lock, remove anyway, plain-files check).
      What's left in `recordings.ts` on `node:fs` is the project's own working tree (README
      guides, the recorder's source hash, the working tree's runshape.json): PR 4.
-4. `TestConfig` and the `Recorder` port move out of `cli/recordings.ts`. `GitCli` and
-   `RecordingLibrary` are injected into `Recordings`. The project's working-tree files go
-   through a store of their own. (The fs helpers left `docker-recorder.ts` in 3b.)
+4. **Done.** The `Recorder`, `RecordTarget` and `PullRequests` ports moved to `cli/ports.ts`.
+   `GitCli` and `RecordingLibrary` are built by the composition root and passed in. The
+   library touches the disk only through infra (`RecordingStore` and the dev server's file
+   serving), and the boundary test now fails any package other than infra and the hosts that
+   imports `fs`. Two calls made along the way:
+   - **`TestConfig` waits for Phase 7.** Today a recorder needs only "this commit" or "the
+     working tree" (`RecordTarget`). Calling that `TestConfig` in core would be a name with no
+     contract behind it. Phase 7 designs the real one (language, how to run, where the code
+     is) with the recorders that need it.
+   - **The CLI's reads of the project's own working tree stay in the CLI.** It's a host, and
+     those reads carry their own checks (plain files inside the project, raw bytes hashed).
+   - Found on the way: since PR 3a, `npm run dev` and `npm run build` failed to start (Vite's
+     config loader). Fixed, and a test now loads the config the way each script does.
 5. Redo Runshape's own `runshape.json` for the new shape. Close `runshape-zones` without
    merging it. You approve the new placements in the diff. Refresh README and `design.md`
    "Next".
@@ -208,7 +218,8 @@ that pays. A no-op change has no time callout.
 
 ### Phase 7: Every recorder in the pipeline (3–4 PRs)
 
-1. A shared recorder contract: `TestConfig` in, universal trace out (Phase 0's model).
+1. A shared recorder contract: `TestConfig` in, universal trace out. `TestConfig` is designed
+   here with the recorders (Phase 0 kept `RecordTarget` rather than name it early).
 2. Python, then Go, write kept recordings and run in the sandbox.
 3. One sandbox image per language, built only when needed.
 4. Verify plain JS and jest, or list them as limits.

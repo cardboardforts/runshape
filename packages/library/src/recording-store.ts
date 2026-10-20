@@ -1,4 +1,3 @@
-import { readdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 
 import { holdingLock, NodeFiles, removeAnyway, swapIntoPlace } from "@runshape/infra";
@@ -38,13 +37,17 @@ export const KEPT_RULES_FILE = "runshape.json";
  * in a hidden folder of its own and moved into place only once it's complete.
  */
 export class RecordingStore {
-  constructor(readonly directory: string) {}
+  constructor(private readonly files: NodeFiles) {}
+
+  get directory(): string {
+    return this.files.root;
+  }
 
   /** Every recording, newest first, and the folders that look like one but can't be read. */
   async list(): Promise<{ recordings: RecordingMetadata[]; problems: string[] }> {
     let names: string[];
     try {
-      names = await readdir(this.directory);
+      names = await this.files.list();
     } catch {
       return { recordings: [], problems: [] }; // nothing recorded yet
     }
@@ -55,7 +58,7 @@ export class RecordingStore {
       if (!RECORDING_ID.test(name)) continue;
       let text: string;
       try {
-        text = await readFile(join(this.directory, name, METADATA_FILE), "utf8");
+        text = await this.files.readText(`${name}/${METADATA_FILE}`);
       } catch {
         continue; // not a recording: a stray directory or file
       }
@@ -100,9 +103,9 @@ export class RecordingStore {
    * interrupted run left half-written is cleared first: nothing else writes while it's held.
    */
   async exclusively<T>(work: () => Promise<T>, couldNotClear: (name: string, error: Error) => void): Promise<T> {
-    await new NodeFiles(this.directory).makeFolder(); // for the lock to go in
+    await this.files.makeFolder(); // for the lock to go in
     return holdingLock(join(this.directory, LOCK_FILE), async () => {
-      for (const name of await readdir(this.directory)) {
+      for (const name of await this.files.list()) {
         if (!name.startsWith(INCOMING_PREFIX) && !name.startsWith(REPLACED_PREFIX)) continue;
         // Whatever a sandboxed run left (an unreadable folder, say) mustn't stop this one.
         await removeAnyway(join(this.directory, name)).catch((error: Error) => couldNotClear(name, error));
@@ -125,7 +128,7 @@ export class RecordingStore {
   }
 
   async forget(id: string): Promise<void> {
-    await new NodeFiles(this.directory).remove(id);
+    await this.files.remove(id);
   }
 
   /** Moves a recording to another id, saying so in its metadata; if that id is taken, this one just goes. */
@@ -134,7 +137,7 @@ export class RecordingStore {
       await removeAnyway(this.pathOf(id));
       return;
     }
-    await rename(this.pathOf(id), this.pathOf(to));
+    await this.files.move(id, to);
     const files = this.filesOf(to);
     const metadata = JSON.parse(await files.readText(METADATA_FILE)) as RecordingMetadata;
     await files.writeText(METADATA_FILE, `${JSON.stringify({ ...metadata, id: to }, null, 2)}\n`);
