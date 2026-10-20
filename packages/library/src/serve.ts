@@ -52,7 +52,7 @@ export async function handleLibraryRequest(library: RecordingLibrary, url: strin
       return { status: 500, contentType: "text/plain", body: error instanceof Error ? error.message : String(error) };
     }
   }
-  for (const [prefix, directory] of [["recordings/", library.directory], ["reviews/", library.reviewsDirectory]] as const) {
+  for (const [prefix, directory] of [["recordings/", library.directory], ["reviews/", library.reviews.directory]] as const) {
     if (!route.startsWith(prefix)) continue;
     let relativePath: string;
     try {

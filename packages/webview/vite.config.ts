@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 // By path, not by package name: vite bundles a relative import into the config it loads, but
 // leaves node_modules (where @runshape/library is linked) to Node, which can't load TypeScript.
-import { GitCli, handleLibraryRequest, RecordingLibrary } from "../library/src";
+import { GitCli, handleLibraryRequest, projectLibrary } from "../library/src";
 import react from "@vitejs/plugin-react";
 import { defineConfig, Plugin } from "vite";
 
@@ -18,7 +18,7 @@ function recordingLibrary(): Plugin {
     apply: "serve",
     configureServer(server) {
       const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-      const library = new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root));
+      const library = projectLibrary(root, new GitCli(root));
       server.middlewares.use((request, response, next) => {
         handleLibraryRequest(library, request.url ?? "").then((answer) => {
           if (answer === null) return next();

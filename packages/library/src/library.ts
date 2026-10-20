@@ -1,7 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+
+import { NodeFiles } from "@runshape/infra";
 
 import { Git, GitError } from "./git";
+import { ReviewStore } from "./review-store";
 
 /** What recording.json says about one recording, written when it was made. */
 export interface RecordingMetadata {
@@ -95,7 +98,6 @@ export interface RequestedReviews {
   pullRequests: RequestedReview[];
 }
 
-export const REQUESTED_REVIEWS_FILE = "requested.json";
 
 export interface LibraryOverview {
   working: { branch: string | null; commit: string; dirty: boolean };
@@ -131,15 +133,22 @@ export function recordingIdFor(commit: string, sandboxed = false): string {
   return `${commit.slice(0, RECORDING_ID_LENGTH)}${sandboxed ? SANDBOX_SUFFIX : ""}`;
 }
 
+/** A project's library as runshape keeps it: .runshape/recordings, and the reviews beside them. */
+export function projectLibrary(root: string, git: Git): RecordingLibrary {
+  const runshape = join(root, ".runshape");
+  return new RecordingLibrary(join(runshape, "recordings"), git, new ReviewStore(new NodeFiles(join(runshape, "reviews"))));
+}
+
 /** A project's recordings (.runshape/recordings) and the git refs they could be compared against. */
 export class RecordingLibrary {
   constructor(
     readonly directory: string,
     private readonly git: Git,
+    readonly reviews: ReviewStore,
   ) {}
 
   async overview(): Promise<LibraryOverview> {
-    const [{ recordings, problems }, refs, working, requested] = await Promise.all([this.recordings(), this.refLines(), this.workingTree(), this.requestedReviews()]);
+    const [{ recordings, problems }, refs, working, requested] = await Promise.all([this.recordings(), this.refLines(), this.workingTree(), this.reviews.requested()]);
     // A commit recorded both here and in the sandbox: its branches point at the one made here.
     const committed = new Map<string, string>();
     for (const r of recordings) {
@@ -153,16 +162,6 @@ export class RecordingLibrary {
       problems,
       requested,
     };
-  }
-
-  /** Where comparisons' reviews are kept, beside the recordings. */
-  get reviewsDirectory(): string {
-    return join(dirname(this.directory), "reviews");
-  }
-
-  async requestedReviews(): Promise<RequestedReviews | null> {
-    const text = await readFile(join(this.reviewsDirectory, REQUESTED_REVIEWS_FILE), "utf8").catch(() => null);
-    return text === null ? null : (JSON.parse(text) as RequestedReviews);
   }
 
   /** The commit a branch, tag or hash names. */

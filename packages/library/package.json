@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "src/index.ts",
+  "dependencies": {
+    "@runshape/infra": "0.1.0"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p ."

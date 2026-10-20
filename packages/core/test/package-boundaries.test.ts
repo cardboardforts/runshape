@@ -4,7 +4,7 @@
  *
  *   trace  <-  architecture  <-  views  <-  core  <-  webview, extension, cli
  *                                                     library  <-  cli
- *                                                     infra    <-  extension, cli
+ *                                           infra  <-  library, extension, cli
  *
  * Each package may import only the packages before it, and lists each one it imports in its
  * package.json. The domain packages import nothing from Node, VS Code or React; the adapters
@@ -31,7 +31,7 @@ const ALLOWED: Record<string, string[]> = {
   "packages/webview": ["core"],
   "packages/extension": ["core", "infra"],
   "packages/cli": ["core", "library", "infra"],
-  "packages/library": [],
+  "packages/library": ["infra"],
   "recorder-ts": [],
 };
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */

@@ -2,7 +2,7 @@
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
 import { createHash } from "node:crypto";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, join, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 
 import {
   ArchitectureSnapshot,
@@ -43,10 +43,13 @@ import {
   INCOMING_PREFIX,
   LibraryOverview,
   METADATA_FILE,
+  EXPLANATION_MARKDOWN,
+  projectLibrary,
   RecordingLibrary,
   RecordingMetadata,
   recordingIdFor,
-  REQUESTED_REVIEWS_FILE,
+  REVIEW_MARKDOWN,
+  reviewName,
   SANDBOX_SUFFIX,
   RequestedReview,
   RequestedReviews,
@@ -235,7 +238,7 @@ class Recordings {
     private readonly options: { fetch: boolean; again: boolean; explainAgain: boolean; sandbox: boolean },
   ) {
     this.git = new GitCli(dependencies.root);
-    this.library = new RecordingLibrary(join(dependencies.root, ".runshape", "recordings"), this.git);
+    this.library = projectLibrary(dependencies.root, this.git);
   }
 
   /** Runs `work` holding the library's lock, taking over a lock whose process is gone. */
@@ -389,7 +392,7 @@ class Recordings {
         const compared = await this.compare(baseRef, headRef, { againstTip: false, headAsked: name, baseAsked: pr.baseRefName });
         entry.head = compared.head.summary.commit;
         if (entry.head !== pr.headRefOid) this.dependencies.print(`${name}: its head moved since it was listed; reviewed ${entry.head.slice(0, 7)}`);
-        entry.review = basename(compared.review.directory);
+        entry.review = compared.review.name;
         entry.summary = reviewSummary(compared.review.bundle);
         if (explain !== null) {
           try {
@@ -413,9 +416,7 @@ class Recordings {
 
   private async writeRequested(entries: RequestedReview[], of: number): Promise<void> {
     const index: RequestedReviews = { format: "runshape-requested-reviews", version: 1, createdAt: this.dependencies.now().toISOString(), pullRequests: entries };
-    const reviews = join(this.dependencies.root, ".runshape", "reviews");
-    await mkdir(reviews, { recursive: true });
-    await writeFile(join(reviews, REQUESTED_REVIEWS_FILE), `${JSON.stringify({ ...index, complete: entries.length === of }, null, 2)}\n`);
+    await this.library.reviews.saveRequested(index, entries.length === of);
   }
 
   /**
@@ -505,18 +506,14 @@ class Recordings {
       rules: headRules ?? ZoneRules.none(),
       createdAt: this.dependencies.now().toISOString(),
     });
-    const relative = join(".runshape", "reviews", `${base.plan.id}..${head.plan.id}`);
-    const directory = join(this.dependencies.root, relative);
-    await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, REVIEW_JSON), `${JSON.stringify(bundle, null, 2)}\n`);
-    await writeFile(join(directory, REVIEW_MARKDOWN), reviewBundleMarkdown(bundle));
+    const reviews = this.library.reviews;
+    const name = reviewName(base.plan.id, head.plan.id);
+    const where = relative(this.dependencies.root, join(reviews.directory, name));
+    await reviews.saveReview(name, bundle, reviewBundleMarkdown(bundle));
     // An explanation of an older review mustn't sit beside this one looking current.
-    const explained = await readFile(join(directory, EXPLANATION_JSON), "utf8").then((text) => JSON.parse(text) as Explanation, () => null);
-    if (explained !== null && explained.basedOn.review !== sha256(reviewBundleMarkdown(bundle))) {
-      await rm(join(directory, EXPLANATION_JSON), { force: true });
-      await rm(join(directory, EXPLANATION_MARKDOWN), { force: true });
-    }
-    return { bundle, directory, relative, markdown: join(relative, REVIEW_MARKDOWN) };
+    const explained = (await reviews.explanation(name)) as Explanation | null;
+    if (explained !== null && explained.basedOn.review !== sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
+    return { bundle, name, relative: where, markdown: join(where, REVIEW_MARKDOWN) };
   }
 
   /**
@@ -530,14 +527,13 @@ class Recordings {
       const context: ChangeContext = { commits: await this.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
       const inputs = explanationInputs(review.bundle, context, sha256);
       const model = await this.dependencies.models(choice);
-      const saved = await readFile(join(review.directory, EXPLANATION_JSON), "utf8").then((text) => JSON.parse(text) as Explanation, () => null);
+      const saved = (await this.library.reviews.explanation(review.name)) as Explanation | null;
       if (saved !== null && !this.options.explainAgain && saved.model === model.name && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
         this.dependencies.print(`explanation: ${where} (current: same review, commits and model)`);
         return;
       }
       const explanation = await explainChange(model, review.bundle, context, this.dependencies.now().toISOString(), sha256);
-      await writeFile(join(review.directory, EXPLANATION_JSON), `${JSON.stringify(explanation, null, 2)}\n`);
-      await writeFile(join(review.directory, EXPLANATION_MARKDOWN), explanationMarkdown(explanation));
+      await this.library.reviews.saveExplanation(review.name, explanation, explanationMarkdown(explanation));
       this.dependencies.print(`explanation: ${where} (by ${explanation.model})`);
     } catch (error) {
       if (error instanceof UsageError || error instanceof GitError) throw error;
@@ -724,10 +720,8 @@ class Recordings {
     if (recording === undefined) throw new RecordingError(`no recording ${id}`);
     await rm(join(this.library.directory, recording.id), { recursive: true, force: true });
     // Its reviews compare a recording that's gone: they go with it.
-    const reviews = join(this.dependencies.root, ".runshape", "reviews");
-    const ofIt = (await readdir(reviews).catch(() => [] as string[])).filter((name) => name.split("..").includes(recording.id));
-    for (const name of ofIt) await rm(join(reviews, name), { recursive: true, force: true });
-    this.dependencies.print(`forgot ${recording.id} (${recording.subject})${ofIt.length > 0 ? ` and ${ofIt.length} review${ofIt.length === 1 ? "" : "s"} of it` : ""}`);
+    const reviews = await this.library.reviews.forgetRecording(recording.id);
+    this.dependencies.print(`forgot ${recording.id} (${recording.subject})${reviews > 0 ? ` and ${reviews} review${reviews === 1 ? "" : "s"} of it` : ""}`);
   }
 
   /**
@@ -893,10 +887,6 @@ interface CommittedRules {
 }
 
 /** A comparison's bundle (docs/review-bundle.md) and its Markdown; a model's explanation of it. */
-const REVIEW_JSON = "review.json";
-const REVIEW_MARKDOWN = "review.md";
-const EXPLANATION_JSON = "explanation.json";
-const EXPLANATION_MARKDOWN = "explanation.md";
 
 function reviewSummary(bundle: ReviewBundle): ReviewHighlights {
   return {
@@ -917,8 +907,9 @@ interface Compared {
 
 interface SavedReview {
   bundle: ReviewBundle;
-  directory: string;
-  /** The directory relative to the project, as printed. */
+  /** Its folder in the review store: "<base>..<head>". */
+  name: string;
+  /** The folder relative to the project, as printed. */
   relative: string;
   markdown: string;
 }

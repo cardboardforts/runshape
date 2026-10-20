@@ -3,4 +3,5 @@
 // demo's dev server, never by the webview itself.
 export * from "./git";
 export * from "./library";
+export * from "./review-store";
 export * from "./serve";

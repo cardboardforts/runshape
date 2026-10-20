@@ -107,8 +107,16 @@ separately by the extension and by `cli/recordings.ts`.
    recording) and view-diff's. View-diff's does read `node:fs` directly, and could use
    `NodeFiles`; it's a tool that loads core from a path per revision, so it's left alone until
    it needs to change.
-3. Library, reviews and runshape.json reads and writes through infra (`write`, `list` and an
-   in-memory store arrive here, with their first users).
+3. Named stores (decided 2026-10-20), not a general `FileStore`: the CLI's ~45 file
+   operations are mostly the library's housekeeping (a lock, an atomic swap into place,
+   removing without following links), not "text at a path". The library becomes the storage
+   adapter for its own domain, built on a small infra (`NodeFiles`: read, write, list,
+   remove; then a directory swap and an exclusive lock). The CLI asks for "commit this
+   recording", not "rename this folder".
+   - **3a.** `ReviewStore`: review bundles, explanations, the requested-reviews index, and
+     forgetting a recording's reviews.
+   - **3b.** `RecordingStore`: the lock, a recording begun and committed atomically, its
+     metadata, rules and architecture, forgetting it, clearing interrupted ones.
 4. `TestConfig` and the `Recorder` port move out of `cli/recordings.ts`. `GitCli` and
    `RecordingLibrary` are injected into `Recordings`. The fs helpers leave
    `docker-recorder.ts`. (These were the 2026-10-17 follow-ups.)
@@ -126,7 +134,10 @@ files. `runshape readmes` shows no "doesn't fit" questions you haven't decided.
    `review.json` and `review.md`.
 2. **One PR page:** summary, threads, callouts, and a way into each thread's graph and wires.
    Opened from the morning list, where stacked PRs are grouped and ordered bottom-up.
-3. **Structured CLI logging:** logfmt, with a run ID and PR number on every line, duration
+3. **Group by cause:** Runshape's review of its own PR 3a listed 66 "run differently" tests,
+   every one because calls now go through `ReviewStore`. Threads with the same change
+   collapse into one row ("66 tests: now save reviews through ReviewStore"), expandable.
+4. **Structured CLI logging:** logfmt, with a run ID and PR number on every line, duration
    per PR, and the full error for each PR that fails.
 
 **Done when:** morning list → a PR → "these 6 workflows run through `Service.place`; 2

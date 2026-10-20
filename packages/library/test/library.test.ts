@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { GitCli, handleLibraryRequest, RecordingLibrary, RecordingMetadata, serveLibraryFile } from "../src";
+import { GitCli, handleLibraryRequest, projectLibrary, RecordingMetadata, serveLibraryFile } from "../src";
 import { repository } from "./repository";
 
 function recordAt(library: string, metadata: RecordingMetadata): void {
@@ -36,7 +36,7 @@ describe("RecordingLibrary", () => {
     recordAt(directory, metadata("working", commits.third!, "Feature work", "2026-10-02T10:00:00Z", { branch: "feature", dirty: true }));
     writeFileSync(join(root, "file.txt"), "uncommitted");
 
-    const overview = await new RecordingLibrary(directory, new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitCli(root)).overview();
 
     expect({
       working: overview.working,
@@ -67,7 +67,7 @@ describe("RecordingLibrary", () => {
     writeFileSync(join(directory, "aaaaaaaaaaaa", "recording.json"), JSON.stringify(metadata("../../victim", commits.first!, "First", "2026-10-02T09:00:00Z")));
     recordAt(directory, metadata("notes", commits.first!, "First", "2026-10-02T09:00:00Z"));
 
-    const overview = await new RecordingLibrary(directory, new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitCli(root)).overview();
 
     expect({ recordings: overview.recordings, problems: [...overview.problems].sort() }).toEqual({
       recordings: [],
@@ -84,7 +84,7 @@ describe("RecordingLibrary", () => {
     // A new file not added yet is still in the tree the tests run against.
     writeFileSync(join(root, "new.test.ts"), "");
 
-    const overview = await new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitCli(root)).overview();
 
     expect({ recordings: overview.recordings.length, unrecorded: overview.refs.filter((ref) => ref.recordingId === null).length, dirty: overview.working.dirty }).toEqual({
       recordings: 0,
@@ -95,7 +95,7 @@ describe("RecordingLibrary", () => {
 
   test("a ref resolves to its commit; a name git doesn't know is an error that says so", async () => {
     const { root, commits } = repository();
-    const library = new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root));
+    const library = projectLibrary(root, new GitCli(root));
 
     expect(await library.resolve("origin/main")).toEqual({ commit: commits.first, subject: "First", committedAt: "2026-10-01T10:00:00Z" });
     await expect(library.resolve("nope")).rejects.toThrowError("git doesn't know nope");
@@ -141,7 +141,7 @@ describe("handleLibraryRequest (the demo's dev server)", () => {
     const directory = join(root, ".runshape", "recordings");
     const id = commits.second!.slice(0, 12);
     recordAt(directory, metadata(id, commits.second!, "Second", "2026-10-02T09:00:00Z"));
-    const library = new RecordingLibrary(directory, new GitCli(root));
+    const library = projectLibrary(root, new GitCli(root));
 
     const answer = async (url: string) => {
       const response = await handleLibraryRequest(library, url);
@@ -158,7 +158,7 @@ describe("handleLibraryRequest (the demo's dev server)", () => {
   test("when git fails, the overview is an error that says what failed, not an empty library", async () => {
     const directory = join(tmpdir(), "runshape-not-a-repository");
     mkdirSync(directory, { recursive: true });
-    const library = new RecordingLibrary(join(directory, "recordings"), new GitCli(directory));
+    const library = projectLibrary(directory, new GitCli(directory));
 
     const response = await handleLibraryRequest(library, "/__runshape/library");
 
@@ -175,7 +175,7 @@ describe("the pull requests' morning list", () => {
     writeFileSync(join(reviews, "aaaaaaaaaaaa..bbbbbbbbbbbb", "review.md"), "## Behaviour changes (Runshape)\n");
     const index = { format: "runshape-requested-reviews", version: 1, createdAt: "2026-10-16T03:00:00Z", pullRequests: [{ number: 7, title: "Teach orders to refuse", review: "aaaaaaaaaaaa..bbbbbbbbbbbb" }] };
     writeFileSync(join(reviews, "requested.json"), JSON.stringify(index));
-    const library = new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root));
+    const library = projectLibrary(root, new GitCli(root));
 
     const overview = await library.overview();
     const served = await handleLibraryRequest(library, "/__runshape/reviews/aaaaaaaaaaaa..bbbbbbbbbbbb/review.md");
@@ -195,6 +195,6 @@ describe("the pull requests' morning list", () => {
   test("before review-requests has run there's no list, which isn't an error", async () => {
     const { root } = repository();
 
-    expect((await new RecordingLibrary(join(root, ".runshape", "recordings"), new GitCli(root)).overview()).requested).toBeNull();
+    expect((await projectLibrary(root, new GitCli(root)).overview()).requested).toBeNull();
   });
 });

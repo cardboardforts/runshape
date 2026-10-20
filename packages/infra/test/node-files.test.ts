@@ -3,7 +3,7 @@
  * (a manifest names its scenario files) and from the webview, and anyone who can commit to
  * the repository being viewed can write those.
  */
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -31,5 +31,29 @@ describe("NodeFiles", () => {
     // A manifest naming "../../.ssh/id_rsa" as a scenario file: refused before the disk is touched.
     await expect(files.readText("r1/../../outside.json")).rejects.toThrowError(/refusing a path outside its directory/);
     await expect(files.readText("missing.json")).rejects.toThrowError(/ENOENT/);
+  });
+});
+
+describe("NodeFiles writing", () => {
+  test("writes make their folders, lists name what's there, removes take folders whole and refuse the root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runshape-infra-"));
+    const files = new NodeFiles(root);
+
+    await files.writeText("a..b/review.md", "## Behaviour changes\n");
+    await files.writeText("a..b/review.json", "{}\n");
+    await files.writeText("c..d/review.md", "## Behaviour changes\n");
+    const before = { root: (await files.list()).sort(), review: (await files.list("a..b")).sort(), missing: await files.list("nothing-here") };
+    await files.remove("a..b");
+    await files.remove("never-written");
+
+    expect({ before, after: await readdir(root), text: await files.readText("c..d/review.md") }).toEqual({
+      before: { root: ["a..b", "c..d"], review: ["review.json", "review.md"], missing: [] },
+      after: ["c..d"],
+      text: "## Behaviour changes\n",
+    });
+    // A folder named ".." is refused like any climb; "a..b" above is a name, not a climb.
+    await expect(files.remove("")).rejects.toThrowError(/refusing to remove the whole of/);
+    await expect(files.remove(".")).rejects.toThrowError(/refusing to remove the whole of/);
+    await expect(files.writeText("../escaped.md", "x")).rejects.toThrowError(/refusing a path outside its directory/);
   });
 });
