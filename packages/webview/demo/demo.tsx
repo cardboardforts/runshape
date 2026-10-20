@@ -10,7 +10,7 @@ import { createRoot } from "react-dom/client";
 import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
-import { RuleChange, TraceDirectory, TraceFiles, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
+import { RuleChange, RunSource, TraceDirectory, UiRequest, UiResponse, ViewerSession, ZoneRules, ZoneRulesError } from "@runshape/core";
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
@@ -49,28 +49,16 @@ async function libraryText(id: string, path: string): Promise<string> {
   return response.text();
 }
 
-/**
- * One kept recording, or two as base and head: each is a traces directory of its own, so the
- * pair is presented as one, its latest run the head's and its previous run the base's.
- */
-function libraryTraces(head: string, base: string | null): TraceFiles {
-  const runOf = new Map<string, Promise<string>>();
-  const runDirectory = (id: string) => {
-    if (!runOf.has(id)) runOf.set(id, libraryText(id, "latest.json").then((text) => (JSON.parse(text) as { run: string }).run));
-    return runOf.get(id)!;
-  };
+/** A kept recording is a traces directory of its own, read through the dev server. */
+function keptRecording(id: string): TraceDirectory {
+  return new TraceDirectory({ readText: (path) => libraryText(id, path) });
+}
+
+/** One kept recording, or two compared: the head's run is the latest, the base's the previous. */
+function keptRecordings(head: string, base: string | null): RunSource {
   return {
-    async readText(path) {
-      if (path === "latest.json") return JSON.stringify({ run: "head" });
-      if (path === "previous.json") {
-        if (base === null) throw new Error("demo: one recording, nothing to compare with");
-        return JSON.stringify({ run: "base" });
-      }
-      const [side, ...rest] = path.split("/");
-      const id = side === "head" ? head : side === "base" && base !== null ? base : null;
-      if (id === null) throw new Error(`demo: no such file ${path}`);
-      return libraryText(id, `${await runDirectory(id)}/${rest.join("/")}`);
-    },
+    latest: () => keptRecording(head).latest(),
+    previous: async () => (base === null ? null : keptRecording(base).latest()),
   };
 }
 
@@ -106,12 +94,12 @@ function demoHost(params: URLSearchParams): Host {
   const selfLabel = app.startsWith("self:") ? app.slice("self:".length) : null;
   const pair = comparedPair(params);
   const single = params.get("recording");
-  const traces: TraceFiles =
+  const runs: RunSource =
     pair !== null
-      ? libraryTraces(pair.head, pair.base)
+      ? keptRecordings(pair.head, pair.base)
       : single !== null
-        ? libraryTraces(single, null)
-        : { readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) };
+        ? keptRecordings(single, null)
+        : new TraceDirectory({ readText: selfLabel === null ? fixtureReader(app, traceFiles, "") : selfReader(selfLabel) });
   // Fixtures named "<app>-<change>" (django-feed-fix, fastapi-slug-refactor) share the app's source.
   const baseApp = app.split("-")[0] ?? app;
   const readFixtureSource = fixtureReader(baseApp, sourceFiles, "source/");
@@ -119,7 +107,6 @@ function demoHost(params: URLSearchParams): Host {
     const local = exampleSources[`../../../examples/${baseApp}-realworld/${file}`];
     return local ? ((await local()) as string) : readFixtureSource(file);
   };
-  const runs = new TraceDirectory(traces);
   const latest = runs.latest();
   // Runshape's own recordings carry their source; the example apps' comes from fixtures or examples/.
   const sources = {

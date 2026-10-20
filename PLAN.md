@@ -101,8 +101,11 @@ separately by the extension and by `cli/recordings.ts`.
 1. **Done (10fb440 and its review fixes).** `trace` split into `model/` and `data/`. `RunSource` with `TraceDirectory` replaces
    `loadLatestRun`/`loadPreviousRun`. `@runshape/infra` with `NodeFiles` and the path guard
    (moved from the extension). The CLI uses it. `view-diff`: no viewer response changes.
-2. Hosts: the demo's library pair as a `RunSource` (no fake pointer files), the extension
-   over `RunSource`, `SourceReader` over infra.
+2. **Done.** The demo's kept recordings as a `RunSource` (no fake pointer files). The extension
+   moved to `RunSource` in PR 1. `SourceReader` stays as it is: its three implementations are
+   the extension's (VS Code's fs), the demo's (vite globs, and sources kept in a recording) and
+   view-diff's (which must still run against old revisions). None reads `node:fs` the way
+   infra would.
 3. Library, reviews and runshape.json reads and writes through infra (`write`, `list` and an
    in-memory store arrive here, with their first users).
 4. `TestConfig` and the `Recorder` port move out of `cli/recordings.ts`. `GitCli` and
