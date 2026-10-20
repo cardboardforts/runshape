@@ -57,9 +57,9 @@ import {
   WORKING_TREE_ID,
 } from "@runshape/library";
 export type { PullRequestSummary } from "@runshape/library";
-import { NodeFiles } from "@runshape/infra";
+import { holdingLock, LockHeld, NodeFiles, removeAnyway, swapIntoPlace } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
-import { assertPlainFiles, removeAnyway } from "./docker-recorder";
+import { assertPlainRecording } from "./docker-recorder";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -244,21 +244,14 @@ class Recordings {
   /** Runs `work` holding the library's lock, taking over a lock whose process is gone. */
   async exclusively(work: () => Promise<void>): Promise<void> {
     await mkdir(this.library.directory, { recursive: true });
-    const lock = join(this.library.directory, LOCK_FILE);
     try {
-      await writeFile(lock, String(process.pid), { flag: "wx" });
-    } catch {
-      const holder = Number((await readFile(lock, "utf8").catch(() => "")).trim());
-      if (Number.isInteger(holder) && holder > 0 && isRunning(holder)) {
-        throw new RecordingError(`another recording is running (process ${holder}); if it isn't, delete ${lock}`);
-      }
-      await writeFile(lock, String(process.pid));
-    }
-    try {
-      await this.clearInterrupted();
-      await work();
-    } finally {
-      await rm(lock, { force: true });
+      await holdingLock(join(this.library.directory, LOCK_FILE), async () => {
+        await this.clearInterrupted();
+        await work();
+      });
+    } catch (error) {
+      if (error instanceof LockHeld) throw new RecordingError(`another recording is running (process ${error.holder}); if it isn't, delete ${error.lockFile}`);
+      throw error;
     }
   }
 
@@ -582,7 +575,7 @@ class Recordings {
   private async keepAsSandboxed(id: string): Promise<void> {
     const from = join(this.library.directory, id);
     // Made before recordings from the sandbox were checked: checked before it's touched.
-    await assertPlainFiles(from);
+    await assertPlainRecording(from);
     const to = join(this.library.directory, `${id}${SANDBOX_SUFFIX}`);
     if (await readFile(join(to, METADATA_FILE)).then(() => true, () => false)) await removeAnyway(from);
     else {
@@ -865,16 +858,7 @@ class Recordings {
 
   /** The old recording is set aside, not deleted, until the new one is in place. */
   private async replace(id: string, incoming: string): Promise<void> {
-    const final = join(this.library.directory, id);
-    const replaced = join(this.library.directory, `${REPLACED_PREFIX}${id}`);
-    const hadOne = await rename(final, replaced).then(() => true, () => false);
-    try {
-      await rename(incoming, final);
-    } catch (error) {
-      if (hadOne) await rename(replaced, final);
-      throw error;
-    }
-    if (hadOne) await rm(replaced, { recursive: true, force: true });
+    await swapIntoPlace(incoming, join(this.library.directory, id), join(this.library.directory, `${REPLACED_PREFIX}${id}`));
   }
 }
 
@@ -947,16 +931,6 @@ const REPLACED_PREFIX = ".replaced-";
 /** Enough of the recorder's source hash to tell two versions apart. */
 const RECORDER_SOURCE_DIGITS = 16;
 
-/** Whether a process exists: signal 0 checks without sending anything. */
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM: it exists, it's someone else's.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
 
 /** The list command's text: the working tree, what's recorded, what could be. */
 function listing(overview: LibraryOverview): string[] {

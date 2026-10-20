@@ -3,3 +3,4 @@
 // needed, and the stores here fit them by shape.
 export * from "./paths";
 export * from "./node-files";
+export * from "./folders";

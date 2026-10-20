@@ -2,8 +2,10 @@
 // read-only, and an output folder, and nothing else of this machine. docs/design.md's threat
 // model says why each step is here; docker-recorder.test.ts pins them.
 import { spawn } from "node:child_process";
-import { chmod, lstat, readdir, readFile, rm } from "node:fs/promises";
+import { lstat, readFile, rm } from "node:fs/promises";
 import { basename, isAbsolute, join, normalize } from "node:path";
+
+import { assertPlainFiles, NotPlainFiles, removeAnyway } from "@runshape/infra";
 
 import { Recorder, RecordTarget } from "./recordings";
 
@@ -109,7 +111,7 @@ export class DockerRecorder implements Recorder {
         "the recording",
       );
       // The container has exited: what it left is checked before anything on this machine reads or writes there.
-      await assertPlainFiles(outDirectory);
+      await assertPlainRecording(outDirectory);
       await lstat(join(outDirectory, "run", "manifest.json")).catch(() => {
         throw new Error(`no recording was written (its log: ${join(outDirectory, "run.log")})`);
       });
@@ -265,43 +267,15 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
  * Every entry the recording left is a plain file or folder, and they add up to a sane size: a
  * link would turn the host's next write or read there into one somewhere else.
  */
-export async function assertPlainFiles(directory: string): Promise<void> {
+export async function assertPlainRecording(directory: string): Promise<void> {
   try {
-    await walkPlainFiles(directory);
+    await assertPlainFiles(directory, MAX_RECORDING_BYTES);
   } catch (error) {
-    if (error instanceof SandboxRefusal) throw error;
-    // A folder the tests made unreadable (chmod 000), say: refused, not a crash.
-    throw new SandboxRefusal(`the recording left something it can't read (${error instanceof Error ? error.message : String(error)}): not used`);
+    if (!(error instanceof NotPlainFiles)) throw error;
+    if (error.reason === "not-a-file") throw new SandboxRefusal(`the recording left ${error.detail}, which isn't a plain file (a link?): not used`);
+    if (error.reason === "too-big") throw new SandboxRefusal(`the recording wrote over ${MAX_RECORDING_BYTES / 1024 ** 3} GB: not used`);
+    throw new SandboxRefusal(`the recording left something it can't read (${error.detail}): not used`);
   }
-}
-
-async function walkPlainFiles(directory: string): Promise<void> {
-  let total = 0;
-  const walk = async (path: string): Promise<void> => {
-    for (const entry of await readdir(path, { withFileTypes: true })) {
-      const full = join(path, entry.name);
-      if (entry.isDirectory()) await walk(full);
-      else if (entry.isFile()) total += (await lstat(full)).size;
-      else throw new SandboxRefusal(`the recording left ${full.slice(directory.length + 1)}, which isn't a plain file (a link?): not used`);
-      if (total > MAX_RECORDING_BYTES) throw new SandboxRefusal(`the recording wrote over ${MAX_RECORDING_BYTES / 1024 ** 3} GB: not used`);
-    }
-  };
-  await walk(directory);
-}
-
-/**
- * Removes a folder whatever the commit's tests did to it: a folder they made unreadable (chmod
- * 000, owned by the person, so fixable) would otherwise stop every later run. Links are removed,
- * never followed.
- */
-export async function removeAnyway(path: string): Promise<void> {
-  const entry = await lstat(path).catch(() => null);
-  if (entry === null) return;
-  if (entry.isDirectory()) {
-    await chmod(path, 0o700).catch(() => {});
-    for (const name of await readdir(path).catch(() => [] as string[])) await removeAnyway(join(path, name));
-  }
-  await rm(path, { recursive: true, force: true });
 }
 
 function lastLines(output: string): string {
