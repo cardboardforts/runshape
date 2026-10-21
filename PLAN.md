@@ -153,7 +153,11 @@ separately by the extension and by `cli/recordings.ts`.
      `runshape-zones` closed unmerged.
 6. **Done.** **`serve.ts` moves to the webview demo** (decided 2026-10-20): only the demo's dev server
    uses it, so it joins that host, and the library is outbound only. Its rule goes with it.
-7. **The recordings workflow moves into core** (decided 2026-10-20): `Recordings` becomes an
+7. **The recordings workflow moves into core** (decided 2026-10-20; steps and layering
+   decided the same day: 7a (**done**) a git interface named for meaning, `Repository`,
+   replaces the raw command lines; 7b the project's files and hashing behind an interface; 7c the types the
+   workflow speaks move from the library into core, and the library imports core to implement
+   core's interfaces; 7d `Recordings` moves into core): `Recordings` becomes an
    application service behind ports (`RecordingStore`, `ReviewStore`, git, `Recorder`,
    `PullRequests`). The CLI keeps argument parsing, printing and its composition root. Split
    into reviewable steps; Phase 1's PR page builds on it. After it, the CLI's outbound

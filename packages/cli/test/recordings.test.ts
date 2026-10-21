@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import type { LanguageModel } from "@runshape/core";
-import { GitCli, projectLibrary, PullRequestSummary } from "@runshape/library";
+import { GitCli, GitRepository, projectLibrary, PullRequestSummary } from "@runshape/library";
 import { Recorder, RecordTarget } from "../src/ports";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
@@ -74,9 +74,9 @@ async function run(
     return model;
   };
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
-  const git = new GitCli(root);
-  const library = projectLibrary(root, git);
-  const code = await runRecordings(argv, { root, git, library, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
+  const repository = new GitRepository(new GitCli(root));
+  const library = projectLibrary(root, repository);
+  const code = await runRecordings(argv, { root, repository, library, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
   return { code, lines, recorder, model, chosen, sandbox };
 }
 

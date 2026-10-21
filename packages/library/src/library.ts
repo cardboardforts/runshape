@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { NodeFiles } from "@runshape/infra";
 
-import { Git, GitError } from "./git";
+import { GitRepository } from "./git-repository";
 import { RecordingStore, SANDBOX_SUFFIX, WORKING_TREE_ID } from "./recording-store";
 import { ReviewStore } from "./review-store";
 
@@ -113,21 +113,21 @@ export interface CommitSummary {
 }
 
 /** A project's library as runshape keeps it: .runshape/recordings, and the reviews beside them. */
-export function projectLibrary(root: string, git: Git): RecordingLibrary {
+export function projectLibrary(root: string, repository: GitRepository): RecordingLibrary {
   const runshape = join(root, ".runshape");
-  return new RecordingLibrary(new RecordingStore(new NodeFiles(join(runshape, "recordings"))), git, new ReviewStore(new NodeFiles(join(runshape, "reviews"))));
+  return new RecordingLibrary(new RecordingStore(new NodeFiles(join(runshape, "recordings"))), repository, new ReviewStore(new NodeFiles(join(runshape, "reviews"))));
 }
 
 /** A project's recordings (.runshape/recordings) and the git refs they could be compared against. */
 export class RecordingLibrary {
   constructor(
     readonly store: RecordingStore,
-    private readonly git: Git,
+    private readonly repository: GitRepository,
     readonly reviews: ReviewStore,
   ) {}
 
   async overview(): Promise<LibraryOverview> {
-    const [{ recordings, problems }, refs, working, requested] = await Promise.all([this.store.list(), this.refLines(), this.workingTree(), this.reviews.requested()]);
+    const [{ recordings, problems }, refs, working, requested] = await Promise.all([this.store.list(), this.repository.branchTips(), this.repository.workingTree(), this.reviews.requested()]);
     // A commit recorded both here and in the sandbox: its branches point at the one made here.
     const committed = new Map<string, string>();
     for (const r of recordings) {
@@ -142,47 +142,4 @@ export class RecordingLibrary {
       requested,
     };
   }
-
-  /** The commit a branch, tag or hash names. */
-  async resolve(ref: string): Promise<CommitSummary> {
-    let output: string;
-    try {
-      // --end-of-options: a ref spelled like an option is still a ref.
-      output = await this.git.run(["log", "-1", `--format=%H%x00%s%x00%cI`, "--end-of-options", `${ref}^{commit}`, "--"]);
-    } catch (error) {
-      if (error instanceof GitError) throw new GitError(`git doesn't know ${ref}`);
-      throw error;
-    }
-    const [commit, subject, committedAt] = output.trim().split("\0");
-    return { commit: commit!, subject: subject!, committedAt: utc(committedAt!) };
-  }
-
-  async workingTree(): Promise<LibraryOverview["working"]> {
-    const [branch, commit, status] = await Promise.all([
-      this.git.run(["symbolic-ref", "--quiet", "--short", "HEAD"]).then((name) => name.trim(), () => null),
-      this.git.run(["rev-parse", "HEAD"]),
-      // Untracked files count: a new test file not added yet still runs.
-      this.git.run(["status", "--porcelain"]),
-    ]);
-    return { branch, commit: commit.trim(), dirty: status.trim() !== "" };
-  }
-
-  private async refLines(): Promise<Omit<RefSummary, "current" | "recordingId">[]> {
-    const output = await this.git.run(["for-each-ref", "--format=%(refname)%00%(objectname)%00%(subject)%00%(committerdate:iso-strict)", "refs/heads", "refs/remotes"]);
-    const refs: Omit<RefSummary, "current" | "recordingId">[] = [];
-    for (const line of output.split("\n")) {
-      if (line === "") continue;
-      const [refname, commit, subject, committedAt] = line.split("\0");
-      // origin/HEAD only points at another remote branch: listing it says nothing new.
-      if (refname!.endsWith("/HEAD")) continue;
-      const kind = refname!.startsWith("refs/heads/") ? "branch" : "remote";
-      refs.push({ name: refname!.replace(/^refs\/(heads|remotes)\//, ""), kind, commit: commit!, subject: subject!, committedAt: utc(committedAt!) });
-    }
-    return refs;
-  }
-}
-
-/** git prints dates in the committer's zone; recordings compare them as UTC text. */
-function utc(date: string): string {
-  return new Date(date).toISOString().replace(".000Z", "Z");
 }

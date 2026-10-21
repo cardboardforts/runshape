@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { GitCli, projectLibrary } from "../src";
+import { GitCli, GitRepository, projectLibrary } from "../src";
 import { metadata, recordAt, repository } from "./repository";
 
 describe("RecordingLibrary", () => {
@@ -23,7 +23,7 @@ describe("RecordingLibrary", () => {
     recordAt(directory, metadata("working", commits.third!, "Feature work", "2026-10-02T10:00:00Z", { branch: "feature", dirty: true }));
     writeFileSync(join(root, "file.txt"), "uncommitted");
 
-    const overview = await projectLibrary(root, new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitRepository(new GitCli(root))).overview();
 
     expect({
       working: overview.working,
@@ -54,7 +54,7 @@ describe("RecordingLibrary", () => {
     writeFileSync(join(directory, "aaaaaaaaaaaa", "recording.json"), JSON.stringify(metadata("../../victim", commits.first!, "First", "2026-10-02T09:00:00Z")));
     recordAt(directory, metadata("notes", commits.first!, "First", "2026-10-02T09:00:00Z"));
 
-    const overview = await projectLibrary(root, new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitRepository(new GitCli(root))).overview();
 
     expect({ recordings: overview.recordings, problems: [...overview.problems].sort() }).toEqual({
       recordings: [],
@@ -71,23 +71,13 @@ describe("RecordingLibrary", () => {
     // A new file not added yet is still in the tree the tests run against.
     writeFileSync(join(root, "new.test.ts"), "");
 
-    const overview = await projectLibrary(root, new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitRepository(new GitCli(root))).overview();
 
     expect({ recordings: overview.recordings.length, unrecorded: overview.refs.filter((ref) => ref.recordingId === null).length, dirty: overview.working.dirty }).toEqual({
       recordings: 0,
       unrecorded: 3,
       dirty: true,
     });
-  });
-
-  test("a ref resolves to its commit; a name git doesn't know is an error that says so", async () => {
-    const { root, commits } = repository();
-    const library = projectLibrary(root, new GitCli(root));
-
-    expect(await library.resolve("origin/main")).toEqual({ commit: commits.first, subject: "First", committedAt: "2026-10-01T10:00:00Z" });
-    await expect(library.resolve("nope")).rejects.toThrowError("git doesn't know nope");
-    // Passed as one argument, never through a shell, and never taken for an option.
-    await expect(library.resolve("--output=/tmp/x")).rejects.toThrowError("git doesn't know --output=/tmp/x");
   });
 });
 
@@ -100,7 +90,7 @@ describe("the pull requests' morning list", () => {
     mkdirSync(join(root, ".runshape", "reviews"), { recursive: true });
     writeFileSync(join(root, ".runshape", "reviews", "requested.json"), JSON.stringify(index));
 
-    const overview = await projectLibrary(root, new GitCli(root)).overview();
+    const overview = await projectLibrary(root, new GitRepository(new GitCli(root))).overview();
 
     expect(overview.requested?.pullRequests.map((pr) => `#${pr.number} ${pr.title} -> ${pr.review}`)).toEqual(["#7 Teach orders to refuse -> aaaaaaaaaaaa..bbbbbbbbbbbb"]);
   });
@@ -108,6 +98,6 @@ describe("the pull requests' morning list", () => {
   test("before review-requests has run there's no list, which isn't an error", async () => {
     const { root } = repository();
 
-    expect((await projectLibrary(root, new GitCli(root)).overview()).requested).toBeNull();
+    expect((await projectLibrary(root, new GitRepository(new GitCli(root))).overview()).requested).toBeNull();
   });
 });

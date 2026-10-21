@@ -11,7 +11,6 @@ import {
   buildReviewBundle,
   byCodeUnit,
   ChangeContext,
-  CommitMessage,
   describeFolder,
   describeReadme,
   explainChange,
@@ -38,7 +37,6 @@ import {
   ArchitectureSummary,
   CommitSummary,
   EXPLANATION_MARKDOWN,
-  GitCli,
   GitError,
   IncomingRecording,
   LibraryOverview,
@@ -56,14 +54,14 @@ import {
 import { LockHeld } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
 import { assertPlainRecording } from "./docker-recorder";
-import { PullRequests, Recorder, RecordTarget } from "./ports";
+import { PullRequests, Recorder, RecordTarget, Repository } from "./ports";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
 export interface RecordingsDependencies {
   /** The project's root: its git repository. */
   root: string;
-  git: GitCli;
+  repository: Repository;
   /** Its recordings and reviews (projectLibrary: .runshape/recordings and .runshape/reviews). */
   library: RecordingLibrary;
   recorder: Recorder;
@@ -79,7 +77,6 @@ export interface RecordingsDependencies {
 /** Where the demo's dev server serves the recordings page (npm run dev -w packages/webview). */
 export const DEMO_URL = "http://localhost:5173/demo/index.html";
 const FAILING = new Set<string>([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
-const REMOTE = "origin";
 
 class UsageError extends Error {}
 
@@ -211,14 +208,14 @@ const RECORDER_SOURCE_SKIPPED = new Set(["node_modules", "test"]);
 
 class Recordings {
   private readonly library: RecordingLibrary;
-  private readonly git: GitCli;
+  private readonly repository: Repository;
   private sandboxRecorder: Recorder | null = null;
 
   constructor(
     private readonly dependencies: RecordingsDependencies,
     private readonly options: { fetch: boolean; again: boolean; explainAgain: boolean; sandbox: boolean },
   ) {
-    this.git = dependencies.git;
+    this.repository = dependencies.repository;
     this.library = dependencies.library;
   }
 
@@ -235,13 +232,13 @@ class Recordings {
   /** What `name` names: "working", or a branch, tag or commit (fetched from origin first with --fetch). */
   async plan(name: string, { fetch }: { fetch: boolean }): Promise<Plan> {
     if (name === WORKING_TREE_ID) {
-      const working = await this.library.workingTree();
-      const summary = await this.library.resolve("HEAD");
+      const working = await this.repository.workingTree();
+      const summary = await this.repository.resolve("HEAD");
       const where = `${working.branch ?? "detached"}${working.dirty ? ", with uncommitted changes" : ""}`;
       return { id: WORKING_TREE_ID, name: "the working tree", label: `the working tree (${where})`, target: { kind: "working" }, summary, tree: { branch: working.branch, dirty: working.dirty } };
     }
     const ref = fetch && this.options.fetch ? await this.fetched(name) : name;
-    const summary = await this.library.resolve(ref);
+    const summary = await this.repository.resolve(ref);
     const shown = ref.replace(/^refs\/remotes\//, "");
     return this.identified({ id: "", name: shown, label: "", target: { kind: "commit", commit: summary.commit }, summary, tree: { branch: null, dirty: false } });
   }
@@ -278,12 +275,13 @@ class Recordings {
    */
   async place(plans: Plan[], { workingHead }: { workingHead: boolean }): Promise<Plan[]> {
     if (!this.options.sandbox) {
-      const branch = await this.defaultBranch();
+      const branch = await this.repository.mergedBranch();
+      const { remote, mergedBranchSetting } = this.repository;
       for (const plan of plans) {
-        if (plan.target.kind === "working" || (branch !== null && (await this.onDefaultBranch(plan.summary.commit, branch)))) continue;
+        if (plan.target.kind === "working" || (branch !== null && (await this.repository.branchContains(branch, plan.summary.commit)))) continue;
         const reason =
           branch === null
-            ? `can't be told apart from someone else's code: there's no refs/remotes/${REMOTE}/HEAD to say which branch is merged code. Run \`git remote set-head ${REMOTE} --auto\`, or say which: \`git config ${TRUSTED_BRANCH_CONFIG} main\``
+            ? `can't be told apart from someone else's code: there's no refs/remotes/${remote}/HEAD to say which branch is merged code. Run \`git remote set-head ${remote} --auto\`, or say which: \`git config ${mergedBranchSetting} main\``
             : `isn't on ${branch} (it may be someone else's code)`;
         if (workingHead) throw new RecordingError(branch === null ? `${plan.name} ${reason}` : `${plan.name} ${reason}: it's recorded in the sandbox, so compare it with a commit, not the working tree`);
         this.dependencies.print(`${plan.name} ${reason}: recording in the sandbox`);
@@ -305,36 +303,14 @@ class Recordings {
    * checked out (a commit only runshape's PR refs hold, or a branch gh made from a PR) isn't.
    */
   async refuseCheckedOutPullRequest(): Promise<void> {
-    const head = (await this.library.resolve("HEAD")).commit;
-    const trusted = await this.defaultBranch();
-    if (trusted !== null && (await this.onDefaultBranch(head, trusted))) return;
-    const prRefs = (await this.git.run(["for-each-ref", "--points-at", head, "--format=%(refname)", PULL_REQUEST_REFS])).trim();
-    const branch = (await this.library.workingTree()).branch;
-    const merges = branch === null ? "" : (await this.git.run(["config", "--get", `branch.${branch}.merge`]).catch(() => "")).trim();
-    if (prRefs === "" && !merges.startsWith("refs/pull/")) return;
+    const head = (await this.repository.resolve("HEAD")).commit;
+    const trusted = await this.repository.mergedBranch();
+    if (trusted !== null && (await this.repository.branchContains(trusted, head))) return;
+    const pullRequest = await this.repository.pullRequestAt(head, (await this.repository.workingTree()).branch);
+    if (pullRequest === null) return;
     throw new RecordingError(
-      `the working tree is a pull request you checked out (${prRefs.split("\n")[0] || merges}): its tests would run here; compare its commit instead, which is recorded in the sandbox`,
+      `the working tree is a pull request you checked out (${pullRequest}): its tests would run here; compare its commit instead, which is recorded in the sandbox`,
     );
-  }
-
-  /**
-   * The branch of merged code: as the person says (git config runshape.trustedBranch), else as
-   * origin says (refs/remotes/origin/HEAD, read in full: a short name can be ambiguous with a
-   * branch or tag someone else named). Never guessed: null when neither says.
-   */
-  private async defaultBranch(): Promise<string | null> {
-    const said = (await this.git.run(["config", "--get", TRUSTED_BRANCH_CONFIG]).catch(() => "")).trim();
-    if (said !== "") return said;
-    const prefix = `refs/remotes/${REMOTE}/`;
-    const fromOrigin = (await this.git.run(["symbolic-ref", "--quiet", `${prefix}HEAD`]).catch(() => "")).trim();
-    return fromOrigin.startsWith(prefix) ? fromOrigin.slice(prefix.length) : null;
-  }
-
-  private async onDefaultBranch(commit: string, branch: string): Promise<boolean> {
-    for (const tip of [`refs/heads/${branch}`, `refs/remotes/${REMOTE}/${branch}`]) {
-      if (await this.git.run(["merge-base", "--is-ancestor", commit, tip]).then(() => true, () => false)) return true;
-    }
-    return false;
   }
 
   /**
@@ -351,14 +327,13 @@ class Recordings {
       const entry: RequestedReview = { ...pr, head: pr.headRefOid, review: null, explained: false, problem: null, summary: null };
       entries.push(entry);
       try {
-        const headRef = `${PULL_REQUEST_REFS}${pr.number}`;
-        // Its base as the repository it's listed in has it (in a fork workflow, origin is the fork).
-        const baseRef = `refs/runshape/base/${pr.baseRefName}`;
+        let fetched: { head: string; base: string };
         try {
-          await this.git.run(["fetch", "--quiet", "--no-tags", repository, "--end-of-options", `+refs/pull/${pr.number}/head:${headRef}`, `+refs/heads/${pr.baseRefName}:${baseRef}`]);
+          fetched = await this.repository.fetchPullRequest(repository, pr.number, pr.baseRefName);
         } catch (error) {
           throw new RecordingError(`fetching it failed: ${error instanceof Error ? error.message : String(error)}`);
         }
+        const { head: headRef, base: baseRef } = fetched;
         const compared = await this.compare(baseRef, headRef, { againstTip: false, headAsked: name, baseAsked: pr.baseRefName });
         entry.head = compared.head.summary.commit;
         if (entry.head !== pr.headRefOid) this.dependencies.print(`${name}: its head moved since it was listed; reviewed ${entry.head.slice(0, 7)}`);
@@ -398,8 +373,8 @@ class Recordings {
   async forkPoint(baseName: string, base: Plan, head: Plan): Promise<Plan> {
     // No fork point is refused, not quietly the tip: CI checks out one commit by default, and
     // the tip there brings back what the fork point is for.
-    const fork = (await this.git.run(["merge-base", base.summary.commit, head.summary.commit]).catch(() => "")).trim();
-    if (fork === "") {
+    const fork = await this.repository.forkPoint(base.summary.commit, head.summary.commit);
+    if (fork === null) {
       throw new RecordingError(
         `can't find where this branch left ${baseName}: they share no history here (in a shallow clone, fetch it: git fetch --unshallow, or fetch-depth: 0 in CI); --tip compares with ${baseName}'s newest commit`,
       );
@@ -408,8 +383,8 @@ class Recordings {
     if (fork === head.summary.commit && head.id !== WORKING_TREE_ID) {
       throw new RecordingError(`${head.label.split(" (")[0]} is already in ${baseName}: nothing of its own to compare (--tip compares it with ${baseName}'s newest commit)`);
     }
-    const ahead = Number((await this.git.run(["rev-list", "--count", `${fork}..${base.summary.commit}`])).trim());
-    const summary = await this.library.resolve(fork);
+    const ahead = await this.repository.commitsAhead(fork, base.summary.commit);
+    const summary = await this.repository.resolve(fork);
     const id = recordingIdFor(fork);
     this.dependencies.print(
       `${baseName} is ${ahead} commit${ahead === 1 ? "" : "s"} past where this branch left it: comparing with ${id} (${summary.subject}), where it left; --tip compares with ${baseName} itself`,
@@ -494,7 +469,7 @@ class Recordings {
   async explain(review: SavedReview, base: Plan, head: Plan, choice: ModelChoice): Promise<void> {
     const where = join(review.relative, EXPLANATION_MARKDOWN);
     try {
-      const context: ChangeContext = { commits: await this.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
+      const context: ChangeContext = { commits: await this.repository.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
       const inputs = explanationInputs(review.bundle, context, sha256);
       const model = await this.dependencies.models(choice);
       const saved = (await this.library.reviews.explanation(review.name)) as Explanation | null;
@@ -509,22 +484,6 @@ class Recordings {
       if (error instanceof UsageError || error instanceof GitError) throw error;
       throw new RecordingError(`explaining failed (the review is saved): ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  /**
-   * The commits head has that the base hasn't, oldest first: what the authors said about the
-   * change. Records end in NUL (-z), which git doesn't allow in a message, so a message can't
-   * forge another commit.
-   */
-  private async commitsBetween(base: string, head: string): Promise<CommitMessage[]> {
-    const output = await this.git.run(["log", "-z", "--reverse", "--format=%H%n%s%n%b", `${base}..${head}`, "--"]);
-    return output
-      .split("\0")
-      .filter((entry) => entry.trim() !== "")
-      .map((entry) => {
-        const [commit, subject, ...body] = entry.split("\n");
-        return { commit: commit!, subject: subject ?? "", body: body.join("\n") };
-      });
   }
 
   private runOf(id: string): Promise<Run> {
@@ -571,10 +530,9 @@ class Recordings {
     const run = await this.runOf(WORKING_TREE_ID);
     const rules = (await this.rulesOf(WORKING_TREE_ID)) ?? ZoneRules.none();
     const snapshot = buildPlacements(run, rules);
-    const listed = await this.git.run(["ls-files", "--cached", "--others", "--exclude-standard"]);
     // Tracked files deleted from the tree are listed too; declaration files never run.
     const sources: string[] = [];
-    for (const file of listed.split("\n")) {
+    for (const file of await this.repository.files()) {
       if (SOURCE_FILE.test(file) && !DECLARATION_FILE.test(file) && (await lstat(join(this.dependencies.root, file)).then((s) => s.isFile(), () => false))) sources.push(file);
     }
     const context = { style: snapshot.style, rules: snapshot.rules.length };
@@ -663,9 +621,8 @@ class Recordings {
    */
   private async treeFingerprint(): Promise<string> {
     const hash = createHash("sha256");
-    hash.update(await this.git.run(["rev-parse", "HEAD"]));
-    hash.update(await this.git.run(["diff", "--binary", "HEAD", "--", ".", ":(exclude)*.md"]));
-    const untracked = (await this.git.run(["ls-files", "--others", "--exclude-standard"])).split("\n").filter((file) => file !== "" && !file.endsWith(".md"));
+    const { head, diff, untracked } = await this.repository.uncommitted();
+    hash.update(head).update(diff);
     for (const file of untracked.sort(byCodeUnit)) {
       hash.update(file).update("\0").update(await readFile(join(this.dependencies.root, file)).catch(() => Buffer.alloc(0))).update("\0");
     }
@@ -686,16 +643,12 @@ class Recordings {
     this.dependencies.print(`forgot ${recording.id} (${recording.subject})${reviews > 0 ? ` and ${reviews} review${reviews === 1 ? "" : "s"} of it` : ""}`);
   }
 
-  /**
-   * Fetches the branch from origin and names origin's copy in full: a local branch that
-   * happens to be called "origin/main" would win the short name. Local branches stay as they are.
-   */
+  /** Fetches the branch from the remote (named either way: "main" or "origin/main"); the ref of the remote's copy. */
   private async fetched(name: string): Promise<string> {
-    const branch = name.startsWith(`${REMOTE}/`) ? name.slice(REMOTE.length + 1) : name;
-    this.dependencies.print(`fetching ${branch} from ${REMOTE}…`);
-    // No tags: a tag pulled in with a fetch is someone else's word for a commit.
-    await this.git.run(["fetch", "--quiet", "--no-tags", REMOTE, "--end-of-options", `refs/heads/${branch}:refs/remotes/${REMOTE}/${branch}`]);
-    return `refs/remotes/${REMOTE}/${branch}`;
+    const { remote } = this.repository;
+    const branch = name.startsWith(`${remote}/`) ? name.slice(remote.length + 1) : name;
+    this.dependencies.print(`fetching ${branch} from ${remote}…`);
+    return this.repository.fetchBranch(branch);
   }
 
   /** The container for commits with --sandbox (the working tree is always recorded here). */
@@ -715,7 +668,7 @@ class Recordings {
     const hash = createHash("sha256");
     for (const path of SANDBOX_IMAGE_SOURCES) {
       // A path HEAD doesn't have is part of the version too: absent.
-      hash.update(path).update("\0").update(await this.git.run(["rev-parse", `HEAD:${path}`]).catch(() => "absent")).update("\0");
+      hash.update(path).update("\0").update((await this.repository.objectAtHead(path)) ?? "absent").update("\0");
     }
     return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
   }
@@ -788,11 +741,10 @@ class Recordings {
         text = null;
       }
     } else {
-      // "<mode> <type> <object>\t<path>": a directory, link or submodule there isn't rules to read.
-      const entry = (await this.git.run(["ls-tree", target.commit, "--", RULES_FILE])).trim();
-      const [mode, type] = entry.split(/\s+/);
-      if (entry !== "" && !REGULAR_FILE_MODES.has(mode!)) return { text: null, rules: ZoneRules.none(), problem: `it is a ${mode === "120000" ? "symbolic link" : type} in the commit, not a file` };
-      text = entry === "" ? null : await this.git.run(["show", `${target.commit}:${RULES_FILE}`]);
+      // A directory, link or submodule there isn't rules to read.
+      const file = await this.repository.fileAt(target.commit, RULES_FILE);
+      if (file.kind === "other") return { text: null, rules: ZoneRules.none(), problem: `it is a ${file.what} in the commit, not a file` };
+      text = file.kind === "file" ? file.text : null;
     }
     if (text === null) return { text: null, rules: ZoneRules.none(), problem: null };
     try {
@@ -851,8 +803,6 @@ function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-/** git's modes for a plain file and an executable one: anything else at runshape.json isn't rules. */
-const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
 
 /** Whether a folder, links resolved, is the project or inside it. */
 async function insideProject(root: string, directory: string): Promise<boolean> {
@@ -865,14 +815,10 @@ const SOURCE_FILE = /\.(py|go|[cm]?[jt]sx?)$/;
 const DECLARATION_FILE = /\.d\.[cm]?ts$/;
 const README_FILE = "README.md";
 
-/** Where the person names their branch of merged code, when origin's HEAD doesn't. */
-const TRUSTED_BRANCH_CONFIG = "runshape.trustedBranch";
 
 /** What the sandbox image is built from: a change to any of them, in HEAD, builds a new one. */
 const SANDBOX_IMAGE_SOURCES = ["recorder-ts", "package-lock.json", ".dockerignore"];
 
-/** Where review-requests keeps each PR's head: refs a person wouldn't make, read as someone else's code. */
-const PULL_REQUEST_REFS = "refs/runshape/pr/";
 
 /** Where a recording was made when its metadata doesn't say (made before it did). */
 const HOST_ENVIRONMENT = "host";

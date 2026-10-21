@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { GitCli, projectLibrary, RecordingMetadata } from "@runshape/library";
+import { GitCli, GitRepository, projectLibrary, RecordingMetadata } from "@runshape/library";
 import { metadata, recordAt, repository } from "@runshape/library/test/repository";
 import { handleLibraryRequest, serveLibraryFile } from "../dev-server/library-routes";
 
@@ -50,7 +50,7 @@ describe("handleLibraryRequest (the demo's dev server)", () => {
     const directory = join(root, ".runshape", "recordings");
     const id = commits.second!.slice(0, 12);
     recordAt(directory, metadata(id, commits.second!, "Second", "2026-10-02T09:00:00Z"));
-    const library = projectLibrary(root, new GitCli(root));
+    const library = projectLibrary(root, new GitRepository(new GitCli(root)));
 
     const answer = async (url: string) => {
       const response = await handleLibraryRequest(library, url);
@@ -67,7 +67,7 @@ describe("handleLibraryRequest (the demo's dev server)", () => {
   test("when git fails, the overview is an error that says what failed, not an empty library", async () => {
     const directory = join(tmpdir(), "runshape-not-a-repository");
     mkdirSync(directory, { recursive: true });
-    const library = projectLibrary(directory, new GitCli(directory));
+    const library = projectLibrary(directory, new GitRepository(new GitCli(directory)));
 
     const response = await handleLibraryRequest(library, "/__runshape/library");
 
@@ -84,7 +84,7 @@ describe("the pull requests' morning list", () => {
     writeFileSync(join(reviews, "aaaaaaaaaaaa..bbbbbbbbbbbb", "review.md"), "## Behaviour changes (Runshape)\n");
     const index = { format: "runshape-requested-reviews", version: 1, createdAt: "2026-10-16T03:00:00Z", pullRequests: [{ number: 7, title: "Teach orders to refuse", review: "aaaaaaaaaaaa..bbbbbbbbbbbb" }] };
     writeFileSync(join(reviews, "requested.json"), JSON.stringify(index));
-    const library = projectLibrary(root, new GitCli(root));
+    const library = projectLibrary(root, new GitRepository(new GitCli(root)));
 
     const overview = await library.overview();
     const served = await handleLibraryRequest(library, "/__runshape/reviews/aaaaaaaaaaaa..bbbbbbbbbbbb/review.md");

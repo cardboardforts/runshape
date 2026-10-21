@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 // Loaded with vite's module runner (--configLoader runner in package.json): its default loader
 // leaves packages to Node, which can't load their TypeScript (test/vite-config.test.ts).
-import { GitCli, projectLibrary } from "@runshape/library";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 
 import { handleLibraryRequest } from "./dev-server/library-routes";
 import react from "@vitejs/plugin-react";
@@ -20,7 +20,7 @@ function recordingLibrary(): Plugin {
     apply: "serve",
     configureServer(server) {
       const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-      const library = projectLibrary(root, new GitCli(root));
+      const library = projectLibrary(root, new GitRepository(new GitCli(root)));
       server.middlewares.use((request, response, next) => {
         handleLibraryRequest(library, request.url ?? "").then((answer) => {
           if (answer === null) return next();
