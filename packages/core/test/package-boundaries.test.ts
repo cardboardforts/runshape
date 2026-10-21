@@ -34,6 +34,8 @@ const ALLOWED: Record<string, string[]> = {
   "packages/library": ["infra"],
   "recorder-ts": [],
 };
+/** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
+const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
 const DISK = new Set(["packages/infra", "packages/cli", "packages/extension", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
@@ -91,7 +93,7 @@ describe("package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  test("a package's tests reach only its own source, the packages below it, and trace's fixtures", () => {
+  test("a package's tests reach only its own source, the packages below it, trace's fixtures and the shared test helpers", () => {
     // So each package's tests run on their own: a views test importing core would tie them.
     const violations: string[] = [];
     const fixtures = join(ROOT, "packages", "trace", "test", "fixtures");
@@ -112,6 +114,11 @@ describe("package boundaries", () => {
         for (const specifier of importsOf(readFileSync(file, "utf8"))) {
           const runshape = specifier.match(/^@runshape\/([^/]+)/)?.[1];
           if (runshape !== undefined && !allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
+          // A package by name, never its insides: a name with a path is its test code or
+          // internals, which only the named shared fixtures may be.
+          if (runshape !== undefined && specifier !== `@runshape/${runshape}` && !SHARED_TEST_HELPERS.has(specifier)) {
+            violations.push(`${where} reaches inside @runshape/${runshape}: ${specifier}`);
+          }
           if (!specifier.startsWith(".")) continue;
           const target = resolve(dirname(file), specifier);
           if (!target.startsWith(join(ROOT, pkg) + "/") && !isFixtures(target)) violations.push(`${where} reaches outside its package: ${specifier}`);

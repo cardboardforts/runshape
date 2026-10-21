@@ -94,6 +94,17 @@ describe("RecordingLibrary", () => {
 describe("the pull requests' morning list", () => {
   // review-requests leaves .runshape/reviews/requested.json; the recordings page shows it first
   // (the dev server's routes serve it: packages/webview/test/library-routes.test.ts).
+  test("the overview carries the latest list of PRs asking for review", async () => {
+    const { root } = repository();
+    const index = { format: "runshape-requested-reviews", version: 1, createdAt: "2026-10-16T03:00:00Z", pullRequests: [{ number: 7, title: "Teach orders to refuse", review: "aaaaaaaaaaaa..bbbbbbbbbbbb" }] };
+    mkdirSync(join(root, ".runshape", "reviews"), { recursive: true });
+    writeFileSync(join(root, ".runshape", "reviews", "requested.json"), JSON.stringify(index));
+
+    const overview = await projectLibrary(root, new GitCli(root)).overview();
+
+    expect(overview.requested?.pullRequests.map((pr) => `#${pr.number} ${pr.title} -> ${pr.review}`)).toEqual(["#7 Teach orders to refuse -> aaaaaaaaaaaa..bbbbbbbbbbbb"]);
+  });
+
   test("before review-requests has run there's no list, which isn't an error", async () => {
     const { root } = repository();
 
