@@ -1,8 +1,11 @@
-// A real git repository for each test, shared by the library's and the CLI's tests.
+// A real git repository for each test, and recordings kept in it, shared by the library's,
+// the CLI's and the demo dev server's tests.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import type { RecordingMetadata } from "../src";
 
 const COMMIT_DATE = "2026-10-01T10:00:00Z";
 
@@ -42,3 +45,16 @@ export function repository(): { root: string; commits: Record<string, string> } 
   return { root, commits: { first, second, third } };
 }
 
+/** A kept recording, as the CLI leaves one: its metadata, a pointer, and an empty run. */
+export function recordAt(library: string, metadata: RecordingMetadata): void {
+  mkdirSync(join(library, metadata.id, "run"), { recursive: true });
+  writeFileSync(join(library, metadata.id, "recording.json"), JSON.stringify(metadata));
+  writeFileSync(join(library, metadata.id, "latest.json"), JSON.stringify({ run: "run" }));
+  writeFileSync(join(library, metadata.id, "run", "manifest.json"), "{}");
+}
+
+/** Metadata for a recording made of one commit; `extra` overrides any of it. */
+export function metadata(id: string, commit: string, subject: string, recordedAt: string, extra: Partial<RecordingMetadata> = {}): RecordingMetadata {
+  return { id, commit, subject, committedAt: "2026-10-01T10:00:00Z", branch: null, dirty: false, recordedAt, recorder: "recorder-ts", recorderSource: "0123456789abcdef", tests: { total: 3, failed: 0 },
+    architecture: { style: "hexagonal", rules: 0, declared: 0, inferred: 3, problem: null }, ...extra };
+}

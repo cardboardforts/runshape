@@ -151,7 +151,7 @@ separately by the extension and by `cli/recordings.ts`.
    - **Done (2026-10-20):** trace's data layer is an outbound adapter, and you approved the
      placements ("about right, good enough for now"): every rule's `by` is `user`.
      `runshape-zones` closed unmerged.
-6. **`serve.ts` moves to the webview demo** (decided 2026-10-20): only the demo's dev server
+6. **Done.** **`serve.ts` moves to the webview demo** (decided 2026-10-20): only the demo's dev server
    uses it, so it joins that host, and the library is outbound only. Its rule goes with it.
 7. **The recordings workflow moves into core** (decided 2026-10-20): `Recordings` becomes an
    application service behind ports (`RecordingStore`, `ReviewStore`, git, `Recorder`,

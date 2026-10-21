@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
-// By path, not by package name: vite bundles a relative import into the config it loads, but
-// leaves node_modules (where @runshape/library is linked) to Node, which can't load TypeScript.
-import { GitCli, handleLibraryRequest, projectLibrary } from "../library/src";
+// Loaded with vite's module runner (--configLoader runner in package.json): its default loader
+// leaves packages to Node, which can't load their TypeScript (test/vite-config.test.ts).
+import { GitCli, projectLibrary } from "@runshape/library";
+
+import { handleLibraryRequest } from "./dev-server/library-routes";
 import react from "@vitejs/plugin-react";
 import { defineConfig, Plugin } from "vite";
 

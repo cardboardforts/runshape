@@ -96,11 +96,14 @@ describe("package boundaries", () => {
     const violations: string[] = [];
     const fixtures = join(ROOT, "packages", "trace", "test", "fixtures");
     const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
-    // The webview's demo runs against the same fixtures, so it's held to the same rule.
-    // The demo's recordings page also reads the library's overview, through the dev server.
-    const DEMO_ALSO: Record<string, string[]> = { "packages/webview": ["library"] };
+    // The webview's demo runs against the same fixtures, so it's held to the same rule. Its
+    // recordings page reads the library's overview through the dev server, whose routes
+    // (dev-server/) read the library through infra; their tests make libraries to read.
+    const HOST_ALSO: Record<string, Record<string, string[]>> = {
+      "packages/webview": { demo: ["library"], "dev-server": ["library", "infra"], test: ["library", "infra"] },
+    };
     const folders = Object.entries(ALLOWED).flatMap(([pkg, allowed]) =>
-      ["test", "demo"].map((folder) => ({ pkg, allowed: folder === "demo" ? [...allowed, ...(DEMO_ALSO[pkg] ?? [])] : allowed, folder: join(ROOT, pkg, folder) })),
+      ["test", "demo", "dev-server"].map((folder) => ({ pkg, allowed: [...allowed, ...(HOST_ALSO[pkg]?.[folder] ?? [])], folder: join(ROOT, pkg, folder) })),
     );
     for (const { pkg, allowed, folder } of folders) {
       if (!existsSync(folder)) continue;

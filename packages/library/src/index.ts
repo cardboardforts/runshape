@@ -5,4 +5,3 @@ export * from "./git";
 export * from "./library";
 export * from "./recording-store";
 export * from "./review-store";
-export * from "./serve";
