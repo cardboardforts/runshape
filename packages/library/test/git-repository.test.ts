@@ -46,6 +46,22 @@ describe("GitRepository", () => {
     });
   });
 
+  test("a checked-out pull request is known by a PR ref at its commit, or a branch whose upstream is a PR; anything else isn't one", async () => {
+    const { root, commits } = repository();
+    const run = gitIn(root);
+    const git = new GitRepository(new GitCli(root));
+    run("update-ref", "refs/runshape/pr/7", commits.second!);
+    run("config", "branch.from-pr.merge", "refs/pull/12/head");
+    run("config", "branch.ordinary.merge", "refs/heads/main");
+
+    expect({
+      prRefAtCommit: await git.pullRequestAt(commits.second!, "ordinary"),
+      upstreamIsPr: await git.pullRequestAt(commits.third!, "from-pr"),
+      upstreamIsBranch: await git.pullRequestAt(commits.third!, "ordinary"),
+      detached: await git.pullRequestAt(commits.third!, null),
+    }).toEqual({ prRefAtCommit: "refs/runshape/pr/7", upstreamIsPr: "refs/pull/12/head", upstreamIsBranch: null, detached: null });
+  });
+
   test("the working tree: its files, what's uncommitted (Markdown left out), and a file as a commit has it", async () => {
     const { root, commits } = repository();
     const run = gitIn(root);

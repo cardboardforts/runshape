@@ -803,7 +803,6 @@ function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-
 /** Whether a folder, links resolved, is the project or inside it. */
 async function insideProject(root: string, directory: string): Promise<boolean> {
   const [project, folder] = await Promise.all([realpath(root), realpath(directory)]);
@@ -815,10 +814,8 @@ const SOURCE_FILE = /\.(py|go|[cm]?[jt]sx?)$/;
 const DECLARATION_FILE = /\.d\.[cm]?ts$/;
 const README_FILE = "README.md";
 
-
 /** What the sandbox image is built from: a change to any of them, in HEAD, builds a new one. */
 const SANDBOX_IMAGE_SOURCES = ["recorder-ts", "package-lock.json", ".dockerignore"];
-
 
 /** Where a recording was made when its metadata doesn't say (made before it did). */
 const HOST_ENVIRONMENT = "host";
