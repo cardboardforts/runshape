@@ -148,9 +148,9 @@ separately by the extension and by `cli/recordings.ts`.
         and `folders.ts` only call back what they were handed (a hash function, the locked
         work) (3). See Phase 2.
      5. `shell-recorder.ts` never runs in a test (1).
-   - **Decided (2026-10-20):** trace's data layer is an outbound adapter. The rest of the
-     placements wait on your approval in the diff; when given, each rule's `by` becomes
-     `user`.
+   - **Done (2026-10-20):** trace's data layer is an outbound adapter, and you approved the
+     placements ("about right, good enough for now"): every rule's `by` is `user`.
+     `runshape-zones` closed unmerged.
 6. **`serve.ts` moves to the webview demo** (decided 2026-10-20): only the demo's dev server
    uses it, so it joins that host, and the library is outbound only. Its rule goes with it.
 7. **The recordings workflow moves into core** (decided 2026-10-20): `Recordings` becomes an
