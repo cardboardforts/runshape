@@ -168,6 +168,23 @@ separately by the extension and by `cli/recordings.ts`.
    adapters leave `cli/src`: the recorders for Phase 7's recorder modules, and models and gh
    for an adapters package. That move is not made earlier, so nothing moves twice.
 
+8. **Done (2026-10-23): the CLI's outbound adapters left `cli/src`.** The recorders (here and
+   the Docker sandbox), GitHub's pull requests (gh), the project's working tree and hashing are
+   `@runshape/adapters`. The language models (`claude -p`, the Anthropic API) are infra's, as
+   infra's README says (File IO, LLM access, comments: low-level IO without domain words), and
+   fit core's `LanguageModel` by shape; choosing among them stays in the CLI. The CLI is the
+   command line and the composition root. Folder guides ask 3 questions, all wiring code
+   read as handlers (Phase 2).
+
+**From the READMEs you're writing (2026-10-23), for later:**
+- Infra holds comment sinks too (post to GitHub, or collect for a local LLM): Phase 6's
+  comments port lands there.
+- Core is meant as a light glossary of the shared domain objects, with each module
+  self-contained. The recordings workflow (PR 7) now sits in core and is 600 lines of
+  workflow, not glossary. A follow-up could give it a module of its own (for example
+  `@runshape/recordings`, importing core) and leave core its types and ports. Not done:
+  it's your call.
+
 **Done when:** `grep node:fs` finds only infra and the hosts (done: the boundary test holds it). The demo has no fake pointer
 files. `runshape readmes` shows no "doesn't fit" questions you haven't decided.
 

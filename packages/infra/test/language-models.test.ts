@@ -1,5 +1,5 @@
 /**
- * The two Node adapters of the LanguageModel port, each against a stand-in: a script in place
+ * The two language models infra offers (core's LanguageModel port, by shape), each against a stand-in: a script in place
  * of `claude`, a local server in place of the Anthropic API. What's checked is what crosses
  * the boundary: the prompt goes in on stdin or in the body, the model gets no tools, the key
  * goes in a header and never into an error message.
@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { AnthropicApiModel, chooseModel, ClaudeCliModel } from "../src/models";
+import { AnthropicApiModel, ClaudeCliModel } from "../src";
 
 function standInClaude(script: string): { command: string; seen: string } {
   const directory = mkdtempSync(join(tmpdir(), "runshape-claude-"));
@@ -93,25 +93,5 @@ describe("AnthropicApiModel", () => {
     api.close();
 
     expect({ failure, leaksKey: String(failure).includes("sk-secret") }).toEqual({ failure: "the Anthropic API answered 401: invalid x-api-key", leaksKey: false });
-  });
-});
-
-describe("chooseModel", () => {
-  test("claude -p when it runs, else the API when a key is set, else what to do", async () => {
-    const { command } = standInClaude('echo "2.1.301 (Claude Code)"');
-
-    const names = await Promise.all([
-      chooseModel("auto", { RUNSHAPE_CLAUDE: command }),
-      chooseModel("auto", { RUNSHAPE_CLAUDE: "/nowhere/claude", ANTHROPIC_API_KEY: "sk-x" }),
-      chooseModel("auto", { RUNSHAPE_CLAUDE: "/nowhere/claude" }).catch((error: Error) => error.message),
-      chooseModel("api", {}).catch((error: Error) => error.message),
-    ]);
-
-    expect(names.map((m) => (typeof m === "string" ? m : m.name))).toEqual([
-      "claude-cli",
-      "anthropic:claude-sonnet-5-5",
-      "no language model: install the claude command (or point RUNSHAPE_CLAUDE at it), or set ANTHROPIC_API_KEY",
-      "the API model (=api) needs ANTHROPIC_API_KEY",
-    ]);
   });
 });

@@ -2,9 +2,9 @@
  * The package layering, checked from the imports themselves: npm links every workspace into
  * node_modules, so nothing else stops @runshape/trace from importing @runshape/views.
  *
- *   trace  <-  architecture  <-  views  <-  core  <-  library, webview, extension, cli
- *                                                     library  <-  cli
- *                                           infra  <-  library, extension, cli
+ *   trace  <-  architecture  <-  views  <-  core  <-  library, adapters, webview, extension, cli
+ *                                                     library, adapters  <-  cli (the composition root)
+ *                                           infra  <-  library, adapters, extension, cli
  *
  * Each package may import only the packages before it, and lists each one it imports in its
  * package.json. The domain packages import nothing from Node, VS Code or React; the adapters
@@ -30,14 +30,15 @@ const ALLOWED: Record<string, string[]> = {
   "packages/core": ["trace", "architecture", "views"],
   "packages/webview": ["core"],
   "packages/extension": ["core", "infra"],
-  "packages/cli": ["core", "library", "infra"],
+  "packages/cli": ["core", "library", "infra", "adapters"],
+  "packages/adapters": ["core", "infra"],
   "packages/library": ["core", "infra"],
   "recorder-ts": [],
 };
 /** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
 const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
-const DISK = new Set(["packages/infra", "packages/cli", "packages/extension", "recorder-ts"]);
+const DISK = new Set(["packages/infra", "packages/adapters", "packages/cli", "packages/extension", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
 const DOMAIN = new Set(["packages/trace", "packages/architecture", "packages/views", "packages/core"]);
 const NODE_BUILTINS = new Set(builtinModules);

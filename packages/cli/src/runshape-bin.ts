@@ -1,15 +1,11 @@
 // npm run runshape -- <command>: the recordings this checkout keeps (see recordings.ts).
 import { execFileSync } from "node:child_process";
 
+import { assertPlainRecording, DockerRecorder, GhPullRequests, nodeHashing, NodeProjectFiles, sandboxVersion, ShellRecorder } from "@runshape/adapters";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 
-import { chooseModel } from "./models";
-import { assertPlainRecording, DockerRecorder, sandboxVersion } from "./docker-recorder";
-import { nodeHashing } from "./node-hashing";
-import { NodeProjectFiles } from "./project-files";
-import { GhPullRequests } from "./pull-requests";
+import { chooseModel } from "./choose-model";
 import { runRecordings } from "./recordings";
-import { ShellRecorder } from "./shell-recorder";
 
 // Ctrl-C reaches the recorder too, which stops; this process then cleans up its half-written
 // recording and the lock instead of dying with them in place.

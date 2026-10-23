@@ -1,6 +1,6 @@
 # The recorder, sealed: this checkout's recorder-ts and its dependencies, built from trusted
 # code only. A pull request's code never enters the image; it's mounted at /target when a
-# commit is recorded (packages/cli/src/docker-recorder.ts runs it, and says how).
+# commit is recorded (packages/adapters/src/docker-recorder.ts runs it, and says how).
 # Pinned to the Node the host records with, so a sandboxed recording and a local one compare.
 FROM node:23.11.0-bookworm-slim
 

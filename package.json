@@ -11,7 +11,8 @@
     "packages/webview",
     "packages/extension",
     "packages/cli",
-    "packages/library"
+    "packages/library",
+    "packages/adapters"
   ],
   "scripts": {
     "build": "npm run build -w packages/webview && npm run build -w packages/extension && npm run build -w packages/cli",

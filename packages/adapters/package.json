@@ -1,0 +1,14 @@
+{
+  "name": "@runshape/adapters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@runshape/core": "0.1.0",
+    "@runshape/infra": "0.1.0"
+  }
+}

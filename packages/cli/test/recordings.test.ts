@@ -20,9 +20,7 @@ import { describe, expect, test } from "vitest";
 
 import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/core";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
-import { nodeHashing } from "../src/node-hashing";
-import { NodeProjectFiles } from "../src/project-files";
-import { assertPlainRecording, sandboxVersion } from "../src/docker-recorder";
+import { assertPlainRecording, nodeHashing, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
