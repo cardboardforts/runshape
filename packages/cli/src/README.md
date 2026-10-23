@@ -14,7 +14,6 @@ Mixed: **Inbound adapters** is the largest share (4 of 8 files). Drawn hexagonal
 | `main.ts` | Inbound adapters | — | `reviewFromDirectory` |
 | `models.ts` | Outbound adapters | `AnthropicApiModel`, `ClaudeCliModel` | `chooseModel`, `ClaudeCliModel.complete`, `ClaudeCliModel.constructor`, `AnthropicApiModel.complete`, `AnthropicApiModel.constructor` |
 | `node-hashing.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `ports.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `project-files.ts` | Inbound adapters | `NodeProjectFiles` | `NodeProjectFiles.constructor`, `NodeProjectFiles.readme`, `NodeProjectFiles.writeReadme`, `NodeProjectFiles.readTextIfPresent`, `NodeProjectFiles.readBytes` |
 | `pull-requests.ts` | Outbound adapters | `GhPullRequests` | `GhPullRequests.constructor`, `GhPullRequests.requestingMyReview` |
 | `recordings.ts` | Inbound adapters | `Recordings` | `runRecordings` |
@@ -35,8 +34,6 @@ Mixed: **Inbound adapters** is the largest share (4 of 8 files). Drawn hexagonal
 - recordings.ts calls ReviewStore, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
 - recordings.ts calls TraceDirectory, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
 - recordings.ts calls src.docker-recorder, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls src.recording-store, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls src.review-store, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
 - shell-recorder.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): records as a local process: implements the Recorder port (ports.ts). Does it belong here?
 
 <!-- runshape:end -->

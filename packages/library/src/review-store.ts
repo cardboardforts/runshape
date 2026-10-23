@@ -1,35 +1,32 @@
 import { join } from "node:path";
 
+import { KeptReviews, RequestedReviews } from "@runshape/core";
 import { NodeFiles } from "@runshape/infra";
-
-import type { RequestedReviews } from "./library";
 
 export const REQUESTED_REVIEWS_FILE = "requested.json";
 const REVIEW_JSON = "review.json";
-export const REVIEW_MARKDOWN = "review.md";
+const REVIEW_MARKDOWN = "review.md";
 const EXPLANATION_JSON = "explanation.json";
-export const EXPLANATION_MARKDOWN = "explanation.md";
-
-/** A comparison's folder: its base's and head's recording ids. */
-export function reviewName(baseId: string, headId: string): string {
-  return `${baseId}..${headId}`;
-}
+const EXPLANATION_MARKDOWN = "explanation.md";
 
 /**
  * The reviews kept beside the recordings (.runshape/reviews): a folder per comparison, holding
  * its review and the model's explanation of it, and the index of pull requests asking for one.
  * It knows where they go and that they're JSON; what's in them is core's.
  */
-export class ReviewStore {
+export class ReviewStore implements KeptReviews {
   constructor(
     private readonly files: NodeFiles,
     /** How a person finds the store from the project's root (".runshape/reviews"), for messages. */
     private readonly shownAs: string,
   ) {}
 
-  /** Where a review (or one of its files) is, as a person would find it from the project's root. */
-  shownPath(name: string, file?: string): string {
-    return file === undefined ? join(this.shownAs, name) : join(this.shownAs, name, file);
+  shownReview(name: string): string {
+    return join(this.shownAs, name, REVIEW_MARKDOWN);
+  }
+
+  shownExplanation(name: string): string {
+    return join(this.shownAs, name, EXPLANATION_MARKDOWN);
   }
 
   get directory(): string {

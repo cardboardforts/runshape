@@ -1,9 +1,7 @@
 // The pull requests asking for the person's review, through their own `gh` login: read only.
 import { execFile } from "node:child_process";
 
-import type { PullRequestSummary } from "@runshape/library";
-
-import type { PullRequests } from "./ports";
+import type { PullRequests, PullRequestSummary } from "@runshape/core";
 
 const FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid,isCrossRepository,updatedAt";
 

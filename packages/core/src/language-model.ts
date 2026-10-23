@@ -6,3 +6,6 @@ export interface LanguageModel extends ZoneAdvisor {
   /** What answered, kept with what it said: "claude-cli", "anthropic:claude-sonnet-5-5", "vscode". */
   readonly name: string;
 }
+
+/** Which model to ask: claude -p, the Anthropic API, or "auto" (claude -p if it runs, else the API). */
+export type ModelChoice = "auto" | "claude" | "api";

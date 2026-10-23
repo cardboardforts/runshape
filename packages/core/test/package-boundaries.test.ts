@@ -2,7 +2,7 @@
  * The package layering, checked from the imports themselves: npm links every workspace into
  * node_modules, so nothing else stops @runshape/trace from importing @runshape/views.
  *
- *   trace  <-  architecture  <-  views  <-  core  <-  webview, extension, cli
+ *   trace  <-  architecture  <-  views  <-  core  <-  library, webview, extension, cli
  *                                                     library  <-  cli
  *                                           infra  <-  library, extension, cli
  *
@@ -31,7 +31,7 @@ const ALLOWED: Record<string, string[]> = {
   "packages/webview": ["core"],
   "packages/extension": ["core", "infra"],
   "packages/cli": ["core", "library", "infra"],
-  "packages/library": ["infra"],
+  "packages/library": ["core", "infra"],
   "recorder-ts": [],
 };
 /** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */

@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 
-import type { LanguageModel } from "@runshape/core";
+import type { LanguageModel, ModelChoice } from "@runshape/core";
 
 /** A model answering a review takes seconds to a minute; past this, something's stuck. */
 const MODEL_TIMEOUT_MS = 5 * 60_000;
@@ -67,7 +67,6 @@ export class AnthropicApiModel implements LanguageModel {
   }
 }
 
-export type ModelChoice = "auto" | "claude" | "api";
 
 /** The model `--explain` and `--describe` ask: `claude -p` if it runs, else the API if a key is set (or the one asked for). */
 export async function chooseModel(choice: ModelChoice, env: Record<string, string | undefined>): Promise<LanguageModel> {

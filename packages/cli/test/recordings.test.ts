@@ -18,11 +18,11 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import type { LanguageModel } from "@runshape/core";
-import { GitCli, GitRepository, projectLibrary, PullRequestSummary } from "@runshape/library";
-import { Recorder, RecordTarget } from "../src/ports";
+import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/core";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 import { nodeHashing } from "../src/node-hashing";
 import { NodeProjectFiles } from "../src/project-files";
+import { assertPlainRecording } from "../src/docker-recorder";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
@@ -86,7 +86,7 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, recorder, sandbox: (version) => (sandboxVersions.push(version), sandbox), print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
+  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: (version) => (sandboxVersions.push(version), sandbox), print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
   return { code, lines, recorder, model, chosen, sandbox, sandboxVersions };
 }
 

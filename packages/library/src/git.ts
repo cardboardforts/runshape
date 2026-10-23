@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
 
+import { GitError } from "@runshape/core";
+
 /** Port: run git in the project and get its output. Arguments are passed as they are, never through a shell. */
 export interface Git {
   run(args: string[]): Promise<string>;
 }
-
-export class GitError extends Error {}
 
 export class GitCli implements Git {
   constructor(private readonly root: string) {}

@@ -1,25 +1,14 @@
 import { join } from "node:path";
 
-import { holdingLock, NodeFiles, removeAnyway, swapIntoPlace } from "@runshape/infra";
+import { IncomingRecording as Incoming, KeptRecordings, LibraryBusy, RECORDING_ID_LENGTH, RecordingMetadata, SANDBOX_SUFFIX, WORKING_TREE_ID } from "@runshape/core";
+import { holdingLock, LockHeld, NodeFiles, removeAnyway, swapIntoPlace } from "@runshape/infra";
 
-import type { RecordingMetadata } from "./library";
-
-export const WORKING_TREE_ID = "working";
 export const METADATA_FILE = "recording.json";
-/** As many hex digits as a recording's directory name keeps. */
-const RECORDING_ID_LENGTH = 12;
 /** A directory still being written; renamed into place when its recording is complete. */
 export const INCOMING_PREFIX = ".incoming-";
 
-/** Marks a commit's recording made in the sandbox: one of its own, beside one made on this machine. */
-export const SANDBOX_SUFFIX = "-sandbox";
-
 /** A recording's folder name: a commit's first hex digits (and the sandbox's mark), or the working tree's. */
 export const RECORDING_ID = new RegExp(`^([0-9a-f]{${RECORDING_ID_LENGTH}}(${SANDBOX_SUFFIX})?|${WORKING_TREE_ID})$`);
-
-export function recordingIdFor(commit: string, sandboxed = false): string {
-  return `${commit.slice(0, RECORDING_ID_LENGTH)}${sandboxed ? SANDBOX_SUFFIX : ""}`;
-}
 
 /** Where each recording keeps its commit's placements, and the runshape.json they came from. */
 export const ARCHITECTURE_FILE = "architecture.json";
@@ -36,7 +25,7 @@ export const KEPT_RULES_FILE = "runshape.json";
  * working tree, each a traces directory with recording.json beside it. A recording is written
  * in a hidden folder of its own and moved into place only once it's complete.
  */
-export class RecordingStore {
+export class RecordingStore implements KeptRecordings {
   constructor(private readonly files: NodeFiles) {}
 
   get directory(): string {
@@ -104,14 +93,19 @@ export class RecordingStore {
    */
   async exclusively<T>(work: () => Promise<T>, couldNotClear: (name: string, error: Error) => void): Promise<T> {
     await this.files.makeFolder(); // for the lock to go in
-    return holdingLock(join(this.directory, LOCK_FILE), async () => {
-      for (const name of await this.files.list()) {
-        if (!name.startsWith(INCOMING_PREFIX) && !name.startsWith(REPLACED_PREFIX)) continue;
-        // Whatever a sandboxed run left (an unreadable folder, say) mustn't stop this one.
-        await removeAnyway(join(this.directory, name)).catch((error: Error) => couldNotClear(name, error));
-      }
-      return work();
-    });
+    try {
+      return await holdingLock(join(this.directory, LOCK_FILE), async () => {
+        for (const name of await this.files.list()) {
+          if (!name.startsWith(INCOMING_PREFIX) && !name.startsWith(REPLACED_PREFIX)) continue;
+          // Whatever a sandboxed run left (an unreadable folder, say) mustn't stop this one.
+          await removeAnyway(join(this.directory, name)).catch((error: Error) => couldNotClear(name, error));
+        }
+        return work();
+      });
+    } catch (error) {
+      if (error instanceof LockHeld) throw new LibraryBusy(error.holder, error.lockFile);
+      throw error;
+    }
   }
 
   /** A hidden folder for a new recording of `id`: the recorder writes into it. */
@@ -145,7 +139,7 @@ export class RecordingStore {
 }
 
 /** A recording being written: complete only once the store commits it. */
-export class IncomingRecording {
+export class IncomingRecording implements Incoming {
   readonly files: NodeFiles;
 
   constructor(

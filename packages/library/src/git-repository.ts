@@ -1,5 +1,6 @@
-import { Git, GitError } from "./git";
-import type { CommitSummary, RefSummary } from "./library";
+import { CommitMessage, CommitSummary, FileAtCommit, GitError, RefSummary, Repository, Uncommitted } from "@runshape/core";
+
+import { Git } from "./git";
 
 /** Where everything is fetched from: the person's own remote. */
 const REMOTE = "origin";
@@ -13,29 +14,12 @@ const PULL_REQUEST_BASE_REFS = "refs/runshape/base/";
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
 const SYMBOLIC_LINK_MODE = "120000";
 
-/** A commit's message, as its author wrote it. */
-export interface CommitMessage {
-  commit: string;
-  subject: string;
-  body: string;
-}
-
-/** A path as a commit has it: nothing, a plain file's text, or something else (a folder, a link). */
-export type FileAtCommit = { kind: "none" } | { kind: "file"; text: string } | { kind: "other"; what: string };
-
-/** What the working tree's fingerprint is made of: HEAD, its change, and the untracked files (Markdown left out of both). */
-export interface Uncommitted {
-  head: string;
-  diff: string;
-  untracked: string[];
-}
-
 /**
  * What git says about the project, named for what's asked of it. git's command lines, their
  * flags and how its output is read stay here: `--end-of-options` wherever a name could be
  * spelled like an option, -z wherever text from someone else could fake a separator.
  */
-export class GitRepository {
+export class GitRepository implements Repository {
   readonly remote = REMOTE;
   readonly mergedBranchSetting = MERGED_BRANCH_SETTING;
 

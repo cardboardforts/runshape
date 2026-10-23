@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 
 import { chooseModel } from "./models";
-import { DockerRecorder } from "./docker-recorder";
+import { assertPlainRecording, DockerRecorder } from "./docker-recorder";
 import { nodeHashing } from "./node-hashing";
 import { NodeProjectFiles } from "./project-files";
 import { GhPullRequests } from "./pull-requests";
@@ -23,6 +23,7 @@ process.exitCode = await runRecordings(process.argv.slice(2), {
   library: projectLibrary(root, repository),
   project: new NodeProjectFiles(root),
   hashing: nodeHashing,
+  checkSandboxed: assertPlainRecording,
   recorder: new ShellRecorder(root, nodeHashing),
   sandbox: (recorderVersion) => new DockerRecorder(root, recorderVersion),
   print: (line) => console.log(line),

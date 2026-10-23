@@ -9,7 +9,8 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { GitCli, GitRepository, projectLibrary, RecordingMetadata } from "@runshape/library";
+import type { RecordingMetadata } from "@runshape/core";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 import { metadata, recordAt, repository } from "@runshape/library/test/repository";
 import { handleLibraryRequest, serveLibraryFile } from "../dev-server/library-routes";
 

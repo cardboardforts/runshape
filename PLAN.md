@@ -155,9 +155,11 @@ separately by the extension and by `cli/recordings.ts`.
    uses it, so it joins that host, and the library is outbound only. Its rule goes with it.
 7. **The recordings workflow moves into core** (decided 2026-10-20; steps and layering
    decided the same day: 7a (**done**) a git interface named for meaning, `Repository`,
-   replaces the raw command lines; 7b (**done**) the project's files and hashing behind an interface; 7c the types the
-   workflow speaks move from the library into core, and the library imports core to implement
-   core's interfaces; 7d `Recordings` moves into core): `Recordings` becomes an
+   replaces the raw command lines; 7b (**done**) the project's files and hashing behind an interface; 7c (**done**) the types
+   the workflow speaks move from the library into core, and the library imports core to
+   implement core's interfaces (with them: `GitError` and the lock's `LibraryBusy` are core's,
+   a recording's and a review's names are core's, and the sandbox's check on what it left is
+   handed to the workflow, which core can't import); 7d `Recordings` moves into core): `Recordings` becomes an
    application service behind ports (`RecordingStore`, `ReviewStore`, git, `Recorder`,
    `PullRequests`). The CLI keeps argument parsing, printing and its composition root. Split
    into reviewable steps; Phase 1's PR page builds on it. After it, the CLI's outbound

@@ -17,6 +17,8 @@ Mostly **Core** code. Drawn hexagonal, from 12 runshape.json rules and what the 
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `json-answer.ts` | Core | — | `firstJsonObject` |
 | `language-model.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
+| `recordings-model.ts` | Core | `LibraryBusy` | `recordingIdFor`, `reviewName`, `LibraryBusy.constructor` |
+| `recordings-ports.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `review-bundle.ts` | Core | — | `reviewBundleMarkdown`, `buildReviewBundle` |
 | `session.ts` | Core | `ViewerSession` | `ViewerSession.handle`, `ViewerSession.constructor`, `ViewerSession.summary` |
 | `ui-protocol.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |

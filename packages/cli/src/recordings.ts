@@ -2,11 +2,13 @@
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
 import {
   ArchitectureSnapshot,
+  ArchitectureSummary,
   buildFolderGuides,
   buildPlacements,
   buildReviewBundle,
   byCodeUnit,
   ChangeContext,
+  CommitSummary,
   describeFolder,
   describeReadme,
   explainChange,
@@ -15,43 +17,43 @@ import {
   explanationMarkdown,
   FolderGuide,
   folderGuideMarkdown,
+  GitError,
+  Hashing,
+  IncomingRecording,
   LanguageModel,
+  Library,
+  LibraryBusy,
+  LibraryOverview,
   mergeIntoReadme,
+  ModelChoice,
   needsDescription,
   openingComment,
   Outcome,
+  ProjectFiles,
+  PullRequests,
+  PullRequestSummary,
+  Recorder,
+  recordingIdFor,
+  RecordingMetadata,
+  RecordTarget,
+  Repository,
+  RequestedReview,
+  RequestedReviews,
   ReviewBundle,
   reviewBundleMarkdown,
+  ReviewHighlights,
+  reviewName,
   RULES_FILE,
   Run,
+  SANDBOX_SUFFIX,
   TraceDirectory,
+  VERSION_DIGITS,
+  WORKING_TREE_ID,
   ZoneRules,
   ZoneRulesError,
   ZoneSource,
 } from "@runshape/core";
-import {
-  ArchitectureSummary,
-  CommitSummary,
-  EXPLANATION_MARKDOWN,
-  GitError,
-  IncomingRecording,
-  LibraryOverview,
-  RecordingLibrary,
-  RecordingMetadata,
-  recordingIdFor,
-  REVIEW_MARKDOWN,
-  reviewName,
-  SANDBOX_SUFFIX,
-  RequestedReview,
-  RequestedReviews,
-  ReviewHighlights,
-  WORKING_TREE_ID,
-} from "@runshape/library";
-import { LockHeld } from "@runshape/infra";
-import type { PullRequestSummary } from "@runshape/library";
-import { assertPlainRecording } from "./docker-recorder";
-import { Hashing, ProjectFiles, PullRequests, Recorder, RecordTarget, Repository, VERSION_DIGITS } from "./ports";
-import type { ModelChoice } from "./models";
+
 import { launchdJob, scheduleInstructions } from "./schedule";
 
 export interface RecordingsDependencies {
@@ -62,7 +64,9 @@ export interface RecordingsDependencies {
   project: ProjectFiles;
   hashing: Hashing;
   /** Its recordings and reviews (projectLibrary: .runshape/recordings and .runshape/reviews). */
-  library: RecordingLibrary;
+  library: Library;
+  /** Checks what the sandbox left before anything here reads or moves it (assertPlainRecording). */
+  checkSandboxed: (directory: string) => Promise<void>;
   recorder: Recorder;
   /** Records commits in a container (`--sandbox`), given the recorder's version (docker-recorder.ts). */
   sandbox: (recorderVersion: string) => Recorder;
@@ -202,7 +206,7 @@ interface Plan {
 }
 
 class Recordings {
-  private readonly library: RecordingLibrary;
+  private readonly library: Library;
   private readonly repository: Repository;
   private sandboxRecorder: Recorder | null = null;
 
@@ -219,7 +223,7 @@ class Recordings {
     try {
       await this.library.store.exclusively(work, (name, error) => this.dependencies.print(`runshape: couldn't clear ${name}: ${error.message}`));
     } catch (error) {
-      if (error instanceof LockHeld) throw new RecordingError(`another recording is running (process ${error.holder}); if it isn't, delete ${error.lockFile}`);
+      if (error instanceof LibraryBusy) throw new RecordingError(`another recording is running (process ${error.holder}); if it isn't, delete ${error.lockFile}`);
       throw error;
     }
   }
@@ -452,7 +456,7 @@ class Recordings {
     // An explanation of an older review mustn't sit beside this one looking current.
     const explained = (await reviews.explanation(name)) as Explanation | null;
     if (explained !== null && explained.basedOn.review !== this.dependencies.hashing.sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
-    return { bundle, name, markdown: reviews.shownPath(name, REVIEW_MARKDOWN) };
+    return { bundle, name, markdown: reviews.shownReview(name) };
   }
 
   /**
@@ -461,7 +465,7 @@ class Recordings {
    * again only when the review or the commits changed (or with --again).
    */
   async explain(review: SavedReview, base: Plan, head: Plan, choice: ModelChoice): Promise<void> {
-    const where = this.library.reviews.shownPath(review.name, EXPLANATION_MARKDOWN);
+    const where = this.library.reviews.shownExplanation(review.name);
     const { sha256 } = this.dependencies.hashing;
     try {
       const context: ChangeContext = { commits: await this.repository.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
@@ -504,7 +508,7 @@ class Recordings {
   /** Moves a sandboxed recording under a plain id to its own; if that's taken, the plain one goes. */
   private async keepAsSandboxed(id: string): Promise<void> {
     // Made before recordings from the sandbox were checked: checked before it's touched.
-    await assertPlainRecording(this.library.store.pathOf(id));
+    await this.dependencies.checkSandboxed(this.library.store.pathOf(id));
     await this.library.store.move(id, `${id}${SANDBOX_SUFFIX}`);
   }
 

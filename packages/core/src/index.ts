@@ -11,6 +11,8 @@ export * from "./explainer";
 export * from "./folder-description";
 export * from "./folder-readme";
 export * from "./language-model";
+export * from "./recordings-model";
+export * from "./recordings-ports";
 export * from "./review-bundle";
 export * from "./session";
 export * from "./ui-protocol";

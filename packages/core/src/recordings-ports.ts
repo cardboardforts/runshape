@@ -1,7 +1,20 @@
-// What the recordings workflow (recordings.ts) needs from outside, declared here so its
-// adapters (shell-recorder, docker-recorder, pull-requests, the library's GitRepository) fit
-// these, not the workflow.
-import type { CommitMessage, CommitSummary, FileAtCommit, PullRequestSummary, Uncommitted } from "@runshape/library";
+// What the recordings workflow needs from outside core, in its own words: git, the recorders,
+// GitHub's pull requests, the project's working tree, hashing, and the library's stores. The
+// adapters (the library, the CLI) implement these; core never imports them.
+import type { TraceFiles } from "@runshape/trace";
+
+import type { CommitMessage } from "./explainer";
+import type { CommitSummary, LibraryOverview, PullRequestSummary, RecordingMetadata, RequestedReviews } from "./recordings-model";
+
+/** A path as a commit has it: nothing, a plain file's text, or something else (a folder, a link). */
+export type FileAtCommit = { kind: "none" } | { kind: "file"; text: string } | { kind: "other"; what: string };
+
+/** What the working tree's fingerprint is made of: HEAD, its change, and the untracked files (Markdown left out of both). */
+export interface Uncommitted {
+  head: string;
+  diff: string;
+  untracked: string[];
+}
 
 /** How many hex digits of a hash name a version of a recorder or a working tree. */
 export const VERSION_DIGITS = 16;
@@ -86,4 +99,55 @@ export interface Digest {
 export interface Hashing {
   sha256(text: string): string;
   digest(): Digest;
+}
+
+/** A recording being written: complete only once committed. */
+export interface IncomingRecording {
+  /** Where the recorder writes it. */
+  readonly directory: string;
+  readonly files: TraceFiles;
+  /** The commit's runshape.json as it was, and where its rules put each class. */
+  keepArchitecture(rulesText: string | null, architecture: unknown): Promise<void>;
+  commit(metadata: RecordingMetadata): Promise<void>;
+  /** Clears what it wrote; the next run clears anything left. */
+  discard(): Promise<void>;
+}
+
+/** Port: the recordings a project keeps (the library's RecordingStore). */
+export interface KeptRecordings {
+  recording(id: string): Promise<RecordingMetadata | undefined>;
+  /** Where a recording is: for a check that must look at it before it's touched. */
+  pathOf(id: string): string;
+  /** A recording's traces, for trace's TraceDirectory. */
+  filesOf(id: string): TraceFiles;
+  /** The runshape.json kept with a recording; null when its commit had none. */
+  keptRules(id: string): Promise<string | null>;
+  /** Runs `work` holding the recordings' lock (LibraryBusy when a live run has it), clearing what an interrupted run left first. */
+  exclusively<T>(work: () => Promise<T>, couldNotClear: (name: string, error: Error) => void): Promise<T>;
+  begin(id: string): Promise<IncomingRecording>;
+  forget(id: string): Promise<void>;
+  /** Moves a recording to another id, saying so in its metadata; if that id is taken, this one just goes. */
+  move(id: string, to: string): Promise<void>;
+}
+
+/** Port: the reviews kept beside the recordings (the library's ReviewStore). */
+export interface KeptReviews {
+  saveReview(name: string, bundle: unknown, markdown: string): Promise<void>;
+  /** The saved explanation; null when there's none or it can't be read. */
+  explanation(name: string): Promise<unknown>;
+  saveExplanation(name: string, explanation: unknown, markdown: string): Promise<void>;
+  dropExplanation(name: string): Promise<void>;
+  saveRequested(index: RequestedReviews, complete: boolean): Promise<void>;
+  /** Removes every review that compares this recording; says how many. */
+  forgetRecording(id: string): Promise<number>;
+  /** Where a review's Markdown, or its explanation's, is, as a person finds it from the project's root. */
+  shownReview(name: string): string;
+  shownExplanation(name: string): string;
+}
+
+/** Port: a project's recordings, their reviews, and the git refs they could be compared against (the library). */
+export interface Library {
+  readonly store: KeptRecordings;
+  readonly reviews: KeptReviews;
+  overview(): Promise<LibraryOverview>;
 }
