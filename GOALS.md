@@ -85,11 +85,11 @@ An example for what I really want this to turn out to be like. This is an imagin
 
 In the morning I wake up and am greeted with a list of things to review. I get a good single line description. Maybe there's some new stacked PR with 8 things to review. I can start with the first one and start rolling in.
 
-Today I see I have a new recorder module in this project. It's telling me that we've added C++ support. I click into it and am shown a diff with a big glowing new top level module representing the new C++ module. There's a glowing line to core representing new abstractions in there that were needed to support something unique about C++. Off to the side i see a list of new use cases that I can go through.
+Today I see I have a new recorder module in this project. It's telling me that we've added C++ support. I click into it and am shown a diff with a big glowing new top level module representing the new C++ module. There's a glowing line to the kernel representing new abstractions in there that were needed to support something unique about C++. Off to the side i see a list of new use cases that I can go through.
 
-On a default view everything inside about how the specific language generates the universal trace is hidden. There should be two dependency lines that point to a core module and an infra module. Core should contain an in memory representation of the universal trace as well as the test config. Infra should determine how those files are actually saved and loaded from disc. Today only the core module glows with a change.
+On a default view everything inside about how the specific language generates the universal trace is hidden. There should be two dependency lines that point to the kernel and from an injected infra module. The kernel should contain an in memory representation of the universal trace as well as the test config. Infra should determine how those files are actually saved and loaded from disc. Today only the kernel glows with a change.
 
-Click into the new recorder module and I'll probably see lots of nested file handling code and core parser classes, a bunch of classes and bare functions linked to parsing the language specific traces into the universal format. I'd expect to see each module being put together differently but each module having lots of sub modules, maybe one for checking if everything is installed correctly, one for running the tests, one for parsing the results into a universal format and probably other sub modules that I haven't thought of yet. Maybe at this layer I'd even start seeing some class definitions or functions. Since I'd expect that the universal format isn't c++ specific I'd also expect that the core module would handle that file parsing in it's own data layer but all of that would be behind an interface.
+Click into the new recorder module and I'll probably see lots of nested file handling code and core parser classes, a bunch of classes and bare functions linked to parsing the language specific traces into the universal format. I'd expect to see each module being put together differently but each module having lots of sub modules, maybe one for checking if everything is installed correctly, one for running the tests, one for parsing the results into a universal format and probably other sub modules that I haven't thought of yet. Maybe at this layer I'd even start seeing some class definitions or functions. Since I'd expect that the universal format isn't c++ specific I'd also expect that the kernel would handle that file parsing in it's own data layer but all of that would be behind an interface.
 
 Click into it even deeper and I'd probably start seeing the classes and bare functions of the project. If I'm reviewing some changes maybe some would be highlighted so I could see that something. Lets imagine I click on a class, then in that class see a highlighted function and I'll click on that function to see a diff of what changed there.
 
@@ -98,3 +98,59 @@ In the diff I'll have a view of the unit, and integration, and end to end tests 
 If I see anything i'd like to be able to make comments on it. Maybe there's a port where those comments resolve out to a comment on the pull request in github, or maybe I just want to assemble a list of minor tweaks to direct an ai agent to look at and evaluate. Maybe some of them generate new work tickets, or some of them could just be fixed while I'm still reviewing.
 
 Once done I can elect to approve the PR if it looks good, send my comments to a local agent to clean up, or just post the comments on github for someone on the team to review (if it's not my work).
+
+## Target architecture (draft)
+
+How the modules above should fit together so I can keep adding new ones (explainer, arch diff, visualizers, things I haven't thought of yet) without them tangling into each other. This describes where we're going, not what the code looks like today.
+
+The shape is a shared kernel inside a modular monolith. Every module points at the kernel. The kernel doesn't know who's using it. Modules never import each other. The apps are the only things that know about more than one module.
+
+```
+                 ┌──────────── apps: extension · cli · gha ────────────┐
+                 │  load/save via infra, call modules in order, wire   │
+                 └──┬─────────┬──────────┬───────────┬─────────┬───────┘
+                    │         │          │           │         │
+                 trace      arch     explainer   visualizer   infra
+                    │         │          │           │         │
+                    └─────────┴────┬─────┴───────────┴─────────┘
+                                   ▼
+                                 kernel
+               (shared types, shared formats, generic ports)
+```
+
+#### Kernel
+The glossary of the project. If two modules exchange something, its type and its file format live here: `Trace`, `TraceDiff`, `ArchTrace`, `Review`, `Comment`. The kernel also defines the generic ports modules may need injected: `LanguageModel` (text in, text out), `Logger`, maybe `Clock`. The kernel does no real IO and imports no other Runshape package.
+
+A type only moves into the kernel when a second module needs it. Until then it stays in the module that owns it. Changing the kernel means somebody else is affected, so the kernel should stay small and change rarely.
+
+The recorders (Go, Python, TypeScript) are separate processes in their own languages. The kernel's trace format is the contract they write to.
+
+#### Modules: values in, values out
+Each module is a small hexagon of its own that depends only on the kernel. Modules take values and return values. The app does the loading and saving.
+
+- trace: `diff(Trace, Trace) → TraceDiff`
+- arch: `enhance(ArchTrace | null, Trace, LanguageModel) → ArchTrace`, `explainDiff(ArchTrace, ArchTrace, LanguageModel) → ExplainedArchDiff`
+- explainer: `explain(CodeDiff, TraceDiff, Context, LanguageModel) → ExplainedCodeDiff + Review`
+- visualizer: `layout(ArchTrace, PreviousLayout | null, LanguageModel) → Layout`
+
+Modules don't call each other. The explainer doesn't call trace's `diff`; it receives a `TraceDiff`. That's what keeps them self-contained, and it's what lets me add a module without touching the others.
+
+A module's LLM skill (its prompts and how it parses the answer) belongs to that module. The kernel only knows there's a `LanguageModel`. The kernel never knows what an "architecture prompt" is.
+
+A file format only one module reads belongs to that module, with its own serializer. The visualizer's human-arranged layout file is the first example.
+
+#### Infra: adapters at the edge
+Infra implements the kernel's ports and does the actual IO: disk, git, `claude -p`, the Anthropic API, GitHub comments. It's split by the external system it talks to. A system only gets its own package when it brings in a dependency the other apps shouldn't have to carry. Infra is never imported by the kernel or by a module. It reaches them only by being injected from an app.
+
+#### Apps: the composition roots
+The extension, CLI and GitHub Action start everything. Each one picks its adapters (VS Code's file and model APIs inside the extension; disk and `claude -p` from the CLI; an API key and PR comments in GHA), loads what's needed, calls modules in order, and saves the results. Adapters that can only run inside one host (anything importing `vscode`) live in that host's package. The UI (2D and 3D renderers) is its own package and talks to the app over a protocol.
+
+When a workflow like "load the last two ArchTraces, diff them, explain them, save" is needed by a second app, it moves into a `workflows` package. That package may import modules and the kernel, never infra or a host.
+
+#### Rules a tool checks
+- The kernel imports nothing from Runshape.
+- A module imports only the kernel.
+- infra imports only the kernel.
+- Only apps (and `workflows`, for modules) import more than one of these.
+
+These get enforced by a lint rule in CI (dependency-cruiser or eslint-plugin-boundaries), not by me remembering them.

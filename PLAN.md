@@ -1,6 +1,7 @@
 # Plan: from where Runshape is to GOALS.md
 
-Draft 2, 2026-10-19, for you to check. Nothing here is started. Each phase is a stack of small
+Draft 3, 2026-10-23, for you to check. Phase 0 is almost done. Phase 0b (new) turns the
+package arrows toward the target architecture in GOALS.md. Each phase is a stack of small
 PRs: each one reviewable in under ~10 minutes, gated by `npm test`, `npm run typecheck`,
 `view-diff` where it applies, and a second-model refute review.
 
@@ -24,7 +25,30 @@ Checked against the code on `runshape-zones` (7ce69c5). 286 vitest tests and the
 | VS Code, 2D, Quest 3S (arrange with hands) | VS Code and 2D done; 3D in three.js | No WebXR, no arranging. |
 | Python, JS/TS, Go, C#, C++; "test config in, universal trace out" | Python, TS (vitest), Go | No shared recorder contract (each takes its own config). C# missing. C++ parked (idea 7). |
 
-## What the updated GOALS.md changes
+## What GOALS.md's target architecture changes (2026-10-23)
+
+GOALS.md now ends with a target architecture: a shared kernel (today's `core`, renamed `kernel` in Phase 0b) that everything points at
+and that knows nobody, feature modules that take values and return values and never import each
+other, infra adapters injected by the apps, and apps (extension, CLI, GitHub Action) as the only
+composition roots.
+
+Today the arrows run the other way: `trace ← architecture ← views ← core ← hosts`. Core imports
+`views` and `architecture` in 10 files and is mostly workflow (2,480 lines), so it sits at the
+top of the stack, not the middle. `views` imports `architecture`, which is one module importing
+another. Phase 0b fixes this before Phase 1 builds on it. Where today's code goes:
+
+| Today | Target home |
+|---|---|
+| `trace` model and format (imports nothing) | **kernel**: folded in as its trace types and format |
+| `views/run-diff`, `execution-diff`, `routes` | **trace module**: `Trace + Trace → TraceDiff` |
+| `architecture/*`, `views/architecture-diff`, `placements`, `moves`, `folder-guide`; core's `zone-advice`, `architecture-advice`, `folder-readme`, `folder-description` | **arch module**, with its LLM skills |
+| core's `explainer`, `review-bundle`; `views/review` | **explainer module** |
+| `views/system-graph`, `component-view`, `object-graph`, `timeline`, `replay` | **visualizer module** |
+| core's `Recordings`, `ViewerSession` | **workflows** |
+| core's ports (`recordings-ports`, `language-model`), `ui-protocol`, `recordings-model` | stay in the **kernel** |
+| `infra`, `library`, `adapters` | **infra / adapters**, grouped by external system |
+
+## What the updated GOALS.md changed (2026-10-19)
 
 The "Secondary goals" and the C++ review scenario add five things to the plan:
 
@@ -175,20 +199,66 @@ separately by the extension and by `cli/recordings.ts`.
    fit core's `LanguageModel` by shape; choosing among them stays in the CLI. The CLI is the
    command line and the composition root. Folder guides ask 3 questions, all wiring code
    read as handlers (Phase 2).
+   - **Superseded in part (2026-10-23):** infra's README is being rewritten. Under the target
+     architecture, adapters implement core's ports and import core directly, so they no longer
+     fit them by shape without importing. Which package the model clients end up in follows
+     the "grouped by external system" rule in Phase 0b.
 
-**From the READMEs you're writing (2026-10-23), for later:**
-- Infra holds comment sinks too (post to GitHub, or collect for a local LLM): Phase 6's
-  comments port lands there.
-- And logs: Phase 1's structured CLI logging is an infra log sink, so each host (CLI,
-  extension, a GitHub Action) can pipe it where it needs to go.
-- Core is meant as a light glossary of the shared domain objects, with each module
-  self-contained. The recordings workflow (PR 7) now sits in core and is 600 lines of
-  workflow, not glossary. A follow-up could give it a module of its own (for example
-  `@runshape/recordings`, importing core) and leave core its types and ports. Not done:
-  it's your call.
+**From the READMEs you're writing (2026-10-23), for later** (updated for the target
+architecture the same day):
+- Comment sinks (post to GitHub, or collect for a local LLM): the `CommentSink` port is
+  the kernel's, and the sinks are adapters. Phase 6 builds them.
+- Logs: the `Logger` port is the kernel's, and each app (CLI, extension, a GitHub Action)
+  wires a sink that pipes it where it needs to go. Phase 1 builds the CLI's.
+- The kernel (today's core) is a light glossary of the shared domain objects, with each
+  module self-contained.
+  The recordings workflow (PR 7) is 600 lines of workflow, not glossary, so it moves to
+  `workflows` in Phase 0b.
 
 **Done when:** `grep node:fs` finds only infra and the hosts (done: the boundary test holds it). The demo has no fake pointer
 files. `runshape readmes` shows no "doesn't fit" questions you haven't decided.
+
+### Phase 0b: Turn the arrows around (6–8 PRs)
+
+The target architecture in GOALS.md, applied to the packages (see the table above). This comes
+before Phase 1: Phase 1 builds the PR page on `Recordings` in core and adds threads to `views`,
+so everything that lands first is code that would have to move afterwards. The order below
+moves each file once.
+
+1. **Boundary test first.** `package-boundaries.test.ts` states the target rules:
+   - core imports no Runshape package,
+   - a module imports only core,
+   - infra and adapters import only core,
+   - only apps and `workflows` import more than one.
+
+   Today's violations go on an explicit allowlist in the test. Each PR below removes its entries,
+   and the phase is done when the list is empty. A new violation fails the build.
+2. **Core's orchestration moves out.** `Recordings` and `ViewerSession` go to `workflows`. The
+   explainer and review bundle go to an explainer module. Zone and architecture advice and the
+   folder guides go to the arch module, with their prompts. Core then imports neither `views`
+   nor `architecture`. This can be split into one PR per destination.
+3. **`views` splits** into the trace module (run and execution diffs, routes), the arch module
+   (architecture diff, placements, moves, folder guide) and the visualizer module (system,
+   component and object graphs, timeline, replay). After this no module imports another.
+4. **Trace folds into core** (decided 2026-10-23). Trace's `model/` and `data/` become
+   core's trace types and format, with `TraceFiles` as one of core's ports. The `trace`
+   package keeps the name for the trace module (diffs). This touches every
+   `@runshape/trace` import, so it's a mechanical PR on its own.
+5. **`core` is renamed `kernel`** (decided 2026-10-23). This is a mechanical rename and nothing
+   else: the package, its folder, every `@runshape/core` import, the boundary test's rules and
+   allowlist, runshape.json's rules, and the READMEs. "Core" was also the name of the hexagonal
+   zone Runshape draws, and every module will have one of those, so the package needs a name
+   that doesn't clash. "Kernel" says what it is: the small shared center. From here on this
+   plan says kernel.
+6. **Adapters grouped by external system.** `infra` keeps the generic Node toolkit (paths, locks,
+   folder swaps, `NodeFiles`). `library` and `adapters` are regrouped by what they talk to
+   (git, GitHub, the recorders, the language models). A system gets its own package only when
+   it brings in a dependency other apps shouldn't carry. The READMEs follow (yours to write).
+7. **runshape.json placements redone** for the new packages. You approve them in the diff.
+
+**Done when:** the boundary test's allowlist is empty, `npm test`, `npm run typecheck` and
+`view-diff` show no viewer response changes, and the folder guides ask only questions you've
+decided.
 
 ### Phase 1: The PR page and threads to follow (3–4 PRs)
 
@@ -203,7 +273,8 @@ files. `runshape readmes` shows no "doesn't fit" questions you haven't decided.
    A test whose title changed pairs with its old self, as moved tests do (PR 3b's renamed
    test read as one removed and one new).
 4. **Structured CLI logging:** logfmt, with a run ID and PR number on every line, duration
-   per PR, and the full error for each PR that fails.
+   per PR, and the full error for each PR that fails. Workflows log through the kernel's `Logger`
+   port, and the CLI wires a logfmt sink for it.
 
 **Done when:** morning list → a PR → "these 6 workflows run through `Service.place`; 2
 behave differently" works on a real Runshape PR.
@@ -238,6 +309,10 @@ changed module is marked, and clicking down reaches a function's diff.
 3. **Saved arrangements:** moving a module in 2D or 3D is saved, keyed by region and module
    names so it survives between diffs. New things get a computed spot near their neighbours.
 
+All of this is the visualizer module: `layout(ArchTrace, PreviousLayout | null, LanguageModel)
+→ Layout`. The arrangement file format and its serializer belong to the visualizer, not the kernel,
+because only the visualizer reads it. The app loads and saves the file.
+
 ### Phase 4: Performance and complexity, honestly (3–4 PRs)
 
 1. **Cost diff per thread:** call counts, queries per request (N+1), a DB or network call
@@ -253,7 +328,9 @@ that pays. A no-op change has no time callout.
 
 1. The PR title, body and linked issues through `gh`, as untrusted data. The threat model gets
    a new row.
-2. A `TicketSource` port with GitHub Issues first. Jira when you need it.
+2. A `TicketSource` port with GitHub Issues first. Jira when you need it. The explainer
+   module takes ticket context as a value. Fetching it is the workflow's job, so the port
+   lives with `workflows`.
 3. Changed code comments and docs as context. The explainer says what the change is *for*,
    and flags behaviour the ticket doesn't mention.
 
@@ -263,7 +340,9 @@ that pays. A no-op change has no time callout.
    walk its execution backwards with timing deltas.
 2. **Review progress:** check off threads, functions and regions as reviewed. Saved per PR
    and head commit, so a new push un-checks only what changed.
-3. **Comments port:** a comment pinned to a function, test or region. Sinks:
+3. **Comments port:** a comment pinned to a function, test or region. `Comment`, `Review` and
+   the `CommentSink` port are the kernel's. The sinks are adapters (GitHub's in the github adapter).
+   Sinks:
    - GitHub review comments (posting asks you first),
    - a local agent task list,
    - a new ticket.
@@ -272,7 +351,9 @@ that pays. A no-op change has no time callout.
 ### Phase 7: Every recorder in the pipeline (3–4 PRs)
 
 1. A shared recorder contract: `TestConfig` in, universal trace out. `TestConfig` is designed
-   here with the recorders (Phase 0 kept `RecordTarget` rather than name it early).
+   here with the recorders (Phase 0 kept `RecordTarget` rather than name it early). Both are
+   kernel types: the recorders are separate processes in their own languages, and the kernel's trace
+   format is the contract they write to.
 2. Python, then Go, write kept recordings and run in the sandbox.
 3. One sandbox image per language, built only when needed.
 4. Verify plain JS and jest, or list them as limits.
@@ -281,7 +362,8 @@ that pays. A no-op change has no time callout.
 
 ### Phase 8: The agent loop (3–4 PRs)
 
-1. `runshape check [base]`: JSON findings and an exit code per severity.
+1. `runshape check [base]`: JSON findings and an exit code per severity. `check` is a
+   workflow in `workflows`, and the CLI and the GitHub Action (Phase 11) both run it.
 2. A Claude Code skill and an optional Stop hook. The loop is optional on agent branches.
 3. **Gate before human review:** `check --gate` must pass on the head commit. A check that
    didn't run, or ran on an older commit, fails. A bypass is allowed only when the agent tells
@@ -299,7 +381,9 @@ arrangements. Needs your headset at every step.
 
 ### Phase 11: GitHub Action
 
-The pipeline in CI, with findings as PR review comments.
+The pipeline in CI, with findings as PR review comments. The action is the third app, a
+composition root of its own: it reads its inputs and `GITHUB_TOKEN`, wires the API model and
+GitHub comment sink, and runs the same workflows as the CLI.
 
 ## Decided (2026-10-19)
 
@@ -315,3 +399,14 @@ The pipeline in CI, with findings as PR review comments.
 8. Step 0 uses option B: `trace` declares the ports it needs, and infra fits them without
    importing trace. Storage (infra), format (trace's data layer) and native → universal
    translation (each recorder) are three separate owners.
+
+## Decided (2026-10-23)
+
+1. The target architecture is the one at the end of GOALS.md. Phase 0b applies it before
+   Phase 1.
+2. Trace folds into core. The `trace` name passes to the trace module (diffs).
+3. Decision 8 above is superseded in part. Storage, format and native → universal translation
+   still have three separate owners, but the format is the kernel's and adapters import the kernel to
+   implement its ports, rather than fitting them by shape without importing.
+4. `core` is renamed `kernel` (Phase 0b, step 5), as a mechanical PR right after the trace fold.
+   "Core" clashes with the hexagonal zone of the same name, which every module will have.
