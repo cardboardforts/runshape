@@ -1,18 +1,19 @@
 /**
- * The package layering, checked from the imports themselves: npm links every workspace into
- * node_modules, so nothing else stops @runshape/trace from importing @runshape/views.
+ * The target architecture (GOALS.md, "Rules a tool checks"), checked from the imports
+ * themselves: npm links every workspace into node_modules, so nothing else stops one package
+ * importing another.
  *
- *   trace  <-  architecture  <-  views  <-  core  <-  library, adapters, webview, extension, cli
- *                                                     library, adapters  <-  cli (the composition root)
- *                                           infra  <-  library, adapters, extension, cli
+ *   apps (cli, extension) ──> modules, workflows, infra, kernel
+ *   workflows ──> modules, kernel          ui (webview) ──> kernel
+ *   modules (architecture, views) ──> kernel, never each other
+ *   infra layer (infra, library, adapters) ──> kernel, and infra's generic Node toolkit
+ *   kernel (core, and trace until it folds in) ──> nothing outside the kernel
  *
- * Each package may import only the packages before it, and lists each one it imports in its
- * package.json. The domain packages import nothing from Node, VS Code or React; the adapters
- * reach the domain only through @runshape/core. Infra keeps files and imports no Runshape
- * package: trace declares the port it reads through, and infra's stores fit it by shape. The
- * library (recordings on disk, git refs) is a Node adapter of its own, for the CLI and the
- * demo's dev server. The TypeScript recorder stands alone: it writes the trace format, it
- * doesn't share code with the viewer.
+ * What the code still does that the target forbids is listed in NOT_YET; Phase 0b (PLAN.md)
+ * empties it one PR at a time, and an entry that's no longer true fails, so the list only
+ * shrinks. Each package also lists what it imports in its package.json. The kernel and the
+ * modules import nothing from Node, VS Code or React. The TypeScript recorder stands alone: it
+ * writes the trace format, it doesn't share code with the viewer.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { builtinModules } from "node:module";
@@ -21,20 +22,46 @@ import { describe, expect, test } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 
-/** Which @runshape packages each one may import. */
-const ALLOWED: Record<string, string[]> = {
-  "packages/trace": [],
-  "packages/infra": [],
-  "packages/architecture": ["trace"],
-  "packages/views": ["trace", "architecture"],
-  "packages/core": ["trace", "architecture", "views"],
-  "packages/webview": ["core"],
-  "packages/extension": ["core", "infra"],
-  "packages/cli": ["core", "library", "infra", "adapters"],
-  "packages/adapters": ["core", "infra"],
-  "packages/library": ["core", "infra"],
-  "recorder-ts": [],
+type Role = "kernel" | "module" | "workflows" | "infra" | "ui" | "app" | "recorder";
+
+/** What each package is, in the target architecture. */
+const ROLES: Record<string, Role> = {
+  "packages/core": "kernel",
+  "packages/trace": "kernel", // folds into core (Phase 0b, step 4)
+  "packages/architecture": "module",
+  "packages/views": "module",
+  "packages/infra": "infra",
+  "packages/library": "infra",
+  "packages/adapters": "infra",
+  "packages/webview": "ui",
+  "packages/extension": "app",
+  "packages/cli": "app",
+  "recorder-ts": "recorder",
 };
+const named = (role: Role) => Object.keys(ROLES).filter((pkg) => ROLES[pkg] === role).map((pkg) => pkg.split("/").pop()!);
+
+/** Which @runshape packages a role may import. */
+const PERMITTED: Record<Role, string[]> = {
+  kernel: named("kernel"),
+  module: named("kernel"),
+  workflows: [...named("kernel"), ...named("module")],
+  // The infra layer as one: its adapters may use infra's generic Node toolkit (NodeFiles, locks).
+  infra: [...named("kernel"), "infra"],
+  ui: named("kernel"),
+  app: Object.keys(ROLES).map((pkg) => pkg.split("/").pop()!),
+  recorder: [],
+};
+
+/** Imports the target forbids that the code still has. Phase 0b removes them. */
+const NOT_YET: Record<string, string[]> = {
+  "packages/core": ["architecture", "views"], // core's orchestration and LLM skills (step 2)
+  "packages/views": ["architecture"], // views splits into modules (step 3)
+};
+
+/** Which @runshape packages each one may import: its role's, and what it doesn't yet do without. */
+const ALLOWED: Record<string, string[]> = Object.fromEntries(
+  Object.entries(ROLES).map(([pkg, role]) => [pkg, [...PERMITTED[role].filter((name) => `packages/${name}` !== pkg), ...(NOT_YET[pkg] ?? [])]]),
+);
 /** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
 const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
@@ -60,11 +87,11 @@ function importsOf(text: string): string[] {
 }
 
 describe("package boundaries", () => {
-  test("every import points down the layering, and every package declares what it imports", () => {
+  test("every import is one the target architecture allows (or NOT_YET lists), and every package declares what it imports", () => {
     const violations: string[] = [];
     const packages = [...readdirSync(join(ROOT, "packages")).map((name) => `packages/${name}`), "recorder-ts"];
     for (const pkg of packages) {
-      if (existsSync(join(ROOT, pkg, "package.json")) && !(pkg in ALLOWED)) violations.push(`${pkg} is not in the layering: add it to ALLOWED`);
+      if (existsSync(join(ROOT, pkg, "package.json")) && !(pkg in ALLOWED)) violations.push(`${pkg} has no role: add it to ROLES`);
     }
     for (const [pkg, allowed] of Object.entries(ALLOWED)) {
       const declared = Object.keys(JSON.parse(readFileSync(join(ROOT, pkg, "package.json"), "utf8")).dependencies ?? {});
@@ -89,6 +116,9 @@ describe("package boundaries", () => {
         }
       }
       for (const name of used) if (!declared.includes(name)) violations.push(`${pkg} imports ${name} without declaring it in package.json`);
+      for (const name of NOT_YET[pkg] ?? []) {
+        if (!used.has(`@runshape/${name}`)) violations.push(`${pkg} no longer imports @runshape/${name}: remove it from NOT_YET`);
+      }
     }
 
     expect(violations).toEqual([]);
