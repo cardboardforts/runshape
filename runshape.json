@@ -9,10 +9,10 @@
     { "match": "packages.views.**", "zone": "core", "reason": "what the viewer and reviews show, computed from runs: pure", "by": "user" },
     { "match": "packages.core.**", "zone": "core", "reason": "the application: the viewer session, review bundles, advice and explanations through the LanguageModel port", "by": "user" },
     { "match": "packages.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "user" },
-    { "match": "packages.cli.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (ports.ts)", "by": "user" },
-    { "match": "packages.cli.src.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (ports.ts)", "by": "user" },
+    { "match": "packages.cli.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
+    { "match": "packages.cli.src.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.cli.src.models.**", "zone": "outbound-adapter", "reason": "the LanguageModel port's adapters: claude -p and the Anthropic API", "by": "user" },
-    { "match": "packages.cli.src.pull-requests.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (ports.ts)", "by": "user" },
+    { "match": "packages.cli.src.pull-requests.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing, the commands' workflow (recordings.ts), the launchd job it prints, the composition root", "by": "user" }
   ]
 }

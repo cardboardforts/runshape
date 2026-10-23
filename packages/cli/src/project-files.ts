@@ -1,4 +1,4 @@
-// The project's own working tree, as the recordings workflow reads and writes it (ports.ts
+// The project's own working tree, as the recordings workflow reads and writes it (core's
 // ProjectFiles): folder guides' READMEs, opening comments, the working tree's runshape.json.
 import { lstat, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
