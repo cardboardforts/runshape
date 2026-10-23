@@ -12,7 +12,9 @@
     { "match": "packages.cli.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.cli.src.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.cli.src.models.**", "zone": "outbound-adapter", "reason": "the LanguageModel port's adapters: claude -p and the Anthropic API", "by": "user" },
+    { "match": "packages.cli.src.project-files.**", "zone": "outbound-adapter", "reason": "the project's own working tree, for the recordings workflow: implements the ProjectFiles port (core's recordings-ports.ts)", "by": "llm" },
+    { "match": "packages.cli.src.node-hashing.**", "zone": "outbound-adapter", "reason": "SHA-256 from Node's crypto: implements the Hashing port (core's recordings-ports.ts)", "by": "llm" },
     { "match": "packages.cli.src.pull-requests.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (core's recordings-ports.ts)", "by": "user" },
-    { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing, the commands' workflow (recordings.ts), the launchd job it prints, the composition root", "by": "user" }
+    { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing each command into a call on core's Recordings, the launchd job it prints, the composition root", "by": "user" }
   ]
 }

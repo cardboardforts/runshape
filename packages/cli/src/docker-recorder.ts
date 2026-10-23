@@ -63,7 +63,7 @@ export class DockerRecorder implements Recorder {
 
   constructor(
     private readonly root: string,
-    /** A hash of what the image is built from, in HEAD (recordings.ts sandboxVersion). */
+    /** A hash of what the image is built from, in HEAD (sandboxVersion, below). */
     private readonly imageVersion: string,
     private readonly commands: CommandRunner = new SpawnedCommands(),
     user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,

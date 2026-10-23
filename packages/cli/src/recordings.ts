@@ -1,5 +1,5 @@
-// npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>
-// Keeps .runshape/recordings: one recording per commit, plus the working tree's.
+// npm run runshape -- list | record | compare | review-requests | readmes | schedule | forget:
+// the command line. Each command is a call on core's Recordings (core/src/recordings.ts).
 import {
   ArchitectureSummary,
   GitError,
