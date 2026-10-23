@@ -24,8 +24,4 @@ Mostly **Outbound adapters** code. Drawn hexagonal, from 12 runshape.json rules 
 | `node-files.ts` | Outbound adapters | `NodeFiles` | `NodeFiles.readText`, `NodeFiles.constructor`, `NodeFiles.list`, `NodeFiles.writeText`, `NodeFiles.makeFolder` |
 | `paths.ts` | Outbound adapters | — | `safeSegments` |
 
-### Questions this raises
-
-- folders.ts calls Recordings, against the hexagonal style: calls back into a request handler: the dependency points outward
-
 <!-- runshape:end -->

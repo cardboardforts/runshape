@@ -19,9 +19,14 @@ Mostly **Core** code. Drawn hexagonal, from 12 runshape.json rules and what the 
 | `language-model.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `recordings-model.ts` | Core | `LibraryBusy` | `recordingIdFor`, `reviewName`, `LibraryBusy.constructor` |
 | `recordings-ports.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
+| `recordings.ts` | Core | `Recordings` | `Recordings.constructor`, `Recordings.exclusively`, `Recordings.compare`, `Recordings.record`, `Recordings.readmes` |
 | `review-bundle.ts` | Core | — | `reviewBundleMarkdown`, `buildReviewBundle` |
 | `session.ts` | Core | `ViewerSession` | `ViewerSession.handle`, `ViewerSession.constructor`, `ViewerSession.summary` |
 | `ui-protocol.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `zone-advice.ts` | Core | — | `parseZoneAdvice`, `zoneAdvicePrompt`, `zoneFacts`, `languageName` |
+
+### Questions this raises
+
+- recordings.ts calls NodeProjectFiles, against the hexagonal style: calls back into a request handler: the dependency points outward
 
 <!-- runshape:end -->

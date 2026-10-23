@@ -10,30 +10,24 @@ Mixed: **Inbound adapters** is the largest share (4 of 8 files). Drawn hexagonal
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
 | `bin.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `docker-recorder.ts` | Outbound adapters | `DockerRecorder` | `DockerRecorder.constructor`, `DockerRecorder.record`, `assertPlainRecording` |
+| `docker-recorder.ts` | Outbound adapters | `DockerRecorder` | `sandboxVersion`, `DockerRecorder.constructor`, `DockerRecorder.record`, `assertPlainRecording` |
 | `main.ts` | Inbound adapters | — | `reviewFromDirectory` |
 | `models.ts` | Outbound adapters | `AnthropicApiModel`, `ClaudeCliModel` | `chooseModel`, `ClaudeCliModel.complete`, `ClaudeCliModel.constructor`, `AnthropicApiModel.complete`, `AnthropicApiModel.constructor` |
 | `node-hashing.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `project-files.ts` | Inbound adapters | `NodeProjectFiles` | `NodeProjectFiles.constructor`, `NodeProjectFiles.readme`, `NodeProjectFiles.writeReadme`, `NodeProjectFiles.readTextIfPresent`, `NodeProjectFiles.readBytes` |
 | `pull-requests.ts` | Outbound adapters | `GhPullRequests` | `GhPullRequests.constructor`, `GhPullRequests.requestingMyReview` |
-| `recordings.ts` | Inbound adapters | `Recordings` | `runRecordings` |
+| `recordings.ts` | Inbound adapters | — | `runRecordings` |
 | `runshape-bin.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `schedule.ts` | Inbound adapters | — | `launchdJob`, `scheduleInstructions` |
 | `shell-recorder.ts` | Outbound adapters | `ShellRecorder` | `ShellRecorder.source`, `ShellRecorder.constructor` |
 
 ### Questions this raises
 
-- docker-recorder.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): records a commit in a container: implements the Recorder port (ports.ts). Does it belong here?
+- docker-recorder.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): records a commit in a container: implements the Recorder port (core's recordings-ports.ts). Does it belong here?
 - main.ts calls TraceDirectory, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
 - models.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): the LanguageModel port's adapters: claude -p and the Anthropic API. Does it belong here?
-- pull-requests.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (ports.ts). Does it belong here?
-- recordings.ts calls GitRepository, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
+- pull-requests.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (core's recordings-ports.ts). Does it belong here?
 - recordings.ts calls RecordingLibrary, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls IncomingRecording, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls RecordingStore, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls ReviewStore, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls TraceDirectory, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- recordings.ts calls src.docker-recorder, against the hexagonal style: a request handler using an outbound adapter directly: no core in between
-- shell-recorder.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): records as a local process: implements the Recorder port (ports.ts). Does it belong here?
+- shell-recorder.ts is Outbound adapters, unlike most of packages/cli/src (Inbound adapters): records as a local process: implements the Recorder port (core's recordings-ports.ts). Does it belong here?
 
 <!-- runshape:end -->

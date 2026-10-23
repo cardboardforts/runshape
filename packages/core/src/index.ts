@@ -11,6 +11,7 @@ export * from "./explainer";
 export * from "./folder-description";
 export * from "./folder-readme";
 export * from "./language-model";
+export * from "./recordings";
 export * from "./recordings-model";
 export * from "./recordings-ports";
 export * from "./review-bundle";

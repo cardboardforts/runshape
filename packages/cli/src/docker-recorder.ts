@@ -7,7 +7,7 @@ import { basename, isAbsolute, join, normalize } from "node:path";
 
 import { assertPlainFiles, NotPlainFiles, removeAnyway } from "@runshape/infra";
 
-import { Recorder, RecordTarget } from "@runshape/core";
+import { Hashing, Recorder, RecordTarget, Repository, VERSION_DIGITS } from "@runshape/core";
 
 export interface CommandResult {
   code: number | null;
@@ -44,6 +44,16 @@ const PLAIN_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 const MIN_LOCKFILE_VERSION = 2;
 
 export class SandboxRefusal extends Error {}
+
+/** What the image is built from: a change to any of them, in HEAD, builds a new one. */
+const IMAGE_SOURCES = ["recorder-ts", "package-lock.json", ".dockerignore"];
+
+/** The image's version: what HEAD has at each of its sources (a path HEAD hasn't got counts too). */
+export async function sandboxVersion(repository: Repository, hashing: Hashing): Promise<string> {
+  const hash = hashing.digest();
+  for (const path of IMAGE_SOURCES) hash.update(path).update("\0").update((await repository.objectAtHead(path)) ?? "absent").update("\0");
+  return hash.hex().slice(0, VERSION_DIGITS);
+}
 
 export class DockerRecorder implements Recorder {
   readonly environment: string;

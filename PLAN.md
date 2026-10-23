@@ -159,7 +159,9 @@ separately by the extension and by `cli/recordings.ts`.
    the workflow speaks move from the library into core, and the library imports core to
    implement core's interfaces (with them: `GitError` and the lock's `LibraryBusy` are core's,
    a recording's and a review's names are core's, and the sandbox's check on what it left is
-   handed to the workflow, which core can't import); 7d `Recordings` moves into core): `Recordings` becomes an
+   handed to the workflow, which core can't import); 7d (**done**) `Recordings` moves into core, the CLI keeping the command line, `list`'s text,
+   the demo link and the sandbox image's version; folder guides then ask 7 questions, down
+   from 21): `Recordings` becomes an
    application service behind ports (`RecordingStore`, `ReviewStore`, git, `Recorder`,
    `PullRequests`). The CLI keeps argument parsing, printing and its composition root. Split
    into reviewable steps; Phase 1's PR page builds on it. After it, the CLI's outbound
