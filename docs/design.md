@@ -38,8 +38,11 @@ The same onion it's meant to show. Imports point inward only:
 
 ```
 recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
-domain:     packages/trace <- architecture <- views <- core   (core: the viewer session,
-            reviews, explanations, and the recordings workflow, with the ports they need)
+kernel:     packages/core (shared words, ports, the UI protocol) and packages/trace (the
+            trace model and format, folding into the kernel in Phase 0b)
+modules:    packages/architecture, packages/views, packages/explainer: values in, values out
+workflows:  packages/workflows (the recordings workflow, the review bundle, the viewer
+            session): what the apps run, calling modules in order
 adapters:   packages/library (recordings and reviews kept, git), packages/adapters
             (recorders' runners, gh, the project's files, hashing), packages/infra (files,
             folders, the lock, language models: no Runshape import), all pointing at core
@@ -47,21 +50,26 @@ hosts:      packages/cli (command line, composition root), packages/extension (V
             packages/webview (UI) and its demo and dev server
 ```
 
+The target (GOALS.md, "Target architecture") is a kernel every module points at and modules
+that never import each other; PLAN.md's Phase 0b gets there. Until then,
+`package-boundaries.test.ts` lists what still crosses (`NOT_YET`): core imports architecture
+and views, and views imports architecture.
+
 `packages/core/test/package-boundaries.test.ts` checks every arrow from the imports
 themselves, and that only infra, the adapters and the hosts touch the disk. `runshape.json`
 places each package in a zone; `npm run runshape -- readmes` writes a guide in each folder,
 with what doesn't fit.
 
-- `packages/core` imports nothing outside itself: no `vscode`, no React, no Node `fs`. File
-  access comes in through two ports, `TraceFiles` (declared by `packages/trace`'s data layer)
-  and `SourceReader`.
+- The kernel and the modules import nothing from Node, VS Code or React. File access comes
+  in through ports: `TraceFiles` (declared by `packages/trace`'s data layer) and the
+  session's `SourceReader`.
 - Storage, format and translation have separate owners. `packages/infra` keeps files and
   knows no format: it imports no other Runshape package, and its stores fit the domain's ports
   by shape. `packages/trace` owns the format: `model/` is the run in memory and the
   `RunSource` port, `data/` the wire shape, its parsing and a traces directory's layout. Each
   recorder translates its language's own trace into the format before writing it, so nothing
   past the recorder sees a language's native trace.
-- `ViewerSession` (core) answers every request the webview can make. The extension forwards
+- `ViewerSession` (workflows) answers every request the webview can make. The extension forwards
   messages to it; the demo calls it directly. So the webview behaves identically in both.
 - The trace format is the wire format between the Python and TypeScript halves. It is bent
   for size (tagged arrays); `packages/trace/src/data/parse.ts` maps it into named domain types at the boundary.

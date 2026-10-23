@@ -158,8 +158,14 @@ cd recorder && uv run pytest   # recorder; add --python 3.9 to check the settrac
 | `recorder/src/runshape_recorder/domain` | scopes, spans, recording | stdlib only |
 | `recorder/src/runshape_recorder/adapters` | tracing backends, JSON store, catalog, framework introspection | domain |
 | `recorder/src/runshape_recorder/pytest_plugin.py` | composition root | everything |
-| `packages/core` | trace parsing and every view model | nothing outside itself |
-| `packages/webview` | React renderer of core's view models | core |
-| `packages/extension` | VS Code host, composition root | core, vscode |
+| `packages/core`, `packages/trace` | the kernel: shared words, ports, the trace model and format | each other only (target) |
+| `packages/architecture`, `views`, `explainer` | modules: values in, values out | the kernel |
+| `packages/workflows` | the recordings workflow, review bundle, viewer session | modules, the kernel |
+| `packages/infra`, `library`, `adapters` | IO: files, git, recorders, gh, language models | the kernel, infra's toolkit |
+| `packages/webview` | React renderer of the view models | the kernel |
+| `packages/extension`, `packages/cli` | the apps: composition roots | anything |
+
+`packages/core/test/package-boundaries.test.ts` checks these from the imports themselves; what
+still crosses on the way to the target is listed there (`NOT_YET`).
 
 Trace format: [docs/trace-format.md](docs/trace-format.md).

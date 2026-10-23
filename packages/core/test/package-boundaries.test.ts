@@ -64,6 +64,8 @@ const NOT_YET: Record<string, string[]> = {
 const ALLOWED: Record<string, string[]> = Object.fromEntries(
   Object.entries(ROLES).map(([pkg, role]) => [pkg, [...PERMITTED[role].filter((name) => `packages/${name}` !== pkg), ...(NOT_YET[pkg] ?? [])]]),
 );
+// Within the kernel, trace is the part core is built on: trace importing core would be a cycle.
+ALLOWED["packages/trace"] = [];
 /** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
 const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
@@ -110,6 +112,8 @@ describe("package boundaries", () => {
           if (runshape !== undefined) {
             used.add(`@runshape/${runshape}`);
             if (!allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
+            // A package by its name, never its insides: what it exports is what it offers.
+            if (specifier !== `@runshape/${runshape}`) violations.push(`${where} reaches inside @runshape/${runshape}: ${specifier}`);
           } else if (DOMAIN.has(pkg) && isPlatform(specifier)) {
             violations.push(`${where} imports ${specifier}: domain packages run on any platform`);
           } else if (!DISK.has(pkg) && /^(node:)?fs(\/|$)/.test(specifier)) {

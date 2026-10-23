@@ -1,4 +1,4 @@
-// Bundles the extension host code (and @runshape/core) into one CommonJS file for VS Code.
+// Bundles the extension host code (and the Runshape packages it imports) into one CommonJS file for VS Code.
 // The webview is built separately by Vite into dist/webview.
 import { build } from "esbuild";
 

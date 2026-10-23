@@ -9,13 +9,13 @@
     { "match": "packages.views.**", "zone": "core", "reason": "what the viewer and reviews show, computed from runs: pure", "by": "user" },
     { "match": "packages.workflows.**", "zone": "core", "reason": "what the apps run: the recordings workflow, the review bundle, the viewer session; modules and the kernel, no IO of its own", "by": "llm" },
     { "match": "packages.explainer.**", "zone": "core", "reason": "the explainer module: a review's Markdown and commit messages in, a checked explanation out, through the LanguageModel port", "by": "llm" },
-    { "match": "packages.core.**", "zone": "core", "reason": "the application: the viewer session, review bundles, advice and explanations through the LanguageModel port", "by": "user" },
+    { "match": "packages.core.**", "zone": "core", "reason": "the kernel: the shared words and ports and the UI protocol; until Phase 0b moves them, architecture advice and the folder guides", "by": "user" },
     { "match": "packages.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "user" },
     { "match": "packages.adapters.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.adapters.src.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.adapters.src.project-files.**", "zone": "outbound-adapter", "reason": "the project's own working tree, for the recordings workflow: implements the ProjectFiles port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.adapters.src.node-hashing.**", "zone": "outbound-adapter", "reason": "SHA-256 from Node's crypto: implements the Hashing port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.adapters.src.pull-requests.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (core's recordings-ports.ts)", "by": "user" },
-    { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing each command into a call on core's Recordings, the launchd job it prints, the composition root", "by": "user" }
+    { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing each command into a call on the workflows' Recordings, the launchd job it prints, the composition root", "by": "user" }
   ]
 }
