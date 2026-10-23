@@ -1,0 +1,17 @@
+{
+  "name": "@runshape/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@runshape/architecture": "0.1.0",
+    "@runshape/core": "0.1.0",
+    "@runshape/explainer": "0.1.0",
+    "@runshape/trace": "0.1.0",
+    "@runshape/views": "0.1.0"
+  }
+}

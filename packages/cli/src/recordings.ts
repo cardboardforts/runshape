@@ -5,12 +5,10 @@ import {
   GitError,
   LibraryOverview,
   ModelChoice,
-  RecordingError,
-  Recordings,
-  RecordingsDependencies,
   RULES_FILE,
   WORKING_TREE_ID,
 } from "@runshape/core";
+import { RecordingError, Recordings, RecordingsDependencies } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";
 

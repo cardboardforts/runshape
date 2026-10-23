@@ -1,0 +1,13 @@
+{
+  "name": "@runshape/explainer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@runshape/core": "0.1.0"
+  }
+}

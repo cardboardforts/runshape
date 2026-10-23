@@ -4,6 +4,7 @@
 //
 // CORE_SRC picks the revision (a worktree's packages/core/src); FIXTURES stays the working
 // tree's, so both revisions answer the same recordings.
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "vitest";
@@ -32,8 +33,11 @@ const echoAdvisor = {
 };
 
 test("dump every view", async () => {
-  // Everything through core's index: modules move between packages, the index keeps exporting them.
-  const { ViewerSession, PROFILES, TraceDirectory, loadLatestRun, loadPreviousRun } = await import(join(CORE_SRC, "index.ts"));
+  // Through core's index, and workflows' where the revision has it (the session moved there in
+  // Phase 0b): modules move between packages, these indexes keep exporting them.
+  const workflowsIndex = join(CORE_SRC, "..", "..", "workflows", "src", "index.ts");
+  const exported = { ...(await import(join(CORE_SRC, "index.ts"))), ...(existsSync(workflowsIndex) ? await import(workflowsIndex) : {}) };
+  const { ViewerSession, PROFILES, TraceDirectory, loadLatestRun, loadPreviousRun } = exported;
   const phases = PHASE_SETS.call;
   const responses: Record<string, unknown> = {};
 

@@ -10,29 +10,19 @@
  * apart from the review, which it never changes.
  */
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import {  } from "@runshape/trace";
-import { ZoneRules } from "@runshape/architecture";
-import { buildReviewBundle } from "../src/review-bundle";
-import { ChangeContext, explainChange, explanationMarkdown, ExplanationError, explanationPrompt, LanguageModel, parseExplanation } from "../src";
-import { fixtureRuns } from "../../trace/test/fixtures";
+import type { LanguageModel } from "@runshape/core";
+import { ChangeContext, explainChange, explanationMarkdown, ExplanationError, explanationPrompt, parseExplanation } from "../src";
 
-const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit`, dirty: false, forkOf: null });
-
-async function refactorBundle() {
-  const runs = fixtureRuns("fastapi-slug-refactor");
-  return buildReviewBundle({
-    base: (await runs.previous())!,
-    head: await runs.latest(),
-    baseSide: side("main", "aaaaaaaaaaaa"),
-    headSide: side("working", "working"),
-    baseRules: ZoneRules.none(),
-    rules: ZoneRules.none(),
-    createdAt: "2026-10-16T09:00:00Z",
-  });
-}
+/**
+ * A real review, as the workflow renders one and hands it over: the slug refactor (trace
+ * fixture fastapi-slug-refactor), its review bundle's Markdown, kept as it was made.
+ */
+const REVIEW = readFileSync(join(import.meta.dirname, "fixtures", "fastapi-slug-refactor.review.md"), "utf8");
 
 const CONTEXT: ChangeContext = {
   commits: [{ commit: "abc1234def5678abc1234def5678abc1234def56", subject: "Check slugs before creating articles", body: "A duplicate slug used to fail in the database.\nNow we check first and normalise titles." }],
@@ -60,9 +50,7 @@ class FakeModel implements LanguageModel {
 describe("explainChange", () => {
   test("asks with the review and the commit messages, and keeps the answer apart, marked with what it was based on", async () => {
     const model = new FakeModel(`Here you go:\n\`\`\`json\n${JSON.stringify(ANSWER)}\n\`\`\``);
-    const bundle = await refactorBundle();
-
-    const explanation = await explainChange(model, bundle, CONTEXT, "2026-10-16T09:05:00Z", (text) => createHash("sha256").update(text).digest("hex"));
+    const explanation = await explainChange(model, REVIEW, CONTEXT, "2026-10-16T09:05:00Z", (text) => createHash("sha256").update(text).digest("hex"));
 
     expect({
       format: `${explanation.format} v${explanation.version} by ${explanation.model}`,

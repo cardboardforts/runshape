@@ -5,8 +5,9 @@
  */
 import { describe, expect, test } from "vitest";
 
+import { parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
+
 import { Phase } from "@runshape/trace";
-import { parseZoneAdvice, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "../src/zone-advice";
 import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
 import { ZoneRules } from "@runshape/architecture";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";

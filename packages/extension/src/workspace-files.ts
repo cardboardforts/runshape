@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
-import { SourceReader, TraceFiles } from "@runshape/core";
+import { TraceFiles } from "@runshape/core";
+import { SourceReader } from "@runshape/workflows";
 import { safeSegments } from "@runshape/infra";
 
 /** TraceFiles over a .runshape/traces directory, read through VS Code's file system API. */

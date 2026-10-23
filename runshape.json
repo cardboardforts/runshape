@@ -7,6 +7,8 @@
     { "match": "packages.trace.**", "zone": "core", "reason": "the universal trace in memory and the RunSource port: imports nothing", "by": "user" },
     { "match": "packages.architecture.**", "zone": "core", "reason": "styles, zones and their rules: pure domain", "by": "user" },
     { "match": "packages.views.**", "zone": "core", "reason": "what the viewer and reviews show, computed from runs: pure", "by": "user" },
+    { "match": "packages.workflows.**", "zone": "core", "reason": "what the apps run: the recordings workflow, the review bundle, the viewer session; modules and the kernel, no IO of its own", "by": "llm" },
+    { "match": "packages.explainer.**", "zone": "core", "reason": "the explainer module: a review's Markdown and commit messages in, a checked explanation out, through the LanguageModel port", "by": "llm" },
     { "match": "packages.core.**", "zone": "core", "reason": "the application: the viewer session, review bundles, advice and explanations through the LanguageModel port", "by": "user" },
     { "match": "packages.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "user" },
     { "match": "packages.adapters.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },

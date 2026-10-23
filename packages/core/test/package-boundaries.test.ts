@@ -30,6 +30,8 @@ const ROLES: Record<string, Role> = {
   "packages/trace": "kernel", // folds into core (Phase 0b, step 4)
   "packages/architecture": "module",
   "packages/views": "module",
+  "packages/explainer": "module",
+  "packages/workflows": "workflows",
   "packages/infra": "infra",
   "packages/library": "infra",
   "packages/adapters": "infra",
@@ -133,7 +135,7 @@ describe("package boundaries", () => {
     // recordings page reads the library's overview through the dev server, whose routes
     // (dev-server/) read the library through infra; their tests make libraries to read.
     const HOST_ALSO: Record<string, Record<string, string[]>> = {
-      "packages/webview": { demo: ["library"], "dev-server": ["library", "infra"], test: ["library", "infra"] },
+      "packages/webview": { demo: ["library", "workflows"], "dev-server": ["library", "infra"], test: ["library", "infra"] },
     };
     const folders = Object.entries(ALLOWED).flatMap(([pkg, allowed]) =>
       ["test", "demo", "dev-server"].map((folder) => ({ pkg, allowed: [...allowed, ...(HOST_ALSO[pkg]?.[folder] ?? [])], folder: join(ROOT, pkg, folder) })),

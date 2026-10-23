@@ -1,10 +1,6 @@
-import { detectArchitecture, projectPackages, proposedRules } from "./architecture";
-import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, parseArchitectureAdvice } from "./architecture-advice";
 import { CodeSymbol, Outcome, Run } from "@runshape/trace";
 import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "@runshape/architecture";
-import { parseZoneAdvice, ZoneAdviceError, ZoneAdvisor, zoneAdvicePrompt, zoneFacts } from "./zone-advice";
 import { RULES_FILE, ZoneRules } from "@runshape/architecture";
-import { UiRequest, UiResponse } from "./ui-protocol";
 import { buildComponentView } from "@runshape/views";
 import { Grouping } from "@runshape/architecture";
 import { buildFunctionView, UnknownFunctionError } from "@runshape/views";
@@ -17,6 +13,7 @@ import { buildPlacements, diffArchitecture } from "@runshape/views";
 import { buildRouteMap, diffRouteMaps } from "@runshape/views";
 import { diffRuns } from "@runshape/views";
 import { buildSystemGraph } from "@runshape/views";
+import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, detectArchitecture, parseArchitectureAdvice, parseZoneAdvice, projectPackages, proposedRules, RunSummary, ScenarioSummary, UiRequest, UiResponse, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */
 export interface SourceReader {
@@ -50,34 +47,6 @@ export interface SessionDependencies {
   rulesProblem?: string | null;
   ruleStore?: ZoneRuleStore | null;
   advisor?: ZoneAdvisor | null;
-}
-
-export interface ScenarioSummary {
-  id: string;
-  name: string;
-  file: string;
-  outcome: Outcome;
-  durationMs: number;
-  requests: string[];
-}
-
-export interface RunSummary {
-  root: string;
-  createdAt: string;
-  language: string;
-  runtime: string;
-  backend: string;
-  framework: string | null;
-  middleware: string[];
-  problems: string[];
-  scenarios: ScenarioSummary[];
-  /** When the previous recording was made, if there is one to compare against. */
-  baselineCreatedAt: string | null;
-  /** How many rules runshape.json has, and the style it declares (hexagonal without a file). */
-  zoneRules: number;
-  style: ArchitectureStyle;
-  canEditRules: boolean;
-  canAdviseZones: boolean;
 }
 
 /**

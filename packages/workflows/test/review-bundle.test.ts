@@ -7,7 +7,6 @@
  */
 import { describe, expect, test } from "vitest";
 
-import {  } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle, reviewBundleMarkdown } from "../src/review-bundle";
 import { fixtureRuns } from "../../trace/test/fixtures";

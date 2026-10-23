@@ -3,13 +3,9 @@
 import { Outcome, Run, TraceDirectory } from "@runshape/trace";
 import { RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, byCodeUnit, FolderGuide, ZoneSource } from "@runshape/views";
+import { ArchitectureSummary, CommitSummary, describeFolder, describeReadme, folderGuideMarkdown, GitError, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, mergeIntoReadme, ModelChoice, needsDescription, openingComment, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, SANDBOX_SUFFIX, VERSION_DIGITS, WORKING_TREE_ID } from "@runshape/core";
+import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
 
-import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "./explainer";
-import { describeFolder, openingComment } from "./folder-description";
-import { describeReadme, folderGuideMarkdown, mergeIntoReadme, needsDescription } from "./folder-readme";
-import { LanguageModel, ModelChoice } from "./language-model";
-import { ArchitectureSummary, CommitSummary, GitError, LibraryBusy, PullRequestSummary, recordingIdFor, RecordingMetadata, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, SANDBOX_SUFFIX, WORKING_TREE_ID } from "./recordings-model";
-import { Hashing, IncomingRecording, Library, ProjectFiles, PullRequests, Recorder, RecordTarget, Repository, VERSION_DIGITS } from "./recordings-ports";
 import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown } from "./review-bundle";
 
 /** What the recordings workflow is given: its ports, and how to talk to the person. */
@@ -331,14 +327,15 @@ export class Recordings {
     const { sha256 } = this.dependencies.hashing;
     try {
       const context: ChangeContext = { commits: await this.repository.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
-      const inputs = explanationInputs(review.bundle, context, sha256);
+      const reviewMarkdown = reviewBundleMarkdown(review.bundle);
+      const inputs = explanationInputs(reviewMarkdown, context, sha256);
       const model = await this.dependencies.models(choice);
       const saved = (await this.library.reviews.explanation(review.name)) as Explanation | null;
       if (saved !== null && !this.options.explainAgain && saved.model === model.name && JSON.stringify(saved.basedOn) === JSON.stringify(inputs)) {
         this.dependencies.print(`explanation: ${where} (current: same review, commits and model)`);
         return;
       }
-      const explanation = await explainChange(model, review.bundle, context, this.dependencies.now().toISOString(), sha256);
+      const explanation = await explainChange(model, reviewMarkdown, context, this.dependencies.now().toISOString(), sha256);
       await this.library.reviews.saveExplanation(review.name, explanation, explanationMarkdown(explanation));
       this.dependencies.print(`explanation: ${where} (by ${explanation.model})`);
     } catch (error) {

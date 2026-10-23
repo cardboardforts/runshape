@@ -8,7 +8,6 @@ import { describe, expect, test } from "vitest";
 import { Phase } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
 import { ViewerSession } from "../src/session";
-import {  } from "@runshape/trace";
 import { fixtureRuns } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";

@@ -8,6 +8,8 @@
     "packages/architecture",
     "packages/views",
     "packages/core",
+    "packages/explainer",
+    "packages/workflows",
     "packages/webview",
     "packages/extension",
     "packages/cli",

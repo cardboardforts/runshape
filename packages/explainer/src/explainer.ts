@@ -1,8 +1,5 @@
 // Why a change was made, as its authors said, beside what it did: see explainer.test.ts.
-import { LanguageModel } from "./language-model";
-import type { CommitMessage } from "./recordings-model";
-import { firstJsonObject } from "./json-answer";
-import { ReviewBundle, reviewBundleMarkdown } from "./review-bundle";
+import { CommitMessage, firstJsonObject, LanguageModel } from "@runshape/core";
 
 /** What the authors said about the change: its commits' messages (and later a PR's description). */
 export interface ChangeContext {
@@ -46,19 +43,18 @@ export class ExplanationError extends Error {
  */
 export async function explainChange(
   model: LanguageModel,
-  bundle: ReviewBundle,
+  reviewMarkdown: string,
   context: ChangeContext,
   createdAt: string,
   digest: (text: string) => string,
 ): Promise<Explanation> {
-  const review = reviewBundleMarkdown(bundle);
-  const answer = await model.complete(explanationPrompt(review, context));
-  return parseExplanation(answer, { model: model.name, createdAt, basedOn: explanationInputs(bundle, context, digest) });
+  const answer = await model.complete(explanationPrompt(reviewMarkdown, context));
+  return parseExplanation(answer, { model: model.name, createdAt, basedOn: explanationInputs(reviewMarkdown, context, digest) });
 }
 
 /** What an explanation is based on: the review as the model reads it, the commits, the prompt. */
-export function explanationInputs(bundle: ReviewBundle, context: ChangeContext, digest: (text: string) => string): Explanation["basedOn"] {
-  return { review: digest(reviewBundleMarkdown(bundle)), commits: context.commits.map((c) => c.commit), prompt: EXPLANATION_PROMPT_VERSION };
+export function explanationInputs(reviewMarkdown: string, context: ChangeContext, digest: (text: string) => string): Explanation["basedOn"] {
+  return { review: digest(reviewMarkdown), commits: context.commits.map((c) => c.commit), prompt: EXPLANATION_PROMPT_VERSION };
 }
 
 /**

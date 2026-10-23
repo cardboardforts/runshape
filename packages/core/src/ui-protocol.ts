@@ -1,11 +1,10 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
-import { Phase } from "@runshape/trace";
+import { Outcome, Phase } from "@runshape/trace";
 import type { ArchitectureCandidate } from "./architecture";
 import type { ZoneAdvice } from "./zone-advice";
-import type { ZoneRule } from "@runshape/architecture";
+import type { ArchitectureStyle, ZoneRule } from "@runshape/architecture";
 import type { Grouping } from "@runshape/architecture";
-import type { RunSummary } from "./session";
 import type { ComponentView } from "@runshape/views";
 import type { FunctionView } from "@runshape/views";
 import type { ReplayStep } from "@runshape/views";
@@ -17,6 +16,34 @@ import type { RouteMap, RouteMapDiff } from "@runshape/views";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep } from "@runshape/views";
 import type { SystemGraph } from "@runshape/views";
 import type { Timeline } from "@runshape/views";
+
+export interface ScenarioSummary {
+  id: string;
+  name: string;
+  file: string;
+  outcome: Outcome;
+  durationMs: number;
+  requests: string[];
+}
+
+export interface RunSummary {
+  root: string;
+  createdAt: string;
+  language: string;
+  runtime: string;
+  backend: string;
+  framework: string | null;
+  middleware: string[];
+  problems: string[];
+  scenarios: ScenarioSummary[];
+  /** When the previous recording was made, if there is one to compare against. */
+  baselineCreatedAt: string | null;
+  /** How many rules runshape.json has, and the style it declares (hexagonal without a file). */
+  zoneRules: number;
+  style: ArchitectureStyle;
+  canEditRules: boolean;
+  canAdviseZones: boolean;
+}
 
 export type UiRequest =
   | { type: "ready" }

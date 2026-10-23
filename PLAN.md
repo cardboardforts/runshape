@@ -237,6 +237,19 @@ moves each file once.
    explainer and review bundle go to an explainer module. Zone and architecture advice and the
    folder guides go to the arch module, with their prompts. Core then imports neither `views`
    nor `architecture`. This can be split into one PR per destination.
+   - **Done (2026-10-23):** `Recordings`, `ViewerSession` and the review bundle are
+     `@runshape/workflows` (the bundle assembles several modules' outputs, so it's a workflow's
+     job). The explainer is `@runshape/explainer`, and takes the review's Markdown as a value
+     instead of the bundle; its test reads a real review kept as a fixture. The kernel's
+     `LanguageModel` and `CommitMessage` stand on their own.
+   - **Decided (2026-10-23): the UI protocol waits for Phase 3.** `ui-protocol` is typed in
+     ~40 view-model types from `views` and `architecture`, and the webview draws with profile
+     helpers. They stay where they are, recorded in `NOT_YET`, until Phase 3's `Layout` (the
+     visualizer's one output) replaces them.
+   - **Left for step 3:** zone and architecture advice and the folder guides import `views`
+     (`FolderGuide`, `SystemGraph`, `ComponentView`), so moving them into the arch module
+     now would make one module import another. They move when step 3 decides where those
+     types go.
 3. **`views` splits** into the trace module (run and execution diffs, routes), the arch module
    (architecture diff, placements, moves, folder guide) and the visualizer module (system,
    component and object graphs, timeline, replay). After this no module imports another.
