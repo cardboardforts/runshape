@@ -54,13 +54,18 @@ export class DockerRecorder implements Recorder {
   constructor(
     private readonly root: string,
     /** A hash of what the image is built from, in HEAD (recordings.ts sandboxVersion). */
-    imageVersion: string,
+    private readonly imageVersion: string,
     private readonly commands: CommandRunner = new SpawnedCommands(),
     user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
   ) {
     this.image = `${IMAGE_NAME}:${imageVersion}`;
     this.environment = `docker:${this.image}`;
     this.user = user.startsWith("0:") ? UNPRIVILEGED_USER : user;
+  }
+
+  /** What the image is built from: its version is its source. */
+  async source(): Promise<string> {
+    return this.imageVersion;
   }
 
   async record(target: RecordTarget, outDirectory: string): Promise<void> {

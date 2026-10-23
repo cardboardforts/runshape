@@ -21,6 +21,8 @@ import { describe, expect, test } from "vitest";
 import type { LanguageModel } from "@runshape/core";
 import { GitCli, GitRepository, projectLibrary, PullRequestSummary } from "@runshape/library";
 import { Recorder, RecordTarget } from "../src/ports";
+import { nodeHashing } from "../src/node-hashing";
+import { NodeProjectFiles } from "../src/project-files";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
@@ -34,7 +36,13 @@ class FixtureRecorder implements Recorder {
   constructor(
     private readonly fails = false,
     readonly environment = "host",
+    /** What a recording it makes says recorded it: another value is another version of the recorder. */
+    private readonly version = "0123456789abcdef",
   ) {}
+
+  async source(): Promise<string> {
+    return this.version;
+  }
 
   async record(target: RecordTarget, outDirectory: string): Promise<void> {
     this.recorded.push(target.kind === "working" ? "working" : target.commit.slice(0, 7));
@@ -76,7 +84,7 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
+  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
   return { code, lines, recorder, model, chosen, sandbox };
 }
 
@@ -427,14 +435,12 @@ describe("runshape compare", () => {
     // recorder's change as the branch's.
     const { root, commits } = repository();
     await run(root, ["record", "main"]);
-    mkdirSync(join(root, "recorder-ts"));
-    writeFileSync(join(root, "recorder-ts", "runtime.ts"), "changed");
 
-    const { lines, recorder } = await run(root, ["compare", "main"]);
+    const { lines, recorder } = await run(root, ["compare", "main"], new FixtureRecorder(false, "host", "fedcba9876543210"));
 
     expect({ recorded: recorder.recorded, first: lines[0] }).toEqual({
       recorded: [commits.second!.slice(0, 7), "working"],
-      first: `main (${commits.second!.slice(0, 12)} Second) was recorded by another version of recorder-ts: recording it again`,
+      first: `main (${commits.second!.slice(0, 12)} Second) was recorded by another version of its recorder: recording it again`,
     });
   });
 

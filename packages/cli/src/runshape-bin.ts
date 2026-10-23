@@ -5,6 +5,8 @@ import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 
 import { chooseModel } from "./models";
 import { DockerRecorder } from "./docker-recorder";
+import { nodeHashing } from "./node-hashing";
+import { NodeProjectFiles } from "./project-files";
 import { GhPullRequests } from "./pull-requests";
 import { runRecordings } from "./recordings";
 import { ShellRecorder } from "./shell-recorder";
@@ -19,7 +21,9 @@ process.exitCode = await runRecordings(process.argv.slice(2), {
   root,
   repository,
   library: projectLibrary(root, repository),
-  recorder: new ShellRecorder(root),
+  project: new NodeProjectFiles(root),
+  hashing: nodeHashing,
+  recorder: new ShellRecorder(root, nodeHashing),
   sandbox: (recorderVersion) => new DockerRecorder(root, recorderVersion),
   print: (line) => console.log(line),
   now: () => new Date(),

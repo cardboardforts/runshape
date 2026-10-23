@@ -1,9 +1,5 @@
 // npm run runshape -- list | record <ref>... [--fetch] [--again] | compare <base> [<head>] [--fetch] [--tip] | forget <id>
 // Keeps .runshape/recordings: one recording per commit, plus the working tree's.
-import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
-
 import {
   ArchitectureSnapshot,
   buildFolderGuides,
@@ -54,7 +50,7 @@ import {
 import { LockHeld } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
 import { assertPlainRecording } from "./docker-recorder";
-import { PullRequests, Recorder, RecordTarget, Repository } from "./ports";
+import { Hashing, ProjectFiles, PullRequests, Recorder, RecordTarget, Repository } from "./ports";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -62,6 +58,9 @@ export interface RecordingsDependencies {
   /** The project's root: its git repository. */
   root: string;
   repository: Repository;
+  /** The project's own working tree: folder guides' READMEs, the working tree's runshape.json. */
+  project: ProjectFiles;
+  hashing: Hashing;
   /** Its recordings and reviews (projectLibrary: .runshape/recordings and .runshape/reviews). */
   library: RecordingLibrary;
   recorder: Recorder;
@@ -202,9 +201,6 @@ interface Plan {
   forkOf?: { tip: string; commitsSince: number };
 }
 
-/** The recorder's own source, hashed into each recording: its tests don't change what it records. */
-const RECORDER_DIRECTORY = "recorder-ts";
-const RECORDER_SOURCE_SKIPPED = new Set(["node_modules", "test"]);
 
 class Recordings {
   private readonly library: RecordingLibrary;
@@ -414,12 +410,12 @@ class Recordings {
       madeIn = HOST_ENVIRONMENT;
     }
     if (existing && plan.id !== WORKING_TREE_ID && !this.options.again) {
-      if (!sameRecorder || (existing.recorderSource === (await this.recorderSourceFor(recorder)) && madeIn === recorder.environment)) {
+      if (!sameRecorder || (existing.recorderSource === (await recorder.source()) && madeIn === recorder.environment)) {
         print(`${plan.label} is recorded already; record it again with --again`);
         return;
       }
       if (madeIn !== recorder.environment) print(`${plan.label} was recorded elsewhere (${madeIn}): recording it again in ${recorder.environment}`);
-      else print(`${plan.label} was recorded by another version of ${RECORDER_DIRECTORY}: recording it again`);
+      else print(`${plan.label} was recorded by another version of its recorder: recording it again`);
     } else {
       print(`recording ${plan.label}…`);
     }
@@ -453,12 +449,11 @@ class Recordings {
     });
     const reviews = this.library.reviews;
     const name = reviewName(base.plan.id, head.plan.id);
-    const where = relative(this.dependencies.root, join(reviews.directory, name));
     await reviews.saveReview(name, bundle, reviewBundleMarkdown(bundle));
     // An explanation of an older review mustn't sit beside this one looking current.
     const explained = (await reviews.explanation(name)) as Explanation | null;
-    if (explained !== null && explained.basedOn.review !== sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
-    return { bundle, name, relative: where, markdown: join(where, REVIEW_MARKDOWN) };
+    if (explained !== null && explained.basedOn.review !== this.dependencies.hashing.sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
+    return { bundle, name, markdown: reviews.shownPath(name, REVIEW_MARKDOWN) };
   }
 
   /**
@@ -467,7 +462,8 @@ class Recordings {
    * again only when the review or the commits changed (or with --again).
    */
   async explain(review: SavedReview, base: Plan, head: Plan, choice: ModelChoice): Promise<void> {
-    const where = join(review.relative, EXPLANATION_MARKDOWN);
+    const where = this.library.reviews.shownPath(review.name, EXPLANATION_MARKDOWN);
+    const { sha256 } = this.dependencies.hashing;
     try {
       const context: ChangeContext = { commits: await this.repository.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
       const inputs = explanationInputs(review.bundle, context, sha256);
@@ -524,7 +520,7 @@ class Recordings {
     const [working] = await this.place([await this.plan(WORKING_TREE_ID, { fetch: false })], { workingHead: true });
     // Preview, then --write: the second run writes what the first showed, from the same recording.
     const kept = await this.library.store.recording(WORKING_TREE_ID);
-    const unchanged = kept?.tree !== undefined && kept.tree === (await this.treeFingerprint()) && kept.recorderSource === (await this.recorderSource());
+    const unchanged = kept?.tree !== undefined && kept.tree === (await this.treeFingerprint()) && kept.recorderSource === (await this.dependencies.recorder.source());
     if (unchanged) this.dependencies.print(`the working tree hasn't changed since it was recorded (${kept!.recordedAt}): using that recording`);
     else await this.ensure(working!);
     const run = await this.runOf(WORKING_TREE_ID);
@@ -533,7 +529,7 @@ class Recordings {
     // Tracked files deleted from the tree are listed too; declaration files never run.
     const sources: string[] = [];
     for (const file of await this.repository.files()) {
-      if (SOURCE_FILE.test(file) && !DECLARATION_FILE.test(file) && (await lstat(join(this.dependencies.root, file)).then((s) => s.isFile(), () => false))) sources.push(file);
+      if (SOURCE_FILE.test(file) && !DECLARATION_FILE.test(file) && (await this.dependencies.project.isPlainFile(file))) sources.push(file);
     }
     const context = { style: snapshot.style, rules: snapshot.rules.length };
     // Chosen when a README first needs it (choosing runs `claude --version` or needs a key); a
@@ -544,27 +540,19 @@ class Recordings {
     let questions = 0;
     let folders = 0;
     for (const guide of buildFolderGuides(run, snapshot, sources, rules)) {
-      const directory = join(this.dependencies.root, guide.folder);
-      if (!(await stat(directory).then((s) => s.isDirectory(), () => false))) continue;
-      const file = join(directory, README_FILE);
+      const readme = await this.dependencies.project.readme(guide.folder);
+      if (readme.kind === "no-folder") continue;
       const relative = guide.folder === "" ? README_FILE : `${guide.folder}/${README_FILE}`;
-      // Only a plain file inside the project, however the recording names the folder.
-      if (!(await insideProject(this.dependencies.root, directory)) || (await lstat(file).then((s) => !s.isFile(), () => false))) {
+      if (readme.kind === "not-plain") {
         this.dependencies.print(`${relative}: skipped: not a plain file inside the project`);
         continue;
       }
       folders += 1;
-      let existing: string | null;
-      try {
-        existing = await readFile(file, "utf8");
-      } catch (error) {
-        // Only a missing README is "none"; one that can't be read isn't overwritten.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          this.dependencies.print(`${relative}: skipped: it can't be read (${(error as Error).message})`);
-          continue;
-        }
-        existing = null;
+      if (readme.kind === "unreadable") {
+        this.dependencies.print(`${relative}: skipped: it can't be read (${readme.reason})`);
+        continue;
       }
+      const existing = readme.text;
       const merged = mergeIntoReadme(existing, folderGuideMarkdown(guide, context), guide.folder);
       if (merged.status === "skipped") {
         this.dependencies.print(`${relative}: skipped: it's someone's own, or its runshape markers aren't one pair of lines (to keep a guide in it, add a line <!-- runshape:begin --> and a line <!-- runshape:end -->)`);
@@ -589,7 +577,7 @@ class Recordings {
         }
         // A dry run's draft isn't asked for, but --write would change the README with it.
         const status = existing === null ? "created" : text !== existing || (!write && note !== null) ? "updated" : "unchanged";
-        if (write && status !== "unchanged") await writeFile(file, text);
+        if (write && status !== "unchanged") await this.dependencies.project.writeReadme(guide.folder, text);
         this.dependencies.print(`${relative}: ${write || status === "unchanged" ? status : `would ${status === "created" ? "create" : "update"}`}`);
         if (note !== null) this.dependencies.print(note);
       }
@@ -609,7 +597,7 @@ class Recordings {
     const comments: Record<string, string> = {};
     for (const file of guide.files) {
       if (!sources.includes(file.file)) continue;
-      comments[file.name] = openingComment(await readFile(join(this.dependencies.root, file.file), "utf8").catch(() => ""));
+      comments[file.name] = openingComment((await this.dependencies.project.readTextIfPresent(file.file).catch(() => null)) ?? "");
     }
     return comments;
   }
@@ -620,13 +608,13 @@ class Recordings {
    * fingerprint means the same code to record.
    */
   private async treeFingerprint(): Promise<string> {
-    const hash = createHash("sha256");
+    const hash = this.dependencies.hashing.digest();
     const { head, diff, untracked } = await this.repository.uncommitted();
     hash.update(head).update(diff);
     for (const file of untracked.sort(byCodeUnit)) {
-      hash.update(file).update("\0").update(await readFile(join(this.dependencies.root, file)).catch(() => Buffer.alloc(0))).update("\0");
+      hash.update(file).update("\0").update((await this.dependencies.project.readBytes(file)) ?? new Uint8Array(0)).update("\0");
     }
-    return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
+    return hash.hex().slice(0, RECORDER_SOURCE_DIGITS);
   }
 
   async list(): Promise<void> {
@@ -658,40 +646,14 @@ class Recordings {
     return this.sandboxRecorder;
   }
 
-  /** What recorded with `recorder`: the working tree's recorder here, HEAD's in the sandbox image. */
-  private async recorderSourceFor(recorder: Recorder): Promise<string> {
-    return recorder.environment === HOST_ENVIRONMENT ? this.recorderSource() : this.sandboxVersion();
-  }
-
   /** What the sandbox image is built from, as HEAD commits it: the recorder, the lockfile, what's left out. */
   private async sandboxVersion(): Promise<string> {
-    const hash = createHash("sha256");
+    const hash = this.dependencies.hashing.digest();
     for (const path of SANDBOX_IMAGE_SOURCES) {
       // A path HEAD doesn't have is part of the version too: absent.
       hash.update(path).update("\0").update((await this.repository.objectAtHead(path)) ?? "absent").update("\0");
     }
-    return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
-  }
-
-  /**
-   * The recorder as it is now, and what the sandbox image is built from: its source, and the
-   * lockfile its dependencies come from. In code-unit order: the same on every machine.
-   */
-  private async recorderSource(): Promise<string> {
-    const hash = createHash("sha256");
-    hash.update(await readFile(join(this.dependencies.root, "package-lock.json")).catch(() => Buffer.alloc(0))).update("\0");
-    const directory = join(this.dependencies.root, RECORDER_DIRECTORY);
-    const walk = async (relative: string): Promise<void> => {
-      const entries = await readdir(join(directory, relative), { withFileTypes: true }).catch(() => []);
-      for (const entry of entries.sort((a, b) => byCodeUnit(a.name, b.name))) {
-        if (RECORDER_SOURCE_SKIPPED.has(entry.name)) continue;
-        const path = join(relative, entry.name);
-        if (entry.isDirectory()) await walk(path);
-        else if (entry.isFile()) hash.update(path).update("\0").update(await readFile(join(directory, path))).update("\0");
-      }
-    };
-    await walk("");
-    return hash.digest("hex").slice(0, RECORDER_SOURCE_DIGITS);
+    return hash.hex().slice(0, RECORDER_SOURCE_DIGITS);
   }
 
   /** Records into a directory of its own, and moves it into place only once it's complete. */
@@ -700,7 +662,7 @@ class Recordings {
     const incoming = await this.library.store.begin(id);
     try {
       const recorder = await this.recorderFor(target);
-      const recorderSource = await this.recorderSourceFor(recorder);
+      const recorderSource = await recorder.source();
       const rules = await this.rulesAt(target);
       if (rules.problem !== null) this.dependencies.print(`${RULES_FILE} at ${plan.label} is invalid, so every zone is inferred: ${rules.problem}`);
       await recorder.record(target, incoming.directory);
@@ -734,11 +696,10 @@ class Recordings {
     let text: string | null;
     if (target.kind === "working") {
       try {
-        text = await readFile(join(this.dependencies.root, RULES_FILE), "utf8");
-      } catch (error) {
         // Only a missing file means "no rules"; one that can't be read is a problem to report.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { text: null, rules: ZoneRules.none(), problem: `it can't be read: ${(error as Error).message}` };
-        text = null;
+        text = await this.dependencies.project.readTextIfPresent(RULES_FILE);
+      } catch (error) {
+        return { text: null, rules: ZoneRules.none(), problem: `it can't be read: ${(error as Error).message}` };
       }
     } else {
       // A directory, link or submodule there isn't rules to read.
@@ -794,19 +755,7 @@ interface SavedReview {
   bundle: ReviewBundle;
   /** Its folder in the review store: "<base>..<head>". */
   name: string;
-  /** The folder relative to the project, as printed. */
-  relative: string;
   markdown: string;
-}
-
-function sha256(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
-
-/** Whether a folder, links resolved, is the project or inside it. */
-async function insideProject(root: string, directory: string): Promise<boolean> {
-  const [project, folder] = await Promise.all([realpath(root), realpath(directory)]);
-  return folder === project || folder.startsWith(`${project}${sep}`);
 }
 
 /** The files a folder guide lists: source in the languages recorded, tests left out by the guide. */

@@ -11,6 +11,8 @@ export interface Recorder {
   /** Where it records ("host", "docker:<image>"): recordings made in different places differ for that alone. */
   readonly environment: string;
   record(target: RecordTarget, outDirectory: string): Promise<void>;
+  /** A hash of what records: the recorder's source here, what the image is built from in the sandbox. */
+  source(): Promise<string>;
 }
 
 /** Port: the open pull requests asking for the person's review (gh in pull-requests.ts). */
@@ -48,4 +50,37 @@ export interface Repository {
   /** The object a path names in HEAD; null when HEAD hasn't got it. */
   objectAtHead(path: string): Promise<string | null>;
   fileAt(commit: string, path: string): Promise<FileAtCommit>;
+}
+
+/** A folder's README.md as a folder guide would update it. */
+export type Readme =
+  | { kind: "no-folder" }
+  /** The folder resolves outside the project, or the README isn't a plain file: never written. */
+  | { kind: "not-plain" }
+  | { kind: "unreadable"; reason: string }
+  /** null: there's none yet. */
+  | { kind: "readme"; text: string | null };
+
+/** Port: the project's own working tree, by path relative to its root (ProjectFiles in the CLI). */
+export interface ProjectFiles {
+  /** Whether the path is a plain file, links not followed. */
+  isPlainFile(path: string): Promise<boolean>;
+  readme(folder: string): Promise<Readme>;
+  writeReadme(folder: string, text: string): Promise<void>;
+  /** A file's text; null when there's none; an error when it's there but can't be read. */
+  readTextIfPresent(path: string): Promise<string | null>;
+  /** A file's bytes; null when it can't be read. */
+  readBytes(path: string): Promise<Uint8Array | null>;
+}
+
+/** A hash being built: each update adds to it, in order. */
+export interface Digest {
+  update(chunk: string | Uint8Array): Digest;
+  hex(): string;
+}
+
+/** Port: SHA-256, without the platform's crypto in the workflow. */
+export interface Hashing {
+  sha256(text: string): string;
+  digest(): Digest;
 }

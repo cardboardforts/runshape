@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { NodeFiles } from "@runshape/infra";
 
 import type { RequestedReviews } from "./library";
@@ -19,7 +21,16 @@ export function reviewName(baseId: string, headId: string): string {
  * It knows where they go and that they're JSON; what's in them is core's.
  */
 export class ReviewStore {
-  constructor(private readonly files: NodeFiles) {}
+  constructor(
+    private readonly files: NodeFiles,
+    /** How a person finds the store from the project's root (".runshape/reviews"), for messages. */
+    private readonly shownAs: string,
+  ) {}
+
+  /** Where a review (or one of its files) is, as a person would find it from the project's root. */
+  shownPath(name: string, file?: string): string {
+    return file === undefined ? join(this.shownAs, name) : join(this.shownAs, name, file);
+  }
 
   get directory(): string {
     return this.files.root;

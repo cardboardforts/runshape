@@ -22,8 +22,4 @@ Mostly **Core** code. Drawn hexagonal, from 12 runshape.json rules and what the 
 | `ui-protocol.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `zone-advice.ts` | Core | — | `parseZoneAdvice`, `zoneAdvicePrompt`, `zoneFacts`, `languageName` |
 
-### Questions this raises
-
-- explainer.ts calls src.recordings, against the hexagonal style: calls back into a request handler: the dependency points outward
-
 <!-- runshape:end -->

@@ -9,10 +9,11 @@ Mostly **Outbound adapters** code. Drawn hexagonal, from 12 runshape.json rules 
 
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
+| `git-repository.ts` | Outbound adapters | `GitRepository` | `GitRepository.resolve`, `GitRepository.branchContains`, `GitRepository.mergedBranch`, `GitRepository.constructor`, `GitRepository.workingTree` |
 | `git.ts` | Outbound adapters | `GitCli` | `GitCli.run`, `GitCli.constructor` |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `library.ts` | Outbound adapters | `RecordingLibrary` | `RecordingLibrary.resolve`, `projectLibrary`, `RecordingLibrary.workingTree`, `RecordingLibrary.overview` |
+| `library.ts` | Outbound adapters | `RecordingLibrary` | `projectLibrary`, `RecordingLibrary.overview` |
 | `recording-store.ts` | Outbound adapters | `IncomingRecording`, `RecordingStore` | `RecordingStore.recording`, `recordingIdFor`, `RecordingStore.constructor`, `RecordingStore.exclusively`, `RecordingStore.begin` |
-| `review-store.ts` | Outbound adapters | `ReviewStore` | `ReviewStore.constructor`, `ReviewStore.explanation`, `ReviewStore.get directory`, `ReviewStore.saveReview`, `reviewName` |
+| `review-store.ts` | Outbound adapters | `ReviewStore` | `ReviewStore.constructor`, `ReviewStore.explanation`, `ReviewStore.shownPath`, `ReviewStore.saveReview`, `reviewName` |
 
 <!-- runshape:end -->
