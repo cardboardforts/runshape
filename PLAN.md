@@ -253,6 +253,32 @@ moves each file once.
 3. **`views` splits** into the trace module (run and execution diffs, routes), the arch module
    (architecture diff, placements, moves, folder guide) and the visualizer module (system,
    component and object graphs, timeline, replay). After this no module imports another.
+   - **Proposal (2026-10-23), for your decision.** Split as written, the modules would import
+     each other. `run-diff` (trace) calls `buildSystemGraph` (visualizer) and reads zones (arch);
+     `architecture-diff` and `folder-guide` (arch) call `buildSystemGraph` and `moves`; and
+     11 of `views`' 16 files take their component identity from `architecture`
+     (`componentOf`, `Grouping`, `FINE_GROUPING`, `classComponentId`, `renamedComponentId`).
+     What `views` takes from `architecture` is two different things:
+     1. **Which box a span belongs to** (`components.ts`: component identity and grouping,
+        ~150 lines) and a function's identity (`function-ref.ts`). Every module needs these
+        to talk about the same boxes. *Proposal: kernel.*
+     2. **Zones and styles** (`profiles.ts`, `zones.ts`): the arch module proper.
+
+     And `SystemGraph` (components, calls between them, each one's zone) is the trace seen
+     through the architecture: GOALS.md's `ArchTrace`, by another name. *Proposal: its type
+     goes to the kernel, and building it is the arch module's (`enhance`).* Then:
+     - **trace module:** `moves`, `align`, `run-diff`, `execution-diff`, `replay`, `routes`,
+       `review`. `diffRuns` takes the two `SystemGraph`s as values instead of building them,
+       and the workflow builds them through the arch module, as GOALS.md's
+       "modules don't call each other" says.
+     - **arch module:** profiles, zones, `buildSystemGraph`, placements, architecture diff,
+       folder guide, and (from the kernel) zone and architecture advice and the folder
+       READMEs with their prompts.
+     - **visualizer module:** component, function and object views, the timeline. Phase 3's
+       `layout` lands here.
+     - **Cost:** `diffRuns` and its callers change signature (one PR), plus the moves. The
+       kernel grows by component identity, function identity and the `SystemGraph` type,
+       about 250 lines, all of which are shared vocabulary today.
 4. **Trace folds into core** (decided 2026-10-23). Trace's `model/` and `data/` become
    core's trace types and format, with `TraceFiles` as one of core's ports. The `trace`
    package keeps the name for the trace module (diffs). This touches every
