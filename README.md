@@ -1,8 +1,9 @@
 # Runshape
 
-See how a Python web app actually runs: record its tests, then watch each request travel from
-the client through middleware, router, handlers and services to the database — laid out as
-the onion it is (or isn't).
+See how an app actually runs, and review a change by what it does: record its tests, then
+watch each request travel from the client through middleware, router, handlers and services
+to the database — laid out as the architecture it is (or isn't). Why it exists:
+[GOALS.md](GOALS.md); where it's going: [PLAN.md](PLAN.md).
 
 - **Runtime map.** Every component that ran, the calls between them, coloured by zone
   (inbound adapter, core, outbound adapter, external), inferred from what each one was seen
@@ -34,8 +35,10 @@ the onion it is (or isn't).
   ("skips MemoryRepository.Save"), malformed. In compare mode a route's ways read as new,
   gone, or changed ("now calls ensure_slug_available"), the changed steps marked in place.
 
-Status: first vertical slice, Python (Django, FastAPI) only. See [docs/design.md](docs/design.md)
-for decisions, limits, the threat model and what's next.
+Status: records Python (pytest: Django, FastAPI), TypeScript (vitest) and Go (tests, or a
+running program); kept recordings, reviews and the nightly pull-request list work for the
+TypeScript recorder (Runshape's own). See [docs/design.md](docs/design.md) for decisions,
+limits and the threat model, and [PLAN.md](PLAN.md) for what's next.
 
 ## Quick look (no VS Code needed)
 

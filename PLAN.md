@@ -135,7 +135,7 @@ separately by the extension and by `cli/recordings.ts`.
      config loader). Fixed, and a test now loads the config the way each script does.
 5. Redo Runshape's own `runshape.json` for the new shape. Close `runshape-zones` without
    merging it. You approve the new placements in the diff. Refresh README and `design.md`
-   "Next".
+   "Next" (**done** 2026-10-23).
    - **Drafted** on branch `runshape-zones-2` (2026-10-20), waiting on your approval. With
      the rules in force, the folder guides ask 21 questions:
      1. `recordings.ts` (inbound) calls the stores, git and recorders directly: the CLI's
@@ -179,6 +179,8 @@ separately by the extension and by `cli/recordings.ts`.
 **From the READMEs you're writing (2026-10-23), for later:**
 - Infra holds comment sinks too (post to GitHub, or collect for a local LLM): Phase 6's
   comments port lands there.
+- And logs: Phase 1's structured CLI logging is an infra log sink, so each host (CLI,
+  extension, a GitHub Action) can pipe it where it needs to go.
 - Core is meant as a light glossary of the shared domain objects, with each module
   self-contained. The recordings workflow (PR 7) now sits in core and is 600 lines of
   workflow, not glossary. A follow-up could give it a module of its own (for example

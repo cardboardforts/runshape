@@ -37,11 +37,20 @@ recorded **scenario**. Three views come out of the same recordings:
 The same onion it's meant to show. Imports point inward only:
 
 ```
-recorder:   pytest_plugin.py (composition root) -> adapters/ -> domain/
-viewer:     packages/extension (composition root, VS Code adapter) ─┐
-            packages/webview   (UI adapter, renders view models)  ─┼─> packages/core
-            packages/webview/demo (browser host for development)  ─┘
+recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
+domain:     packages/trace <- architecture <- views <- core   (core: the viewer session,
+            reviews, explanations, and the recordings workflow, with the ports they need)
+adapters:   packages/library (recordings and reviews kept, git), packages/adapters
+            (recorders' runners, gh, the project's files, hashing), packages/infra (files,
+            folders, the lock, language models: no Runshape import), all pointing at core
+hosts:      packages/cli (command line, composition root), packages/extension (VS Code),
+            packages/webview (UI) and its demo and dev server
 ```
+
+`packages/core/test/package-boundaries.test.ts` checks every arrow from the imports
+themselves, and that only infra, the adapters and the hosts touch the disk. `runshape.json`
+places each package in a zone; `npm run runshape -- readmes` writes a guide in each folder,
+with what doesn't fit.
 
 - `packages/core` imports nothing outside itself: no `vscode`, no React, no Node `fs`. File
   access comes in through two ports, `TraceFiles` (declared by `packages/trace`'s data layer)
@@ -288,7 +297,6 @@ Accepted risks:
 
 ## Next
 
-1. **3D, next steps**: flight controls; wiring for objects the framework built (DRF views,
-   serializers) needs those objects' attributes scanned too, not only at the end of a
-   project `__init__`.
-2. Recording across xdist workers; Celery tasks as their own entry landmark.
+[PLAN.md](../PLAN.md): phased, toward [GOALS.md](../GOALS.md). Smaller items still open from
+before it: 3D flight controls; wiring for objects a framework built (DRF views, serializers);
+recording across xdist workers; Celery tasks as their own entry landmark.
