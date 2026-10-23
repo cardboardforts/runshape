@@ -50,7 +50,7 @@ import {
 import { LockHeld } from "@runshape/infra";
 import type { PullRequestSummary } from "@runshape/library";
 import { assertPlainRecording } from "./docker-recorder";
-import { Hashing, ProjectFiles, PullRequests, Recorder, RecordTarget, Repository } from "./ports";
+import { Hashing, ProjectFiles, PullRequests, Recorder, RecordTarget, Repository, VERSION_DIGITS } from "./ports";
 import type { ModelChoice } from "./models";
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -200,7 +200,6 @@ interface Plan {
   /** Set when this is where head's branch left the branch asked for: that branch's newest commit, and how far past it is. */
   forkOf?: { tip: string; commitsSince: number };
 }
-
 
 class Recordings {
   private readonly library: RecordingLibrary;
@@ -614,7 +613,7 @@ class Recordings {
     for (const file of untracked.sort(byCodeUnit)) {
       hash.update(file).update("\0").update((await this.dependencies.project.readBytes(file)) ?? new Uint8Array(0)).update("\0");
     }
-    return hash.hex().slice(0, RECORDER_SOURCE_DIGITS);
+    return hash.hex().slice(0, VERSION_DIGITS);
   }
 
   async list(): Promise<void> {
@@ -653,7 +652,7 @@ class Recordings {
       // A path HEAD doesn't have is part of the version too: absent.
       hash.update(path).update("\0").update((await this.repository.objectAtHead(path)) ?? "absent").update("\0");
     }
-    return hash.hex().slice(0, RECORDER_SOURCE_DIGITS);
+    return hash.hex().slice(0, VERSION_DIGITS);
   }
 
   /** Records into a directory of its own, and moves it into place only once it's complete. */
@@ -768,9 +767,6 @@ const SANDBOX_IMAGE_SOURCES = ["recorder-ts", "package-lock.json", ".dockerignor
 
 /** Where a recording was made when its metadata doesn't say (made before it did). */
 const HOST_ENVIRONMENT = "host";
-
-/** Enough of the recorder's source hash to tell two versions apart. */
-const RECORDER_SOURCE_DIGITS = 16;
 
 /** The list command's text: the working tree, what's recorded, what could be. */
 function listing(overview: LibraryOverview): string[] {

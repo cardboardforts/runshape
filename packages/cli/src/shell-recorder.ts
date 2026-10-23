@@ -4,13 +4,11 @@ import { join } from "node:path";
 
 import { byCodeUnit } from "@runshape/core";
 
-import { Hashing, Recorder, RecordTarget } from "./ports";
+import { Hashing, Recorder, RecordTarget, VERSION_DIGITS } from "./ports";
 
 /** The recorder's own source; its tests and dependencies don't change what it records. */
 const RECORDER_DIRECTORY = "recorder-ts";
 const RECORDER_SOURCE_SKIPPED = new Set(["node_modules", "test"]);
-/** Enough of the hash to tell two versions apart. */
-const SOURCE_DIGITS = 16;
 
 /** Records with the TypeScript recorder's script (recorder-ts/record-tree.sh), its output passed through. */
 export class ShellRecorder implements Recorder {
@@ -39,7 +37,7 @@ export class ShellRecorder implements Recorder {
       }
     };
     await walk("");
-    return hash.hex().slice(0, SOURCE_DIGITS);
+    return hash.hex().slice(0, VERSION_DIGITS);
   }
 
   record(target: RecordTarget, outDirectory: string): Promise<void> {

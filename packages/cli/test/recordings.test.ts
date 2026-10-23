@@ -76,6 +76,8 @@ async function run(
 ) {
   const lines: string[] = [];
   const chosen: string[] = [];
+  /** The image versions the sandbox was asked for: a hash of what HEAD builds it from. */
+  const sandboxVersions: string[] = [];
   const models = async (choice: string) => {
     chosen.push(choice);
     if (unavailable !== null) throw unavailable;
@@ -84,8 +86,8 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, recorder, sandbox: () => sandbox, print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
-  return { code, lines, recorder, model, chosen, sandbox };
+  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, recorder, sandbox: (version) => (sandboxVersions.push(version), sandbox), print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
+  return { code, lines, recorder, model, chosen, sandbox, sandboxVersions };
 }
 
 const metadataOf = (root: string, id: string) => JSON.parse(readFileSync(join(root, ".runshape", "recordings", id, "recording.json"), "utf8"));
@@ -620,6 +622,27 @@ describe("--sandbox: commits recorded in a container", () => {
       code: 1,
       host: [],
       said: `runshape: ${theirs} isn't on main (it may be someone else's code): it's recorded in the sandbox, so compare it with a commit, not the working tree`,
+    });
+  });
+
+  test("the sandbox is built from what HEAD has, and a recording made by another image is made again before a comparison", async () => {
+    const { root, commits } = repository();
+    const first = await run(root, ["compare", "main", "feature", "--sandbox"]);
+    const rebuilt = new FixtureRecorder(false, "docker:runshape-recorder:test", "fedcba9876543210");
+
+    const again = await run(root, ["compare", "main", "feature", "--sandbox"], undefined, undefined, rebuilt);
+
+    expect({
+      versionAskedFor: first.sandboxVersions.map((version) => /^[0-9a-f]{16}$/.test(version)),
+      recordedAgain: rebuilt.recorded,
+      said: again.lines.filter((line) => line.includes("another version")),
+    }).toEqual({
+      versionAskedFor: [true],
+      recordedAgain: [commits.second!.slice(0, 7), commits.third!.slice(0, 7)],
+      said: [
+        `main (${commits.second!.slice(0, 12)}-sandbox Second) was recorded by another version of its recorder: recording it again`,
+        `feature (${commits.third!.slice(0, 12)}-sandbox Feature work) was recorded by another version of its recorder: recording it again`,
+      ],
     });
   });
 

@@ -3,6 +3,9 @@
 // these, not the workflow.
 import type { CommitMessage, CommitSummary, FileAtCommit, PullRequestSummary, Uncommitted } from "@runshape/library";
 
+/** How many hex digits of a hash name a version of a recorder or a working tree. */
+export const VERSION_DIGITS = 16;
+
 /** What to record: a commit (checked out on its own, the working tree untouched) or the working tree as it is. */
 export type RecordTarget = { kind: "commit"; commit: string } | { kind: "working" };
 
