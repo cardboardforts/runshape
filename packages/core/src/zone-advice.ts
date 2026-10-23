@@ -2,14 +2,13 @@
 // accepts, and only then does it become a rule in runshape.json. Everything here is pure so
 // the prompt and the validation of the answer are testable without a model.
 import { ArchitectureProfile } from "@runshape/architecture";
+
+import type { LanguageModel } from "./language-model";
 import type { ComponentView } from "@runshape/views";
 import type { GraphNode, SystemGraph } from "@runshape/views";
 
-/** Port: send one prompt to a model, get its text back. */
-export interface ZoneAdvisor {
-  readonly available: boolean;
-  complete(prompt: string): Promise<string>;
-}
+/** What zone advice needs of a language model: one prompt in, its text back. */
+export type ZoneAdvisor = Pick<LanguageModel, "available" | "complete">;
 
 export enum Confidence {
   Low = "low",

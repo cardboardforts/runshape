@@ -124,6 +124,13 @@ export interface CommitSummary {
   committedAt: string;
 }
 
+/** A commit's message, as its author wrote it: read from git, explained by a model. */
+export interface CommitMessage {
+  commit: string;
+  subject: string;
+  body: string;
+}
+
 /** git couldn't answer: a ref it doesn't know, a command that failed. Said to the person as it is. */
 export class GitError extends Error {}
 

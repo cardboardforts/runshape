@@ -3,8 +3,7 @@
 // adapters (the library, the CLI) implement these; core never imports them.
 import type { TraceFiles } from "@runshape/trace";
 
-import type { CommitMessage } from "./explainer";
-import type { CommitSummary, LibraryOverview, PullRequestSummary, RecordingMetadata, RequestedReviews } from "./recordings-model";
+import type { CommitMessage, CommitSummary, LibraryOverview, PullRequestSummary, RecordingMetadata, RequestedReviews } from "./recordings-model";
 
 /** A path as a commit has it: nothing, a plain file's text, or something else (a folder, a link). */
 export type FileAtCommit = { kind: "none" } | { kind: "file"; text: string } | { kind: "other"; what: string };

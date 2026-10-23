@@ -1,13 +1,8 @@
 // Why a change was made, as its authors said, beside what it did: see explainer.test.ts.
 import { LanguageModel } from "./language-model";
+import type { CommitMessage } from "./recordings-model";
 import { firstJsonObject } from "./json-answer";
 import { ReviewBundle, reviewBundleMarkdown } from "./review-bundle";
-
-export interface CommitMessage {
-  commit: string;
-  subject: string;
-  body: string;
-}
 
 /** What the authors said about the change: its commits' messages (and later a PR's description). */
 export interface ChangeContext {
