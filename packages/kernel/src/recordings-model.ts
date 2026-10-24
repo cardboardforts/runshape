@@ -1,6 +1,6 @@
 // The recordings a project keeps, as the recordings workflow speaks of them: what each one is,
 // the reviews made of two, and the pull requests asking for one. The library keeps them on disk
-// (packages/library); these are its words for them, and the workflow's.
+// (packages/adapters/src/library); these are its words for them, and the workflow's.
 
 /** The working tree's recording: the one recorded every time, since it changes under you. */
 export const WORKING_TREE_ID = "working";

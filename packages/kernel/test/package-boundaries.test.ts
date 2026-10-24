@@ -6,8 +6,8 @@
  *   apps (cli, extension) ──> modules, workflows, infra, kernel
  *   workflows ──> modules, kernel          ui (webview) ──> kernel
  *   modules (architecture, trace, visualizer, explainer) ──> kernel, never each other
- *   infra layer (infra: the generic Node toolkit; adapters: one folder per external system)
- *     ──> kernel, and infra's toolkit
+ *   adapters (one folder per external system) ──> kernel, and infra's Node toolkit
+ *   infra (the generic Node toolkit) ──> nothing: it fits the kernel's ports by shape
  *   kernel ──> nothing
  *
  * What the code still does that the target forbids is listed in NOT_YET; Phase 0b (PLAN.md)
@@ -23,7 +23,7 @@ import { describe, expect, test } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 
-type Role = "kernel" | "module" | "workflows" | "infra" | "ui" | "app" | "recorder";
+type Role = "kernel" | "module" | "workflows" | "toolkit" | "infra" | "ui" | "app" | "recorder";
 
 /** What each package is, in the target architecture. */
 const ROLES: Record<string, Role> = {
@@ -33,7 +33,7 @@ const ROLES: Record<string, Role> = {
   "packages/explainer": "module",
   "packages/visualizer": "module",
   "packages/workflows": "workflows",
-  "packages/infra": "infra",
+  "packages/infra": "toolkit",
   "packages/adapters": "infra",
   "packages/webview": "ui",
   "packages/extension": "app",
@@ -47,7 +47,9 @@ const PERMITTED: Record<Role, string[]> = {
   kernel: named("kernel"),
   module: named("kernel"),
   workflows: [...named("kernel"), ...named("module")],
-  // The infra layer as one: its adapters may use infra's generic Node toolkit (NodeFiles, locks).
+  // The generic Node toolkit: no Runshape package at all; the kernel's ports it fits by shape.
+  toolkit: [],
+  // The adapters: the kernel's ports, built on the toolkit (NodeFiles, locks).
   infra: [...named("kernel"), "infra"],
   ui: named("kernel"),
   app: Object.keys(ROLES).map((pkg) => pkg.split("/").pop()!),

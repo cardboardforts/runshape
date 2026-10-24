@@ -1,4 +1,4 @@
-# packages/library/src
+# packages/adapters/src/library
 
 _What this folder is for, in a sentence or two: yours to write; runshape keeps the part below._
 
