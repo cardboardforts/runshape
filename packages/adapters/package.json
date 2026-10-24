@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@runshape/core": "0.1.0",
-    "@runshape/infra": "0.1.0",
-    "@runshape/trace": "0.1.0"
+    "@runshape/infra": "0.1.0"
   }
 }

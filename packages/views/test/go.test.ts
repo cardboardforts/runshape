@@ -6,10 +6,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "@runshape/trace";
+import { Phase } from "@runshape/core";
 import { buildReplay, StepKind } from "../src";
 import { buildSystemGraph } from "@runshape/architecture";
-import { loadFixtureRun } from "../../trace/test/fixtures";
+import { loadFixtureRun } from "../../core/test/fixtures";
 
 describe("a Go service", () => {
   test("its packages and types are the boxes, and the HTTP adapter calls the domain, which calls storage", async () => {

@@ -1,4 +1,4 @@
-import { byCodeUnit, ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/trace";
+import { byCodeUnit, ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/core";
 import { ZoneRule } from "./zones";
 import { ArchitectureSnapshot, Placement } from "./placements";
 

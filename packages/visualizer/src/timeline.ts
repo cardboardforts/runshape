@@ -1,4 +1,4 @@
-import { componentOf, externalComponent, FINE_GROUPING, FunctionRef, functionRef, Grouping, Phase, Role, Scenario, Span } from "@runshape/trace";
+import { componentOf, externalComponent, FINE_GROUPING, FunctionRef, functionRef, Grouping, Phase, Role, Scenario, Span } from "@runshape/core";
 
 /** One call on the timeline: when it started and ended, and when it was actually running. */
 export interface TimelineBar {

@@ -11,12 +11,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { buildSystemGraph, profileFor, PROFILES } from "@runshape/architecture";
-import { ArchitectureStyle, FixedZone, GraphNode, SystemGraph, TraceDirectory } from "@runshape/trace";
+import { ArchitectureStyle, FixedZone, GraphNode, SystemGraph, TraceDirectory } from "@runshape/core";
 
 import { layoutGraph } from "../src/layout";
 
 async function fixtureRun(app: string) {
-  const directory = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", app);
+  const directory = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", app);
   return new TraceDirectory({ readText: (path) => readFile(join(directory, path), "utf8") }).latest();
 }
 

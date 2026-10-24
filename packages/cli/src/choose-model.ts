@@ -1,6 +1,6 @@
 // Which language model `--explain` and `--describe` ask (ModelChoice): the CLI's choice
 // among infra's models, from what this machine has.
-import type { LanguageModel, ModelChoice } from "@runshape/trace";
+import type { LanguageModel, ModelChoice } from "@runshape/core";
 import { ANTHROPIC_API, AnthropicApiModel, ClaudeCliModel, DEFAULT_API_MODEL } from "@runshape/infra";
 
 /** The model `--explain` and `--describe` ask: `claude -p` if it runs, else the API if a key is set (or the one asked for). */

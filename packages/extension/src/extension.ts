@@ -2,7 +2,7 @@
 import * as vscode from "vscode";
 
 import { RULES_FILE } from "@runshape/architecture";
-import { LATEST_POINTER } from "@runshape/trace";
+import { LATEST_POINTER } from "@runshape/core";
 
 import { Logger } from "./logger";
 import { RuntimePanel } from "./runtime-panel";

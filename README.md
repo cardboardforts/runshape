@@ -51,7 +51,7 @@ npm run dev -w packages/webview
 ```
 
 The demo renders real recordings of the two example apps, checked in under
-`packages/trace/test/fixtures`.
+`packages/core/test/fixtures`.
 
 ## Recording your own app
 
@@ -158,7 +158,7 @@ cd recorder && uv run pytest   # recorder; add --python 3.9 to check the settrac
 | `recorder/src/runshape_recorder/domain` | scopes, spans, recording | stdlib only |
 | `recorder/src/runshape_recorder/adapters` | tracing backends, JSON store, catalog, framework introspection | domain |
 | `recorder/src/runshape_recorder/pytest_plugin.py` | composition root | everything |
-| `packages/core`, `packages/trace` | the kernel: shared words, ports, the trace model and format | each other only (target) |
+| `packages/core` | the kernel: the trace model and format, shared words, ports | nothing (target) |
 | `packages/architecture`, `views`, `visualizer`, `explainer` | modules: values in, values out | the kernel |
 | `packages/workflows` | the recordings workflow, review bundle, viewer session | modules, the kernel |
 | `packages/infra`, `library`, `adapters` | IO: files, git, recorders, gh, language models | the kernel, infra's toolkit |

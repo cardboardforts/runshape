@@ -4,11 +4,11 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { TraceDirectory } from "@runshape/trace";
+import { TraceDirectory } from "@runshape/core";
 import { NodeFiles } from "@runshape/infra";
 import { reviewFromDirectory } from "../src/main";
 
-const FIXTURES = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures");
+const FIXTURES = join(import.meta.dirname, "..", "..", "core", "test", "fixtures");
 
 describe("runshape-review-md", () => {
   test("reviews the latest recording against the previous one", async () => {

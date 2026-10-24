@@ -3,7 +3,7 @@
 import { resolve } from "node:path";
 
 import { comparedGraphs } from "@runshape/architecture";
-import { TraceDirectory } from "@runshape/trace";
+import { TraceDirectory } from "@runshape/core";
 import { buildReview, reviewMarkdown } from "@runshape/views";
 import { NodeFiles } from "@runshape/infra";
 

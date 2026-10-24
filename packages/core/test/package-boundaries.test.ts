@@ -7,7 +7,7 @@
  *   workflows ──> modules, kernel          ui (webview) ──> kernel
  *   modules (architecture, views) ──> kernel, never each other
  *   infra layer (infra, library, adapters) ──> kernel, and infra's generic Node toolkit
- *   kernel (core, and trace until it folds in) ──> nothing outside the kernel
+ *   kernel (core) ──> nothing
  *
  * What the code still does that the target forbids is listed in NOT_YET; Phase 0b (PLAN.md)
  * empties it one PR at a time, and an entry that's no longer true fails, so the list only
@@ -27,7 +27,6 @@ type Role = "kernel" | "module" | "workflows" | "infra" | "ui" | "app" | "record
 /** What each package is, in the target architecture. */
 const ROLES: Record<string, Role> = {
   "packages/core": "kernel",
-  "packages/trace": "kernel", // folds into core (Phase 0b, step 4)
   "packages/architecture": "module",
   "packages/views": "module",
   "packages/explainer": "module",
@@ -65,8 +64,6 @@ const NOT_YET: Record<string, string[]> = {
 const ALLOWED: Record<string, string[]> = Object.fromEntries(
   Object.entries(ROLES).map(([pkg, role]) => [pkg, [...PERMITTED[role].filter((name) => `packages/${name}` !== pkg), ...(NOT_YET[pkg] ?? [])]]),
 );
-// Within the kernel, trace is the part core is built on: trace importing core would be a cycle.
-ALLOWED["packages/trace"] = [];
 /** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
 const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
@@ -134,7 +131,7 @@ describe("package boundaries", () => {
   test("a package's tests reach only its own source, the packages below it, trace's fixtures and the shared test helpers", () => {
     // So each package's tests run on their own: a views test importing core would tie them.
     const violations: string[] = [];
-    const fixtures = join(ROOT, "packages", "trace", "test", "fixtures");
+    const fixtures = join(ROOT, "packages", "core", "test", "fixtures");
     const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
     // The webview's demo runs against the same fixtures, so it's held to the same rule. Its
     // recordings page reads the library's overview through the dev server, whose routes

@@ -2,7 +2,7 @@
 import type { FolderGuide } from "./folder-guide";
 
 import { folderGuideMarkdown, GuideContext, README_BEGIN, README_END, README_PLACEHOLDER } from "./folder-readme";
-import { firstJsonObject, LanguageModel } from "@runshape/trace";
+import { firstJsonObject, LanguageModel } from "@runshape/core";
 
 export interface FolderDescription {
   text: string;

@@ -5,10 +5,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "@runshape/trace";
+import { Phase } from "@runshape/core";
 import { ZoneRules } from "@runshape/architecture";
 import { ViewerSession } from "../src/session";
-import { fixtureRuns } from "../../trace/test/fixtures";
+import { fixtureRuns } from "../../core/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 const GROUPING = { collapseMiddleware: true };

@@ -5,7 +5,7 @@
 import { describe, expect, test } from "vitest";
 
 import { buildSystemGraph, HEXAGONAL, HexagonalZone } from "@runshape/architecture";
-import { FixedZone, TraceDirectory } from "@runshape/trace";
+import { FixedZone, TraceDirectory } from "@runshape/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -13,7 +13,7 @@ import { layoutHexagon } from "../src/three/hexagon-layout";
 import { routeEdges } from "../src/three/routes";
 
 async function fastapiGraph() {
-  const fixtures = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "fastapi");
+  const fixtures = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", "fastapi");
   const run = await new TraceDirectory({ readText: (path) => readFile(join(fixtures, path), "utf8") }).latest();
   return buildSystemGraph(run, { grouping: { collapseMiddleware: true } });
 }

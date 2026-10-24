@@ -21,7 +21,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const target = resolve(process.env.RUNSHAPE_TARGET ?? join(here, ".."));
 // Every package that runs in Node, so a change to the CLI or the recordings library shows in
 // Runshape's own reviews too; the webview and the extension need a browser and VS Code.
-const RECORDED_PACKAGES = ["core", "trace", "infra", "architecture", "views", "visualizer", "explainer", "workflows", "library", "adapters", "cli"];
+const RECORDED_PACKAGES = ["core", "infra", "architecture", "views", "visualizer", "explainer", "workflows", "library", "adapters", "cli"];
 const include = (process.env.RUNSHAPE_INCLUDE ?? RECORDED_PACKAGES.map((name) => `packages/${name}/src`).filter((dir) => existsSync(join(target, dir))).join(",")).split(",");
 // @runshape/* resolves to the target's own packages: through node_modules, a base worktree
 // would get the working tree's.

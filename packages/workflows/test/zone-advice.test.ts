@@ -5,13 +5,12 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/architecture";
+import { buildSystemGraph, HEXAGONAL, HexagonalZone, parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 
-import { Phase, pythonSymbol } from "@runshape/trace";
-import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "@runshape/architecture";
+import { Phase, pythonSymbol } from "@runshape/core";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
 import { buildComponentView } from "@runshape/visualizer";
-import { loadFixtureRun } from "../../trace/test/fixtures";
+import { loadFixtureRun } from "../../core/test/fixtures";
 
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";
 const GROUPING = { collapseMiddleware: true };

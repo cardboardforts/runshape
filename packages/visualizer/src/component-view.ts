@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, ComponentView, componentOf, FINE_GROUPING, FunctionRef, functionRef, FunctionSummary, Grouping, QualifiedName, Run, Span, SymbolKind } from "@runshape/trace";
+import { CatalogFunction, CodeSymbol, ComponentView, componentOf, FINE_GROUPING, FunctionRef, functionRef, FunctionSummary, Grouping, QualifiedName, Run, Span, SymbolKind } from "@runshape/core";
 
 interface Tally {
   symbol: CodeSymbol;

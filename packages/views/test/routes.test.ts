@@ -9,9 +9,9 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { CodeSymbol, FunctionInfo, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind } from "@runshape/trace";
+import { CodeSymbol, FunctionInfo, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind } from "@runshape/core";
 import { buildRouteMap, Change, Op, detectMoves, diffRouteMaps, readablePattern, RouteMap, RouteMapDiff, routeForPath, RouteVariant } from "../src";
-import { FixtureApp, fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
+import { FixtureApp, fixtureRuns, loadFixtureRun } from "../../core/test/fixtures";
 
 function render(map: RouteMap): string {
   const lines: string[] = [];

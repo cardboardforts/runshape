@@ -3,7 +3,6 @@
   "private": true,
   "packageManager": "npm@11.21.0",
   "workspaces": [
-    "packages/trace",
     "packages/infra",
     "packages/architecture",
     "packages/views",

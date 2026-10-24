@@ -13,10 +13,10 @@
 import { describe, expect, test } from "vitest";
 
 
-import { QualifiedName, ZoneSource } from "@runshape/trace";
+import { QualifiedName, ZoneSource } from "@runshape/core";
 import { detectMoves, diffRuns, Moves } from "@runshape/views";
 import { ArchitectureDiff, ArchitectureSnapshot, buildPlacements, comparedGraphs, diffArchitecture, Placement, ZoneRules } from "../src";
-import { fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
+import { fixtureRuns, loadFixtureRun } from "../../core/test/fixtures";
 
 const rules = (zones: { match: string; zone: string; reason: string; by: string }[]) => ZoneRules.parse(JSON.stringify({ version: 2, style: "hexagonal", zones }));
 const ORDERS = { match: "example\\.com.shop.internal.orders.**", zone: "core", reason: "the order rules", by: "user" };

@@ -1,4 +1,4 @@
-import { ArchitectureProfile, CLIENT_ID, ComparedGraphs, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, FixedZone, GraphEdge, GraphNode, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Smell, Span, SymbolKind, SystemGraph, ZoneId, ZoneSource } from "@runshape/trace";
+import { ArchitectureProfile, CLIENT_ID, ComparedGraphs, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, FixedZone, GraphEdge, GraphNode, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Smell, Span, SymbolKind, SystemGraph, ZoneId, ZoneSource } from "@runshape/core";
 
 import { forbiddenCall, zoneFromName } from "./profiles";
 import { ZoneRules } from "./zones";

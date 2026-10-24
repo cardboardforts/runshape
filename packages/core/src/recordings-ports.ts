@@ -1,7 +1,7 @@
 // What the recordings workflow needs from outside core, in its own words: git, the recorders,
 // GitHub's pull requests, the project's working tree, hashing, and the library's stores. The
 // adapters (the library, the CLI) implement these; core never imports them.
-import type { TraceFiles } from "@runshape/trace";
+import type { TraceFiles } from "./trace/data/trace-directory";
 
 import type { CommitMessage, CommitSummary, LibraryOverview, PullRequestSummary, RecordingMetadata, RequestedReviews } from "./recordings-model";
 

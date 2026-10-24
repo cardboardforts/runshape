@@ -25,7 +25,7 @@ recorded **scenario**. Three views come out of the same recordings:
 | pytest recorder, `settrace` (3.9+) and `sys.monitoring` (3.12+) backends | `recorder/` | done, tested on 3.9 / 3.11 / 3.12 / 3.14 |
 | Django and FastAPI introspection: middleware, router, routes, databases | `recorder/.../frameworks/` | done |
 | trace format v1 | `docs/trace-format.md` | done |
-| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/trace`, `architecture`, `visualizer`, `views` | done, tested on real recordings |
+| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/core` (trace/), `architecture`, `visualizer`, `views` | done, tested on real recordings |
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
 | behavioural diff (compare with previous recording) | `packages/views/src/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
@@ -38,8 +38,8 @@ The same onion it's meant to show. Imports point inward only:
 
 ```
 recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
-kernel:     packages/core (shared words, ports, the UI protocol) and packages/trace (the
-            trace model and format, folding into the kernel in Phase 0b)
+kernel:     packages/core: the trace model and format (trace/), shared words, ports, the UI
+            protocol
 modules:    packages/architecture (styles, zones, the system graph, advice), packages/views
             (the trace module: diffs), packages/visualizer (views of one run), and
             packages/explainer: values in, values out
@@ -63,18 +63,18 @@ places each package in a zone; `npm run runshape -- readmes` writes a guide in e
 with what doesn't fit.
 
 - The kernel and the modules import nothing from Node, VS Code or React. File access comes
-  in through ports: `TraceFiles` (declared by `packages/trace`'s data layer) and the
+  in through ports: `TraceFiles` (declared by the kernel's trace format, `core/src/trace/data`) and the
   session's `SourceReader`.
 - Storage, format and translation have separate owners. `packages/infra` keeps files and
   knows no format: it imports no other Runshape package, and its stores fit the domain's ports
-  by shape. `packages/trace` owns the format: `model/` is the run in memory and the
+  by shape. The kernel owns the format (`core/src/trace`): `model/` is the run in memory and the
   `RunSource` port, `data/` the wire shape, its parsing and a traces directory's layout. Each
   recorder translates its language's own trace into the format before writing it, so nothing
   past the recorder sees a language's native trace.
 - `ViewerSession` (workflows) answers every request the webview can make. The extension forwards
   messages to it; the demo calls it directly. So the webview behaves identically in both.
 - The trace format is the wire format between the Python and TypeScript halves. It is bent
-  for size (tagged arrays); `packages/trace/src/data/parse.ts` maps it into named domain types at the boundary.
+  for size (tagged arrays); `packages/core/src/trace/data/parse.ts` maps it into named domain types at the boundary.
 
 Check with: `grep -rn "from \"vscode\"\|from \"react\"\|node:" packages/core/src` (expect nothing).
 

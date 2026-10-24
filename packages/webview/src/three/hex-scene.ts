@@ -7,7 +7,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
 import { HEXAGONAL } from "@runshape/architecture";
-import { ArchitectureProfile, GraphNode, SystemGraph } from "@runshape/trace";
+import { ArchitectureProfile, GraphNode, SystemGraph } from "@runshape/core";
 import { Change, Op, StepKind } from "@runshape/views";
 import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 

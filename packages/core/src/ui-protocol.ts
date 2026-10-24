@@ -1,8 +1,10 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
-import { Outcome, Phase } from "@runshape/trace";
+import { Outcome, Phase } from "./trace/model/trace";
 import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } from "@runshape/architecture";
-import type { ArchitectureStyle, ComponentView, Grouping, SystemGraph } from "@runshape/trace";
+import type { ArchitectureStyle, SystemGraph } from "./trace/model/arch-trace";
+import type { ComponentView } from "./trace/model/component-view";
+import type { Grouping } from "./trace/model/components";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/views";
 import type { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
 

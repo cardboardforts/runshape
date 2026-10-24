@@ -1,7 +1,7 @@
 # Runshape trace format, versions 1 and 2
 
 The contract between the recorders and the viewer. The recorders write it;
-`packages/trace/src/data/` is the only code that reads it, and it reads both versions.
+`packages/core/src/trace/data/` is the only code that reads it, and it reads both versions.
 The Python recorder (`recorder/`) writes version 1, below; recorders for other languages write
 version 2 (at the end), which names code by segments instead of Python's dotted names.
 Changing anything here means bumping `version` in the recorder and the reader.

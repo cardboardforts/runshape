@@ -18,14 +18,13 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import type { PullRequestSummary, Recorder, RecordTarget } from "@runshape/core";
-import type { LanguageModel } from "@runshape/trace";
+import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/core";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 import { assertPlainRecording, nodeHashing, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
 
-const FIXTURE = join(import.meta.dirname, "..", "..", "trace", "test", "fixtures", "go-shop");
+const FIXTURE = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", "go-shop");
 const NOW = new Date("2026-10-14T12:00:00Z");
 /** Above any pid the OS hands out (macOS and Linux cap well below it). */
 const DEAD_PID = 99_999_999;

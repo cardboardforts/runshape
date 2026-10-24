@@ -1,4 +1,4 @@
-import { classComponentId, Run, Scenario } from "@runshape/trace";
+import { classComponentId, Run, Scenario } from "@runshape/core";
 
 /**
  * Who holds a reference to whom, as recorded when each object's __init__ finished (the `W`

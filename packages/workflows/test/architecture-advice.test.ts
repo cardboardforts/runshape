@@ -7,9 +7,9 @@ import { describe, expect, test } from "vitest";
 
 import { architecturePrompt, detectArchitecture, parseArchitectureAdvice, projectPackages } from "@runshape/architecture";
 
-import { Phase } from "@runshape/trace";
+import { Phase } from "@runshape/core";
 import { ViewerSession, ZoneRuleStore } from "../src/session";
-import { loadFixtureRun } from "../../trace/test/fixtures";
+import { loadFixtureRun } from "../../core/test/fixtures";
 
 describe("architecture advice", () => {
   test("the model sees every style, the ranked evidence, and the packages", async () => {

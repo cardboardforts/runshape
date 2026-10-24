@@ -3,7 +3,7 @@
 // catalogue of styles against evidence from a recording and proposes how the app's
 // modules map onto that style's zones. A person (or a model, see
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
-import { ArchitectureStyle, LayoutShape, QualifiedName, Run } from "@runshape/trace";
+import { ArchitectureStyle, LayoutShape, QualifiedName, Run } from "@runshape/core";
 import { buildSystemGraph } from "./system-graph";
 import { HexagonalZone, PROFILES } from "./profiles";
 import { ZoneRule, ZoneRules } from "./zones";
