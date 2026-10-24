@@ -8,9 +8,9 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf } from "./graphs";
 
-import {  } from "@runshape/core";
+import {  } from "@runshape/kernel";
 import { Change } from "../src";
-import { fixtureRuns } from "../../core/test/fixtures";
+import { fixtureRuns } from "../../kernel/test/fixtures";
 
 async function loadFeedFix() {
   const runs = fixtureRuns("django-feed-fix");

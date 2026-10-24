@@ -13,9 +13,9 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf, reviewOf } from "./graphs";
 
-import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Run, Scenario, Span, SymbolKind, TraceDirectory, TraceFiles } from "@runshape/core";
+import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Run, Scenario, Span, SymbolKind, TraceDirectory, TraceFiles } from "@runshape/kernel";
 import { Change, detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, mergeReplays, Op } from "../src";
-import { fixtureFiles } from "../../core/test/fixtures";
+import { fixtureFiles } from "../../kernel/test/fixtures";
 
 const FROM = "app.services.articles";
 const TO = "app.domain.articles";

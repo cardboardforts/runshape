@@ -2,7 +2,7 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkNode } from "elkjs/lib/elk.bundled.js";
 
 import { zonePosition } from "@runshape/architecture";
-import { ComponentKind, FixedZone, GraphNode, LayoutShape, SystemGraph } from "@runshape/core";
+import { ComponentKind, FixedZone, GraphNode, LayoutShape, SystemGraph } from "@runshape/kernel";
 
 export const NODE_WIDTH = 188;
 export const NODE_HEIGHT = 46;

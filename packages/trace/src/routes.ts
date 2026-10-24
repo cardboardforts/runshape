@@ -1,4 +1,4 @@
-import { BoundaryCall, functionRef, FunctionRef, Outcome, Phase, Role, Route, Run, Span, SymbolKind } from "@runshape/core";
+import { BoundaryCall, functionRef, FunctionRef, Outcome, Phase, Role, Route, Run, Span, SymbolKind } from "@runshape/kernel";
 import { align, Op } from "./align";
 import { Moves } from "./moves";
 import { Change } from "./run-diff";

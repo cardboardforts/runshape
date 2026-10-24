@@ -1,4 +1,4 @@
-import { ArchitectureProfile, byCodeUnit, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/core";
+import { ArchitectureProfile, byCodeUnit, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/kernel";
 import { buildSystemGraph } from "./system-graph";
 import { ZoneRule, ZoneRules } from "./zones";
 

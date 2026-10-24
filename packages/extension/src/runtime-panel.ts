@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { Phase, Run, RunSource, TraceDirectory, UiRequest, UiResponse, ZoneSource } from "@runshape/core";
+import { Phase, Run, RunSource, TraceDirectory, UiRequest, UiResponse, ZoneSource } from "@runshape/kernel";
 import { ViewerSession } from "@runshape/workflows";
 
 import type { Logger } from "./logger";

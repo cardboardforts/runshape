@@ -1,5 +1,5 @@
 // Why a change was made, as its authors said, beside what it did: see explainer.test.ts.
-import { CommitMessage, firstJsonObject, LanguageModel } from "@runshape/core";
+import { CommitMessage, firstJsonObject, LanguageModel } from "@runshape/kernel";
 
 /** What the authors said about the change: its commits' messages (and later a PR's description). */
 export interface ChangeContext {

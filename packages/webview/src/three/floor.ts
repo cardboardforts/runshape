@@ -1,4 +1,4 @@
-import { GraphNode } from "@runshape/core";
+import { GraphNode } from "@runshape/kernel";
 
 /** Where one component stands: on the floor (XZ plane, Y up), at an elevation. */
 export interface Tile {

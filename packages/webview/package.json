@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@runshape/architecture": "0.1.0",
-    "@runshape/core": "0.1.0",
+    "@runshape/kernel": "0.1.0",
     "@runshape/trace": "0.1.0",
     "@runshape/visualizer": "0.1.0",
     "@xyflow/react": "12.12.0",

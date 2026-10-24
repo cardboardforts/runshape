@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { QualifiedName } from "@runshape/core";
+import { QualifiedName } from "@runshape/kernel";
 import { HexagonalZone, ZoneRules, ZoneRulesError } from "../src";
 
 /** Names written the way runshape.json writes them. */

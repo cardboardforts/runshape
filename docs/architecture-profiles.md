@@ -5,7 +5,7 @@ Most apps aren't one: Django is MVT, many FastAPI/Express apps are layered, Reac
 apps have their own shapes. This is the plan for drawing each app in its own shape, and for
 the rename that would come with it. Status: **ring → zone is done** (code, UI, docs, and
 `runshape.json` version 2 with a `"style"` field, still reading version 1). **Profiles are
-built** (2026-10-13): `packages/core/src/profiles.ts` defines hexagonal, layered, MVC, MVVM
+built** (2026-10-13): `packages/architecture/src/profiles.ts` defines hexagonal, layered, MVC, MVVM
 and MVP; zones, rules, smells and violations come from the active profile. The viewer can
 draw any style ("Draw as", never saved), lays layered out top to bottom in 2D and as
 terraces in 3D, MVC/MVVM/MVP as a triangle, and "Detect the shape from this recording"
@@ -30,7 +30,7 @@ choices in a style.
 
 Three layers, cheapest and most explainable first, mirroring how rings work today:
 
-1. **Deterministic scoring** (`packages/core/src/architecture.ts`). Scores each
+1. **Deterministic scoring** (`packages/architecture/src/architecture.ts`). Scores each
    profile on module vocabulary *and* runtime behaviour, and proposes zone globs with the
    evidence for each. On the examples: FastAPI RealWorld → **layered** (0.96) over hexagonal
    (0.77) — the deciding evidence is behavioural: route handlers call repositories

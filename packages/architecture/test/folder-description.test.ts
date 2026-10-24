@@ -11,11 +11,11 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { LanguageModel } from "@runshape/core";
+import { LanguageModel } from "@runshape/kernel";
 import { buildFolderGuides, buildPlacements, ZoneRules } from "../src";
 import { DescriptionError, describeFolder, openingComment, parseFolderDescription } from "../src/folder-description";
 import { describeReadme, mergeIntoReadme, needsDescription, README_PLACEHOLDER } from "../src/folder-readme";
-import { fixtureRuns } from "../../core/test/fixtures";
+import { fixtureRuns } from "../../kernel/test/fixtures";
 
 class FakeModel implements LanguageModel {
   readonly name = "fake-model";

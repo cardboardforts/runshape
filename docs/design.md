@@ -25,7 +25,7 @@ recorded **scenario**. Three views come out of the same recordings:
 | pytest recorder, `settrace` (3.9+) and `sys.monitoring` (3.12+) backends | `recorder/` | done, tested on 3.9 / 3.11 / 3.12 / 3.14 |
 | Django and FastAPI introspection: middleware, router, routes, databases | `recorder/.../frameworks/` | done |
 | trace format v1 | `docs/trace-format.md` | done |
-| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/core` (trace/), `architecture`, `visualizer`, `trace` | done, tested on real recordings |
+| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/kernel` (trace/), `architecture`, `visualizer`, `trace` | done, tested on real recordings |
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
 | behavioural diff (compare with previous recording) | `packages/trace/src/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
@@ -38,7 +38,7 @@ The same onion it's meant to show. Imports point inward only:
 
 ```
 recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
-kernel:     packages/core: the trace model and format (trace/), shared words, ports, the UI
+kernel:     packages/kernel: the trace model and format (trace/), shared words, ports, the UI
             protocol
 modules:    packages/architecture (styles, zones, the system graph, advice), packages/trace
             (the trace module: diffs), packages/visualizer (views of one run), and
@@ -57,7 +57,7 @@ that never import each other; PLAN.md's Phase 0b gets there. Until then,
 `package-boundaries.test.ts` lists what still crosses (`NOT_YET`): core's UI protocol uses
 the modules' view models (architecture, views, visualizer) until Phase 3.
 
-`packages/core/test/package-boundaries.test.ts` checks every arrow from the imports
+`packages/kernel/test/package-boundaries.test.ts` checks every arrow from the imports
 themselves, and that only infra, the adapters and the hosts touch the disk. `runshape.json`
 places each package in a zone; `npm run runshape -- readmes` writes a guide in each folder,
 with what doesn't fit.
@@ -74,9 +74,9 @@ with what doesn't fit.
 - `ViewerSession` (workflows) answers every request the webview can make. The extension forwards
   messages to it; the demo calls it directly. So the webview behaves identically in both.
 - The trace format is the wire format between the Python and TypeScript halves. It is bent
-  for size (tagged arrays); `packages/core/src/trace/data/parse.ts` maps it into named domain types at the boundary.
+  for size (tagged arrays); `packages/kernel/src/trace/data/parse.ts` maps it into named domain types at the boundary.
 
-Check with: `grep -rn "from \"vscode\"\|from \"react\"\|node:" packages/core/src` (expect nothing).
+Check with: `grep -rn "from \"vscode\"\|from \"react\"\|node:" packages/kernel/src` (expect nothing).
 
 ## Decisions
 

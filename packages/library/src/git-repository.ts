@@ -1,4 +1,4 @@
-import { CommitMessage, CommitSummary, FileAtCommit, GitError, RefSummary, Repository, Uncommitted } from "@runshape/core";
+import { CommitMessage, CommitSummary, FileAtCommit, GitError, RefSummary, Repository, Uncommitted } from "@runshape/kernel";
 
 import { Git } from "./git";
 

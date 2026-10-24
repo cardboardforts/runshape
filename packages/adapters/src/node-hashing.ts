@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { Digest, Hashing } from "@runshape/core";
+import { Digest, Hashing } from "@runshape/kernel";
 
 /** SHA-256 from Node's crypto (core's Hashing port). */
 export const nodeHashing: Hashing = {

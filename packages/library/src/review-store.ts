@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { KeptReviews, RequestedReviews } from "@runshape/core";
+import { KeptReviews, RequestedReviews } from "@runshape/kernel";
 import { NodeFiles } from "@runshape/infra";
 
 export const REQUESTED_REVIEWS_FILE = "requested.json";

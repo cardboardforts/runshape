@@ -1,7 +1,7 @@
 // npm run runshape -- list | record | compare | review-requests | readmes | schedule | forget:
 // the command line. Each command is a call on core's Recordings (core/src/recordings.ts).
 import { RULES_FILE } from "@runshape/architecture";
-import { ArchitectureSummary, GitError, LibraryOverview, ModelChoice, WORKING_TREE_ID } from "@runshape/core";
+import { ArchitectureSummary, GitError, LibraryOverview, ModelChoice, WORKING_TREE_ID } from "@runshape/kernel";
 import { RecordingError, Recordings, RecordingsDependencies } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";

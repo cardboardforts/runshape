@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { GraphNode, SystemGraph } from "@runshape/core";
+import { GraphNode, SystemGraph } from "@runshape/kernel";
 import { Change, Op, ReplayStep } from "@runshape/trace";
 import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 

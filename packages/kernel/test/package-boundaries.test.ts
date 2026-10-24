@@ -7,7 +7,7 @@
  *   workflows ──> modules, kernel          ui (webview) ──> kernel
  *   modules (architecture, trace, visualizer, explainer) ──> kernel, never each other
  *   infra layer (infra, library, adapters) ──> kernel, and infra's generic Node toolkit
- *   kernel (core) ──> nothing
+ *   kernel ──> nothing
  *
  * What the code still does that the target forbids is listed in NOT_YET; Phase 0b (PLAN.md)
  * empties it one PR at a time, and an entry that's no longer true fails, so the list only
@@ -26,7 +26,7 @@ type Role = "kernel" | "module" | "workflows" | "infra" | "ui" | "app" | "record
 
 /** What each package is, in the target architecture. */
 const ROLES: Record<string, Role> = {
-  "packages/core": "kernel",
+  "packages/kernel": "kernel",
   "packages/architecture": "module",
   "packages/trace": "module",
   "packages/explainer": "module",
@@ -56,7 +56,7 @@ const PERMITTED: Record<Role, string[]> = {
 
 /** Imports the target forbids that the code still has. Phase 0b removes them. */
 const NOT_YET: Record<string, string[]> = {
-  "packages/core": ["architecture", "trace", "visualizer"], // the UI protocol's view models, type-only (Phase 3)
+  "packages/kernel": ["architecture", "trace", "visualizer"], // the UI protocol's view models, type-only (Phase 3)
   "packages/webview": ["architecture", "trace", "visualizer"], // the UI draws the modules' view models (Phase 3)
 };
 
@@ -131,7 +131,7 @@ describe("package boundaries", () => {
   test("a package's tests reach only its own source, the packages below it, trace's fixtures and the shared test helpers", () => {
     // So each package's tests run on their own: a views test importing core would tie them.
     const violations: string[] = [];
-    const fixtures = join(ROOT, "packages", "core", "test", "fixtures");
+    const fixtures = join(ROOT, "packages", "kernel", "test", "fixtures");
     const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
     // The webview's demo runs against the same fixtures, so it's held to the same rule. Its
     // recordings page reads the library's overview through the dev server, whose routes

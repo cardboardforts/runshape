@@ -1,5 +1,5 @@
 import { Op } from "./align";
-import { ComparedGraphs, FINE_GROUPING, Grouping, Outcome, Phase, Run, SymbolKind } from "@runshape/core";
+import { ComparedGraphs, FINE_GROUPING, Grouping, Outcome, Phase, Run, SymbolKind } from "@runshape/kernel";
 import { diffExecution } from "./execution-diff";
 import { detectMoves, Moves } from "./moves";
 import { Change, diffRuns } from "./run-diff";

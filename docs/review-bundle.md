@@ -6,7 +6,7 @@ writes it to `.runshape/reviews/<base id>..<head id>/`:
 - `review.json`: the bundle, for tools (a PR comment job, a morning page, a central store).
 - `review.md`: the same as Markdown, to read or to post as a PR comment.
 
-Built by `buildReviewBundle` and `reviewBundleMarkdown` (packages/core/src/review-bundle.ts).
+Built by `buildReviewBundle` and `reviewBundleMarkdown` (packages/kernel/src/review-bundle.ts).
 The bundle holds names only: test, function, class and route names (patterns, never a
 request as sent), rule globs and reasons, and each external call as its system and kind
 (`sqlite: SELECT`). It holds no query text and no source. Those stay in the recordings, on

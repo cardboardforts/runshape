@@ -11,7 +11,7 @@ import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
 import { ZoneRules, ZoneRulesError } from "@runshape/architecture";
-import { Run, RunSource, TraceDirectory, UiRequest, UiResponse } from "@runshape/core";
+import { Run, RunSource, TraceDirectory, UiRequest, UiResponse } from "@runshape/kernel";
 import { RuleChange, ViewerSession } from "@runshape/workflows";
 
 import { App } from "../src/App";
@@ -19,8 +19,8 @@ import type { Host } from "../src/host";
 import { RecordingsPage } from "./RecordingsPage";
 import "./recordings.css";
 
-const traceFiles = import.meta.glob("../../core/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
-const sourceFiles = import.meta.glob("../../core/test/fixtures/*/source/**/*.py", { query: "?raw", import: "default" });
+const traceFiles = import.meta.glob("../../kernel/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
+const sourceFiles = import.meta.glob("../../kernel/test/fixtures/*/source/**/*.py", { query: "?raw", import: "default" });
 const selfTraceFiles = import.meta.glob("../../../.runshape/self/*/**/*.json", { query: "?raw", import: "default" });
 // Django's source isn't redistributed in fixtures (no upstream license); use a local checkout.
 const exampleSources = import.meta.glob("../../../examples/django-realworld/conduit/**/*.py", {
@@ -30,7 +30,7 @@ const exampleSources = import.meta.glob("../../../examples/django-realworld/cond
 
 function fixtureReader(app: string, files: Record<string, () => Promise<unknown>>, prefix: string) {
   return async (relativePath: string): Promise<string> => {
-    const load = files[`../../core/test/fixtures/${app}/${prefix}${relativePath}`];
+    const load = files[`../../kernel/test/fixtures/${app}/${prefix}${relativePath}`];
     if (load === undefined) throw new Error(`demo: no fixture file ${relativePath}`);
     return (await load()) as string;
   };

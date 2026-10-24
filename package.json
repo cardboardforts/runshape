@@ -7,7 +7,7 @@
     "packages/architecture",
     "packages/trace",
     "packages/visualizer",
-    "packages/core",
+    "packages/kernel",
     "packages/explainer",
     "packages/workflows",
     "packages/webview",

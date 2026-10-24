@@ -1,4 +1,4 @@
-import { FixedZone, SystemGraph, ZoneId } from "@runshape/core";
+import { FixedZone, SystemGraph, ZoneId } from "@runshape/kernel";
 
 import type { FloorLayout } from "./floor";
 

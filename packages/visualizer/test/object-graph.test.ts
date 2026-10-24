@@ -4,11 +4,11 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "@runshape/core";
+import { Phase } from "@runshape/kernel";
 import { aggregateWiring, buildObjectGraph } from "../src";
 import { buildReplay } from "@runshape/trace";
 import { buildSystemGraph } from "@runshape/architecture";
-import { loadFixtureRun } from "../../core/test/fixtures";
+import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
 const short = (id: string) => id.split(".").pop();

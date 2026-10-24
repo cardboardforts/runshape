@@ -1,4 +1,4 @@
-import { ArchitectureProfile, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/core";
+import { ArchitectureProfile, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/kernel";
 import { detectMoves, Moves } from "./moves";
 import { buildReplay, StepKind } from "./replay";
 

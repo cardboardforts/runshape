@@ -1,7 +1,7 @@
 // The trace module's diffs take the graphs the arch module drew for them; a workflow wires the
 // two (comparedGraphs, then diffRuns or buildReview), and these tests wire them the same way.
 import { comparedGraphs } from "@runshape/architecture";
-import type { ArchitectureProfile, Grouping, Phase, Run } from "@runshape/core";
+import type { ArchitectureProfile, Grouping, Phase, Run } from "@runshape/kernel";
 import type { ZoneRules } from "@runshape/architecture";
 
 import { buildReview, diffRuns, Moves } from "../src";

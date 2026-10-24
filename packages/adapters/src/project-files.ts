@@ -3,7 +3,7 @@
 import { lstat, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 
-import { ProjectFiles, Readme } from "@runshape/core";
+import { ProjectFiles, Readme } from "@runshape/kernel";
 
 const README_FILE = "README.md";
 

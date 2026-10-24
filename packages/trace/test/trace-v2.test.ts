@@ -10,9 +10,9 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf } from "./graphs";
 
-import { ManifestDto, pythonSymbol, Run, ScenarioDto, TraceDirectory, TraceFiles } from "@runshape/core";
+import { ManifestDto, pythonSymbol, Run, ScenarioDto, TraceDirectory, TraceFiles } from "@runshape/kernel";
 import { buildSystemGraph } from "@runshape/architecture";
-import { FixtureApp, fixtureFiles, fixtureRuns } from "../../core/test/fixtures";
+import { FixtureApp, fixtureFiles, fixtureRuns } from "../../kernel/test/fixtures";
 
 /** A v1 trace directory, served as v2: what a recorder writing v2 would have produced. */
 function asVersion2(v1: TraceFiles): TraceFiles {

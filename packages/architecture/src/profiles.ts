@@ -3,8 +3,8 @@
 // system graph, the rules file and the violations all take their vocabulary from the active
 // profile; hexagonal is the default and reproduces the viewer's original behaviour exactly.
 
-import type { QualifiedName } from "@runshape/core";
-import { ArchitectureProfile, ArchitectureStyle, LayoutShape } from "@runshape/core";
+import type { QualifiedName } from "@runshape/kernel";
+import { ArchitectureProfile, ArchitectureStyle, LayoutShape } from "@runshape/kernel";
 
 /** The hexagonal profile's zone ids (also the ids of the original "rings"). */
 export enum HexagonalZone {

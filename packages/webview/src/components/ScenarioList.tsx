@@ -1,4 +1,4 @@
-import { Outcome, ScenarioSummary } from "@runshape/core";
+import { Outcome, ScenarioSummary } from "@runshape/kernel";
 import { REVIEW_ORDER, ReviewCategory } from "@runshape/trace";
 
 const OUTCOME_LABEL: Record<Outcome, string> = {

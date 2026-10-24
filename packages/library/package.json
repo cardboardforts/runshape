@@ -5,8 +5,8 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@runshape/core": "0.1.0",
-    "@runshape/infra": "0.1.0"
+    "@runshape/infra": "0.1.0",
+    "@runshape/kernel": "0.1.0"
   },
   "scripts": {
     "test": "vitest run",

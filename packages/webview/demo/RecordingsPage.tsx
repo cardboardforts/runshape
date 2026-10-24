@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { LibraryOverview, RecordingMetadata, RefSummary, RequestedReview, RequestedReviews } from "@runshape/core";
+import type { LibraryOverview, RecordingMetadata, RefSummary, RequestedReview, RequestedReviews } from "@runshape/kernel";
 
 interface Props {
   /** The example recordings checked in as fixtures, by name. */

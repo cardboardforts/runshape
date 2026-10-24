@@ -7,7 +7,7 @@
 import { describe, expect, test } from "vitest";
 
 import { profileFor } from "@runshape/architecture";
-import { ArchitectureStyle, FixedZone } from "@runshape/core";
+import { ArchitectureStyle, FixedZone } from "@runshape/kernel";
 
 import { zoneClass, zoneColor, zoneLabel } from "../src/zone-style";
 

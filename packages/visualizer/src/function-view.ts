@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, FunctionRef, functionRef, Outcome, Run, Span } from "@runshape/core";
+import { CatalogFunction, CodeSymbol, FunctionRef, functionRef, Outcome, Run, Span } from "@runshape/kernel";
 
 /**
  * One function's source with, for every line, the scenarios (tests) whose execution passed

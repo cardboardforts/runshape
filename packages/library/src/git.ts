@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 
-import { GitError } from "@runshape/core";
+import { GitError } from "@runshape/kernel";
 
 /** Port: run git in the project and get its output. Arguments are passed as they are, never through a shell. */
 export interface Git {

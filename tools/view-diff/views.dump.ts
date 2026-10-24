@@ -2,7 +2,7 @@
 // responses: what the webview would show, as JSON. view-diff.sh runs this against two
 // revisions of core so a refactor is reviewed by what the viewer shows, not just by its code.
 //
-// CORE_SRC picks the revision (a worktree's packages/core/src); FIXTURES stays the working
+// CORE_SRC picks the revision (a worktree's packages/kernel/src, or packages/core/src before the rename); FIXTURES stays the working
 // tree's, so both revisions answer the same recordings.
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -33,11 +33,11 @@ const echoAdvisor = {
 };
 
 test("dump every view", async () => {
-  // Through core's index, and the packages Phase 0b moved things to, where the revision has
+  // Through the kernel's index, and the packages Phase 0b moved things to, where the revision has
   // them: modules move between packages, these indexes keep exporting them.
   const packages = join(CORE_SRC, "..", "..");
   const exported: Record<string, any> = { ...(await import(join(CORE_SRC, "index.ts"))) };
-  for (const name of ["trace", "architecture", "workflows"]) {
+  for (const name of ["trace", "architecture", "workflows", "visualizer"]) {
     const index = join(packages, name, "src", "index.ts");
     if (existsSync(index)) Object.assign(exported, await import(index));
   }

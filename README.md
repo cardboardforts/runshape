@@ -51,7 +51,7 @@ npm run dev -w packages/webview
 ```
 
 The demo renders real recordings of the two example apps, checked in under
-`packages/core/test/fixtures`.
+`packages/kernel/test/fixtures`.
 
 ## Recording your own app
 
@@ -158,14 +158,14 @@ cd recorder && uv run pytest   # recorder; add --python 3.9 to check the settrac
 | `recorder/src/runshape_recorder/domain` | scopes, spans, recording | stdlib only |
 | `recorder/src/runshape_recorder/adapters` | tracing backends, JSON store, catalog, framework introspection | domain |
 | `recorder/src/runshape_recorder/pytest_plugin.py` | composition root | everything |
-| `packages/core` | the kernel: the trace model and format, shared words, ports | nothing (target) |
+| `packages/kernel` | the kernel: the trace model and format, shared words, ports | nothing (target) |
 | `packages/architecture`, `trace`, `visualizer`, `explainer` | modules: values in, values out | the kernel |
 | `packages/workflows` | the recordings workflow, review bundle, viewer session | modules, the kernel |
 | `packages/infra`, `library`, `adapters` | IO: files, git, recorders, gh, language models | the kernel, infra's toolkit |
 | `packages/webview` | React renderer of the view models | the kernel |
 | `packages/extension`, `packages/cli` | the apps: composition roots | anything |
 
-`packages/core/test/package-boundaries.test.ts` checks these from the imports themselves; what
+`packages/kernel/test/package-boundaries.test.ts` checks these from the imports themselves; what
 still crosses on the way to the target is listed there (`NOT_YET`).
 
 Trace format: [docs/trace-format.md](docs/trace-format.md).

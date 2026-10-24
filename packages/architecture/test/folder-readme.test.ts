@@ -5,10 +5,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import {  } from "@runshape/core";
+import {  } from "@runshape/kernel";
 import { buildFolderGuides, buildPlacements, ZoneRules } from "../src";
 import { folderGuideMarkdown, mergeIntoReadme } from "../src/folder-readme";
-import { fixtureRuns } from "../../core/test/fixtures";
+import { fixtureRuns } from "../../kernel/test/fixtures";
 
 async function webGuide() {
   const run = await fixtureRuns("go-shop").latest();

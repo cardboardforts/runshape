@@ -6,9 +6,9 @@
 import { describe, expect, test } from "vitest";
 
 import { buildSystemGraph, HexagonalZone, profileFor, ZoneRules } from "@runshape/architecture";
-import { ArchitectureStyle, Phase, SystemGraph } from "@runshape/core";
+import { ArchitectureStyle, Phase, SystemGraph } from "@runshape/kernel";
 import { ViewerSession, ZoneRuleStore } from "../src/session";
-import { loadFixtureRun } from "../../core/test/fixtures";
+import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 const GROUPING = { collapseMiddleware: true };
 

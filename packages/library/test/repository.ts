@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { RecordingMetadata } from "@runshape/core";
+import type { RecordingMetadata } from "@runshape/kernel";
 
 const COMMIT_DATE = "2026-10-01T10:00:00Z";
 

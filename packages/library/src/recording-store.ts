@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { IncomingRecording as Incoming, KeptRecordings, LibraryBusy, RECORDING_ID_LENGTH, RecordingMetadata, SANDBOX_SUFFIX, WORKING_TREE_ID } from "@runshape/core";
+import { IncomingRecording as Incoming, KeptRecordings, LibraryBusy, RECORDING_ID_LENGTH, RecordingMetadata, SANDBOX_SUFFIX, WORKING_TREE_ID } from "@runshape/kernel";
 import { holdingLock, LockHeld, NodeFiles, removeAnyway, swapIntoPlace } from "@runshape/infra";
 
 export const METADATA_FILE = "recording.json";

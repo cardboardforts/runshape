@@ -1,4 +1,4 @@
-import { CatalogFunction, CodeSymbol, QualifiedName, Renaming, Role, Run, Scenario } from "@runshape/core";
+import { CatalogFunction, CodeSymbol, QualifiedName, Renaming, Role, Run, Scenario } from "@runshape/kernel";
 
 /** The same function under another name in head: moved, and maybe edited on the way. */
 export interface FunctionMove {

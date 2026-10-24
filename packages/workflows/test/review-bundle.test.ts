@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle, reviewBundleMarkdown } from "../src/review-bundle";
-import { fixtureRuns } from "../../core/test/fixtures";
+import { fixtureRuns } from "../../kernel/test/fixtures";
 
 const CREATED = "2026-10-16T09:00:00Z";
 const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit`, dirty: false, forkOf: null });

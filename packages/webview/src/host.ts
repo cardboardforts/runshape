@@ -1,4 +1,4 @@
-import type { UiRequest, UiResponse } from "@runshape/core";
+import type { UiRequest, UiResponse } from "@runshape/kernel";
 
 /** Where the webview's requests go: the VS Code extension, or the standalone demo. */
 export interface Host {

@@ -7,10 +7,10 @@ import { describe, expect, test } from "vitest";
 
 import { buildSystemGraph, HEXAGONAL, HexagonalZone, parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 
-import { Phase, pythonSymbol } from "@runshape/core";
+import { Phase, pythonSymbol } from "@runshape/kernel";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
 import { buildComponentView } from "@runshape/visualizer";
-import { loadFixtureRun } from "../../core/test/fixtures";
+import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";
 const GROUPING = { collapseMiddleware: true };

@@ -6,10 +6,10 @@ import { describe, expect, test } from "vitest";
 
 import { reviewOf } from "./graphs";
 
-import { Outcome } from "@runshape/core";
+import { Outcome } from "@runshape/kernel";
 import { Change } from "../src";
 import { ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src";
-import { FixtureApp, fixtureRuns } from "../../core/test/fixtures";
+import { FixtureApp, fixtureRuns } from "../../kernel/test/fixtures";
 
 async function review(app: FixtureApp) {
   const runs = fixtureRuns(app);

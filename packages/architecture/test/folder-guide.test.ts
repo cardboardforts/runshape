@@ -10,10 +10,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Run } from "@runshape/core";
+import { Run } from "@runshape/kernel";
 import { ZoneRules } from "../src";
 import { buildFolderGuides, buildPlacements, FolderGuide } from "../src";
-import { loadFixtureRun } from "../../core/test/fixtures";
+import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 function render(guides: FolderGuide[], only: string): string[] {
   const guide = guides.find((g) => g.folder === only)!;

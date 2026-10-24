@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { buildSystemGraph, profileFor } from "@runshape/architecture";
-import { ArchitectureStyle, FixedZone, SystemGraph, TraceDirectory } from "@runshape/core";
+import { ArchitectureStyle, FixedZone, SystemGraph, TraceDirectory } from "@runshape/kernel";
 
 import { layoutBands, STEP_RISE } from "../src/three/bands-layout";
 import type { Tile } from "../src/three/floor";
@@ -17,7 +17,7 @@ import { layoutTriangle } from "../src/three/triangle-layout";
 import { overlappingTiles } from "./tiles";
 
 async function graphOf(app: string, style: ArchitectureStyle, collapseMiddleware = true): Promise<SystemGraph> {
-  const directory = join(import.meta.dirname, "..", "..", "core", "test", "fixtures", app);
+  const directory = join(import.meta.dirname, "..", "..", "kernel", "test", "fixtures", app);
   const run = await new TraceDirectory({ readText: (path) => readFile(join(directory, path), "utf8") }).latest();
   return buildSystemGraph(run, { grouping: { collapseMiddleware }, profile: profileFor(style) });
 }

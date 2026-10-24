@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { byCodeUnit, Hashing, Recorder, RecordTarget, VERSION_DIGITS } from "@runshape/core";
+import { byCodeUnit, Hashing, Recorder, RecordTarget, VERSION_DIGITS } from "@runshape/kernel";
 
 /** The recorder's own source; its tests and dependencies don't change what it records. */
 const RECORDER_DIRECTORY = "recorder-ts";

@@ -7,7 +7,7 @@ import { basename, isAbsolute, join, normalize } from "node:path";
 
 import { assertPlainFiles, NotPlainFiles, removeAnyway } from "@runshape/infra";
 
-import { Hashing, Recorder, RecordTarget, Repository, VERSION_DIGITS } from "@runshape/core";
+import { Hashing, Recorder, RecordTarget, Repository, VERSION_DIGITS } from "@runshape/kernel";
 
 export interface CommandResult {
   code: number | null;
