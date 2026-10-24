@@ -1,6 +1,6 @@
-import { ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/trace";
+import { byCodeUnit, ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/trace";
 import { ZoneRule } from "./zones";
-import { ArchitectureSnapshot, byCodeUnit, Placement } from "./placements";
+import { ArchitectureSnapshot, Placement } from "./placements";
 
 /** One component's place before and after; null on the side it doesn't exist. */
 export interface PlacementChange {

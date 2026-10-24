@@ -8,6 +8,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@runshape/core": "0.1.0"
+    "@runshape/core": "0.1.0",
+    "@runshape/trace": "0.1.0"
   }
 }

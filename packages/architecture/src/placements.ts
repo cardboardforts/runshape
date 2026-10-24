@@ -1,4 +1,4 @@
-import { ArchitectureProfile, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/trace";
+import { ArchitectureProfile, byCodeUnit, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/trace";
 import { buildSystemGraph } from "./system-graph";
 import { ZoneRule, ZoneRules } from "./zones";
 
@@ -81,7 +81,3 @@ export function buildPlacements(run: Run, rules: ZoneRules, profile: Architectur
   };
 }
 
-/** Code-unit order: localeCompare would sort by the recording machine's language. */
-export function byCodeUnit(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}

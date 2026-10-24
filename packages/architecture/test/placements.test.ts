@@ -11,7 +11,8 @@
 import { describe, expect, test } from "vitest";
 
 import { ZoneRules } from "../src";
-import { ArchitectureSnapshot, buildPlacements, byCodeUnit } from "../src";
+import { ArchitectureSnapshot, buildPlacements } from "../src";
+import { byCodeUnit } from "@runshape/trace";
 import { ZoneSource } from "@runshape/trace";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 

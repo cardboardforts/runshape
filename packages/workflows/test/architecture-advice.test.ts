@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { architecturePrompt, detectArchitecture, parseArchitectureAdvice, projectPackages } from "@runshape/core";
+import { architecturePrompt, detectArchitecture, parseArchitectureAdvice, projectPackages } from "@runshape/architecture";
 
 import { Phase } from "@runshape/trace";
 import { ViewerSession, ZoneRuleStore } from "../src/session";

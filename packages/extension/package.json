@@ -40,8 +40,10 @@
     "@vscode/test-electron": "3.1.0"
   },
   "dependencies": {
+    "@runshape/architecture": "0.1.0",
     "@runshape/core": "0.1.0",
     "@runshape/infra": "0.1.0",
+    "@runshape/trace": "0.1.0",
     "@runshape/workflows": "0.1.0"
   }
 }

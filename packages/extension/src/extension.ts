@@ -1,7 +1,8 @@
 // Composition root: the only module that wires VS Code, the adapters and the core together.
 import * as vscode from "vscode";
 
-import { LATEST_POINTER, RULES_FILE } from "@runshape/core";
+import { RULES_FILE } from "@runshape/architecture";
+import { LATEST_POINTER } from "@runshape/trace";
 
 import { Logger } from "./logger";
 import { RuntimePanel } from "./runtime-panel";

@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import type { LanguageModel } from "@runshape/core";
+import type { LanguageModel } from "@runshape/trace";
 import { ChangeContext, explainChange, explanationMarkdown, ExplanationError, explanationPrompt, parseExplanation } from "../src";
 
 /**

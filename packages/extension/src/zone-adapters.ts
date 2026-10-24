@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
-import { LanguageModel, RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/core";
+import { RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
+import { LanguageModel } from "@runshape/trace";
 import { RuleChange, ZoneRuleStore } from "@runshape/workflows";
 
 import type { Logger } from "./logger";

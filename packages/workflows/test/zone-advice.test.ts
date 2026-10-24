@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
+import { parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/architecture";
 
 import { Phase, pythonSymbol } from "@runshape/trace";
 import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "@runshape/architecture";

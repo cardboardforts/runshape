@@ -2,7 +2,9 @@
 // the previous one (as runshape-review leaves them), as Markdown for a pull request comment.
 import { resolve } from "node:path";
 
-import { buildReview, comparedGraphs, reviewMarkdown, TraceDirectory } from "@runshape/core";
+import { comparedGraphs } from "@runshape/architecture";
+import { TraceDirectory } from "@runshape/trace";
+import { buildReview, reviewMarkdown } from "@runshape/views";
 import { NodeFiles } from "@runshape/infra";
 
 const DEFAULT_TRACES = ".runshape/traces";

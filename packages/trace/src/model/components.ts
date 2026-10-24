@@ -155,3 +155,8 @@ export function classComponentId(type: QualifiedName): string {
 function classComponent(type: QualifiedName): ComponentRef {
   return { id: classComponentId(type), kind: ComponentKind.Class, label: type.last, name: type };
 }
+
+/** Code-unit order: localeCompare would sort by the recording machine's language. */
+export function byCodeUnit(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}

@@ -18,7 +18,8 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/core";
+import type { PullRequestSummary, Recorder, RecordTarget } from "@runshape/core";
+import type { LanguageModel } from "@runshape/trace";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
 import { assertPlainRecording, nodeHashing, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
 import { runRecordings } from "../src/recordings";

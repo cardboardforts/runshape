@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { TraceDirectory } from "@runshape/core";
+import { TraceDirectory } from "@runshape/trace";
 import { NodeFiles } from "@runshape/infra";
 import { reviewFromDirectory } from "../src/main";
 
