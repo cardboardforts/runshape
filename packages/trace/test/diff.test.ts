@@ -8,7 +8,6 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf } from "./graphs";
 
-import {  } from "@runshape/kernel";
 import { Change } from "../src";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 

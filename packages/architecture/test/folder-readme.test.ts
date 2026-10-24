@@ -5,7 +5,6 @@
  */
 import { describe, expect, test } from "vitest";
 
-import {  } from "@runshape/kernel";
 import { buildFolderGuides, buildPlacements, ZoneRules } from "../src";
 import { folderGuideMarkdown, mergeIntoReadme } from "../src/folder-readme";
 import { fixtureRuns } from "../../kernel/test/fixtures";
