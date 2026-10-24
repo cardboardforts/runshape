@@ -1,5 +1,5 @@
-import { CatalogFunction, Phase, Role, Run } from "@runshape/trace";
-import { FINE_GROUPING, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { CatalogFunction, FINE_GROUPING, Phase, Role, Run } from "@runshape/trace";
+import { ZoneRule, ZoneRules } from "@runshape/architecture";
 import { ArchitectureSnapshot, byCodeUnit, Placement } from "./placements";
 import { buildSystemGraph } from "./system-graph";
 

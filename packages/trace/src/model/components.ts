@@ -1,4 +1,4 @@
-import { LandmarkKind, QualifiedName, Role, Span } from "@runshape/trace";
+import { LandmarkKind, QualifiedName, Role, Span } from "./trace";
 
 export const CLIENT_ID = "client";
 export const MIDDLEWARE_CHAIN_ID = "landmark:middleware-chain";

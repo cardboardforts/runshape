@@ -1,6 +1,6 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { Phase, Run } from "@runshape/trace";
-import { Grouping, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { Grouping, Phase, Run } from "@runshape/trace";
+import { ZoneRule, ZoneRules } from "@runshape/architecture";
 import {
   ArchitectureDiff,
   buildPlacements,

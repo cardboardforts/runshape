@@ -1,5 +1,5 @@
-import { QualifiedName } from "@runshape/trace";
-import { ComponentKind, ZoneRule } from "@runshape/architecture";
+import { ComponentKind, QualifiedName } from "@runshape/trace";
+import { ZoneRule } from "@runshape/architecture";
 import { Moves } from "./moves";
 import { ArchitectureSnapshot, byCodeUnit, Placement } from "./placements";
 import { ZoneSource } from "./system-graph";

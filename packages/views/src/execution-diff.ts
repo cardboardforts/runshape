@@ -1,7 +1,5 @@
 import { align, Aligned, Op } from "./align";
-import { CodeSymbol, Phase, Role, Run, Scenario, Span } from "@runshape/trace";
-import { FINE_GROUPING, Grouping, renamedComponentId } from "@runshape/architecture";
-import { FunctionRef, functionRef } from "./function-ref";
+import { CodeSymbol, FINE_GROUPING, FunctionRef, functionRef, Grouping, Phase, renamedComponentId, Role, Run, Scenario, Span } from "@runshape/trace";
 import { Moves } from "./moves";
 import { buildReplay, ReplayStep, StepKind } from "./replay";
 

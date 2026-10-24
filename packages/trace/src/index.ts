@@ -3,6 +3,8 @@
 // nothing else in Runshape.
 export * from "./model/trace";
 export * from "./model/run-source";
+export * from "./model/components";
+export * from "./model/function-ref";
 export * from "./data/wire";
 export * from "./data/parse";
 export * from "./data/trace-directory";

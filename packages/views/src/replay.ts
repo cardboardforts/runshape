@@ -1,5 +1,4 @@
-import { Phase, Scenario, Span } from "@runshape/trace";
-import { componentOf, externalComponent, FINE_GROUPING, Grouping } from "@runshape/architecture";
+import { componentOf, externalComponent, FINE_GROUPING, Grouping, Phase, Scenario, Span } from "@runshape/trace";
 
 export enum StepKind {
   Call = "call",

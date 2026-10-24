@@ -1,18 +1,6 @@
-import { CodeSymbol, Outcome, Run } from "@runshape/trace";
-import { ArchitectureProfile, ArchitectureStyle, PROFILES, profileFor } from "@runshape/architecture";
-import { RULES_FILE, ZoneRules } from "@runshape/architecture";
-import { buildComponentView } from "@runshape/views";
-import { Grouping } from "@runshape/architecture";
-import { buildFunctionView, UnknownFunctionError } from "@runshape/views";
-import { buildReplay } from "@runshape/views";
-import { buildTimeline } from "@runshape/views";
-import { detectMoves, diffExecution, diffFunctionExecution, mergeReplays, Moves } from "@runshape/views";
-import { aggregateWiring, buildObjectGraph } from "@runshape/views";
-import { buildReview } from "@runshape/views";
-import { buildPlacements, diffArchitecture } from "@runshape/views";
-import { buildRouteMap, diffRouteMaps } from "@runshape/views";
-import { diffRuns } from "@runshape/views";
-import { buildSystemGraph } from "@runshape/views";
+import { CodeSymbol, Grouping, Outcome, Run } from "@runshape/trace";
+import { ArchitectureProfile, ArchitectureStyle, profileFor, PROFILES, RULES_FILE, ZoneRules } from "@runshape/architecture";
+import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildPlacements, buildReplay, buildReview, buildRouteMap, buildSystemGraph, buildTimeline, detectMoves, diffArchitecture, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves, UnknownFunctionError } from "@runshape/views";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, detectArchitecture, parseArchitectureAdvice, parseZoneAdvice, projectPackages, proposedRules, RunSummary, ScenarioSummary, UiRequest, UiResponse, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */

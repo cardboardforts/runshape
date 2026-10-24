@@ -4,8 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { CodeSymbol, FunctionInfo, Phase, Role, Span, SymbolKind } from "@runshape/trace";
-import { componentOf } from "../src";
+import { CodeSymbol, componentOf, FunctionInfo, Phase, Role, Span, SymbolKind } from "../src";
 
 describe("components are named from segments", () => {
   // A Go package: module "example.com/shop", package "orders". Its first segment holds a dot,

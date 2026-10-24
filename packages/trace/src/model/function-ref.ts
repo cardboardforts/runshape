@@ -1,4 +1,4 @@
-import { CodeSymbol, SymbolKind } from "@runshape/trace";
+import { CodeSymbol, SymbolKind } from "./trace";
 
 /** A function as views hand it to the UI: the key to ask for it by, and names to show. */
 export interface FunctionRef {
