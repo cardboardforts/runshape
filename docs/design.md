@@ -25,11 +25,11 @@ recorded **scenario**. Three views come out of the same recordings:
 | pytest recorder, `settrace` (3.9+) and `sys.monitoring` (3.12+) backends | `recorder/` | done, tested on 3.9 / 3.11 / 3.12 / 3.14 |
 | Django and FastAPI introspection: middleware, router, routes, databases | `recorder/.../frameworks/` | done |
 | trace format v1 | `docs/trace-format.md` | done |
-| core: parse, system graph, zones, component and function views, replay | `packages/core` | done, tested on real recordings |
+| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/trace`, `architecture`, `visualizer`, `views` | done, tested on real recordings |
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
-| behavioural diff (compare with previous recording) | `packages/core/src/views/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
-| declared zones (`runshape.json`), provenance, onion violations, LLM zone proposals | `packages/core/src/zones.ts`, `zone-advice.ts` | done; the model call runs end to end against a fake model in the e2e test, and was checked by hand with a real model (Copilot) on the Django example on 2026-10-13 |
+| behavioural diff (compare with previous recording) | `packages/views/src/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
+| declared zones (`runshape.json`), provenance, onion violations, LLM zone proposals | `packages/architecture/src/zones.ts`, `zone-advice.ts` | done; the model call runs end to end against a fake model in the e2e test, and was checked by hand with a real model (Copilot) on the Django example on 2026-10-13 |
 | 3D renderer (three.js): hexagon floor, tiles and objects, call arcs, replay packets | `packages/webview/src/three` | first version; layout tested, scene checked in a browser |
 
 ## Architecture
@@ -40,7 +40,9 @@ The same onion it's meant to show. Imports point inward only:
 recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
 kernel:     packages/core (shared words, ports, the UI protocol) and packages/trace (the
             trace model and format, folding into the kernel in Phase 0b)
-modules:    packages/architecture, packages/views, packages/explainer: values in, values out
+modules:    packages/architecture (styles, zones, the system graph, advice), packages/views
+            (the trace module: diffs), packages/visualizer (views of one run), and
+            packages/explainer: values in, values out
 workflows:  packages/workflows (the recordings workflow, the review bundle, the viewer
             session): what the apps run, calling modules in order
 adapters:   packages/library (recordings and reviews kept, git), packages/adapters
@@ -52,8 +54,8 @@ hosts:      packages/cli (command line, composition root), packages/extension (V
 
 The target (GOALS.md, "Target architecture") is a kernel every module points at and modules
 that never import each other; PLAN.md's Phase 0b gets there. Until then,
-`package-boundaries.test.ts` lists what still crosses (`NOT_YET`): core imports architecture
-and views, and views imports architecture.
+`package-boundaries.test.ts` lists what still crosses (`NOT_YET`): core's UI protocol uses
+the modules' view models (architecture, views, visualizer) until Phase 3.
 
 `packages/core/test/package-boundaries.test.ts` checks every arrow from the imports
 themselves, and that only infra, the adapters and the hosts touch the disk. `runshape.json`
