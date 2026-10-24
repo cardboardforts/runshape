@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { expect, test } from "vitest";
 
-import { GhPullRequests } from "../src/pull-requests";
+import { GhPullRequests } from "../src/github/pull-requests";
 
 test("asks gh for the open PRs requesting my review, as JSON, and reads each author's login", async () => {
   const directory = mkdtempSync(join(tmpdir(), "runshape-gh-"));

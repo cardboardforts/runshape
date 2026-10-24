@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Library, LibraryOverview, SANDBOX_SUFFIX, WORKING_TREE_ID } from "@runshape/kernel";
 import { NodeFiles } from "@runshape/infra";
 
-import { GitRepository } from "./git-repository";
+import { GitRepository } from "../git/git-repository";
 import { RecordingStore } from "./recording-store";
 import { ReviewStore } from "./review-store";
 

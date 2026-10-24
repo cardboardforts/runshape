@@ -1,8 +1,9 @@
 // npm run runshape -- <command>: the recordings this checkout keeps (see recordings.ts).
 import { execFileSync } from "node:child_process";
 
-import { assertPlainRecording, DockerRecorder, GhPullRequests, nodeHashing, NodeProjectFiles, sandboxVersion, ShellRecorder } from "@runshape/adapters";
-import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
+import { assertPlainRecording, DockerRecorder, GhPullRequests, NodeProjectFiles, sandboxVersion, ShellRecorder } from "@runshape/adapters";
+import { nodeHashing } from "@runshape/infra";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
 
 import { chooseModel } from "./choose-model";
 import { runRecordings } from "./recordings";

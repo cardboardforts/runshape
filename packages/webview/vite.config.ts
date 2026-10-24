@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 // Loaded with vite's module runner (--configLoader runner in package.json): its default loader
 // leaves packages to Node, which can't load their TypeScript (test/vite-config.test.ts).
-import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
 
 import { handleLibraryRequest } from "./dev-server/library-routes";
 import react from "@vitejs/plugin-react";

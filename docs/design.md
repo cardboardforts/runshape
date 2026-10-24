@@ -45,9 +45,10 @@ modules:    packages/architecture (styles, zones, the system graph, advice), pac
             packages/explainer: values in, values out
 workflows:  packages/workflows (the recordings workflow, the review bundle, the viewer
             session): what the apps run, calling modules in order
-adapters:   packages/library (recordings and reviews kept, git), packages/adapters
-            (recorders' runners, gh, the project's files, hashing), packages/infra (files,
-            folders, the lock, language models: no Runshape import), all pointing at core
+adapters:   packages/adapters, one folder per external system (git, github, recorders,
+            models, library: the recordings and reviews kept, project: the working tree),
+            on packages/infra, the generic Node toolkit (files, folders, the lock, hashing:
+            no Runshape import); all pointing at the kernel
 hosts:      packages/cli (command line, composition root), packages/extension (VS Code),
             packages/webview (UI) and its demo and dev server
 ```
@@ -261,7 +262,7 @@ Accepted risks:
   differently (the response status isn't recorded) are one variant. A changed variant is a
   new shape paired with a gone one that both reached, or both missed, the handler and share
   at least half the longer path in order (`CHANGED_VARIANT_MIN_SHARED`).
-- Recordings kept per commit (`npm run runshape`, packages/library): only the TypeScript
+- Recordings kept per commit (`npm run runshape`, packages/adapters/src/library): only the TypeScript
   recorder (Runshape's own tests) records into them so far; Python's `runshape-review` and Go's
   recorder still keep their own latest/previous pair. Each recording stores a hash of the
   recorder's source; `compare` records the base again when it was made by another version, so

@@ -1,7 +1,7 @@
 // Which language model `--explain` and `--describe` ask (ModelChoice): the CLI's choice
 // among infra's models, from what this machine has.
 import type { LanguageModel, ModelChoice } from "@runshape/kernel";
-import { ANTHROPIC_API, AnthropicApiModel, ClaudeCliModel, DEFAULT_API_MODEL } from "@runshape/infra";
+import { ANTHROPIC_API, AnthropicApiModel, ClaudeCliModel, DEFAULT_API_MODEL } from "@runshape/adapters";
 
 /** The model `--explain` and `--describe` ask: `claude -p` if it runs, else the API if a key is set (or the one asked for). */
 export async function chooseModel(choice: ModelChoice, env: Record<string, string | undefined>): Promise<LanguageModel> {

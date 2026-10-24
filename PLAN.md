@@ -293,6 +293,14 @@ moves each file once.
    folder swaps, `NodeFiles`). `library` and `adapters` are regrouped by what they talk to
    (git, GitHub, the recorders, the language models). A system gets its own package only when
    it brings in a dependency other apps shouldn't carry. The READMEs follow (yours to write).
+   - **Done (2026-10-24).** No system here brings an npm dependency another app shouldn't
+     carry (git, gh, Docker and claude are commands; the rest is Node's own), so none gets a
+     package of its own: `@runshape/adapters` has a folder per system (`git/`, `github/`,
+     `recorders/`, `models/`, `library/` for the recordings and reviews kept under
+     `.runshape`, `project/` for the working tree), and `library` merged into it. `infra` is the
+     generic Node toolkit (paths, `NodeFiles`, folders, the lock, hashing) and imports no
+     Runshape package. My reading of "infra imports only the kernel": the adapters may use that
+     toolkit (the boundary test says so).
 7. **runshape.json placements redone** for the new packages. You approve them in the diff.
 
 **Done when:** the boundary test's allowlist is empty, `npm test`, `npm run typecheck` and

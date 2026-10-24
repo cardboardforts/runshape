@@ -10,8 +10,8 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import type { RecordingMetadata } from "@runshape/kernel";
-import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
-import { metadata, recordAt, repository } from "@runshape/library/test/repository";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
+import { metadata, recordAt, repository } from "@runshape/adapters/test/repository";
 import { handleLibraryRequest, serveLibraryFile } from "../dev-server/library-routes";
 
 describe("serveLibraryFile", () => {

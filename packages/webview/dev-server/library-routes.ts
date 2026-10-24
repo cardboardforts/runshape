@@ -1,7 +1,7 @@
 // The demo dev server's routes for the recording library (vite.config.ts): the overview, and
 // recordings' and reviews' files, read-only. Dev server only: the extension never has them.
 import { NodeFiles } from "@runshape/infra";
-import type { RecordingLibrary } from "@runshape/library";
+import type { RecordingLibrary } from "@runshape/adapters";
 
 export interface ServedFile {
   status: 200 | 404;

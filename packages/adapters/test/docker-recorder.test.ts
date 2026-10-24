@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { removeAnyway } from "@runshape/infra";
-import { CommandResult, CommandRunner, DockerRecorder } from "../src/docker-recorder";
+import { CommandResult, CommandRunner, DockerRecorder } from "../src/recorders/docker-recorder";
 
 // npm's own shape: a registry package, and a workspace (its link, and its folder, which has no resolved).
 const REGISTRY_LOCK = JSON.stringify({

@@ -10,8 +10,8 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { nodeHashing } from "../src/node-hashing";
-import { ShellRecorder } from "../src/shell-recorder";
+import { nodeHashing } from "@runshape/infra";
+import { ShellRecorder } from "../src/recorders/shell-recorder";
 
 describe("ShellRecorder.source", () => {
   test("changes with the recorder's source or the lockfile; not with its tests or node_modules", async () => {

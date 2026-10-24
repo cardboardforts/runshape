@@ -19,10 +19,11 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/kernel";
-import { GitCli, GitRepository, projectLibrary } from "@runshape/library";
-import { assertPlainRecording, nodeHashing, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
+import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
+import { assertPlainRecording, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
+import { nodeHashing } from "@runshape/infra";
 import { runRecordings } from "../src/recordings";
-import { commitIn, gitIn, repository } from "@runshape/library/test/repository";
+import { commitIn, gitIn, repository } from "@runshape/adapters/test/repository";
 
 const FIXTURE = join(import.meta.dirname, "..", "..", "kernel", "test", "fixtures", "go-shop");
 const NOW = new Date("2026-10-14T12:00:00Z");

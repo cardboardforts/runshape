@@ -13,7 +13,6 @@
     "packages/webview",
     "packages/extension",
     "packages/cli",
-    "packages/library",
     "packages/adapters"
   ],
   "scripts": {

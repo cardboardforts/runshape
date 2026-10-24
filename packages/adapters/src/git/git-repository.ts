@@ -1,6 +1,6 @@
 import { CommitMessage, CommitSummary, FileAtCommit, GitError, RefSummary, Repository, Uncommitted } from "@runshape/kernel";
 
-import { Git } from "./git";
+import { Git } from "./git-cli";
 
 /** Where everything is fetched from: the person's own remote. */
 const REMOTE = "origin";

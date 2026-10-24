@@ -161,7 +161,8 @@ cd recorder && uv run pytest   # recorder; add --python 3.9 to check the settrac
 | `packages/kernel` | the kernel: the trace model and format, shared words, ports | nothing (target) |
 | `packages/architecture`, `trace`, `visualizer`, `explainer` | modules: values in, values out | the kernel |
 | `packages/workflows` | the recordings workflow, review bundle, viewer session | modules, the kernel |
-| `packages/infra`, `library`, `adapters` | IO: files, git, recorders, gh, language models | the kernel, infra's toolkit |
+| `packages/infra` | the generic Node toolkit: files, folders, the lock, hashing | nothing |
+| `packages/adapters` | one folder per external system: git, GitHub, the recorders, language models, the kept recordings, the working tree | the kernel, infra's toolkit |
 | `packages/webview` | React renderer of the view models | the kernel |
 | `packages/extension`, `packages/cli` | the apps: composition roots | anything |
 

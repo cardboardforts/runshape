@@ -6,7 +6,8 @@
  *   apps (cli, extension) ──> modules, workflows, infra, kernel
  *   workflows ──> modules, kernel          ui (webview) ──> kernel
  *   modules (architecture, trace, visualizer, explainer) ──> kernel, never each other
- *   infra layer (infra, library, adapters) ──> kernel, and infra's generic Node toolkit
+ *   infra layer (infra: the generic Node toolkit; adapters: one folder per external system)
+ *     ──> kernel, and infra's toolkit
  *   kernel ──> nothing
  *
  * What the code still does that the target forbids is listed in NOT_YET; Phase 0b (PLAN.md)
@@ -33,7 +34,6 @@ const ROLES: Record<string, Role> = {
   "packages/visualizer": "module",
   "packages/workflows": "workflows",
   "packages/infra": "infra",
-  "packages/library": "infra",
   "packages/adapters": "infra",
   "packages/webview": "ui",
   "packages/extension": "app",
@@ -65,7 +65,7 @@ const ALLOWED: Record<string, string[]> = Object.fromEntries(
   Object.entries(ROLES).map(([pkg, role]) => [pkg, [...PERMITTED[role].filter((name) => `packages/${name}` !== pkg), ...(NOT_YET[pkg] ?? [])]]),
 );
 /** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
-const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
+const SHARED_TEST_HELPERS = new Set(["@runshape/adapters/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
 const DISK = new Set(["packages/infra", "packages/adapters", "packages/cli", "packages/extension", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
@@ -141,7 +141,7 @@ describe("package boundaries", () => {
     // recordings page reads the library's overview through the dev server, whose routes
     // (dev-server/) read the library through infra; their tests make libraries to read.
     const HOST_ALSO: Record<string, Record<string, string[]>> = {
-      "packages/webview": { demo: ["library", "workflows"], "dev-server": ["library", "infra"], test: ["library", "infra"] },
+      "packages/webview": { demo: ["adapters", "workflows"], "dev-server": ["adapters", "infra"], test: ["adapters", "infra"] },
     };
     // A module's tests may wire other modules the way a workflow does (the arch module draws
     // the graphs the trace module's diffs take): values between them, never imports in src.

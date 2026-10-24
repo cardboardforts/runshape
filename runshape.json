@@ -10,12 +10,11 @@
     { "match": "packages.workflows.**", "zone": "core", "reason": "what the apps run: the recordings workflow, the review bundle, the viewer session; modules and the kernel, no IO of its own", "by": "llm" },
     { "match": "packages.explainer.**", "zone": "core", "reason": "the explainer module: a review's Markdown and commit messages in, a checked explanation out, through the LanguageModel port", "by": "llm" },
     { "match": "packages.kernel.**", "zone": "core", "reason": "the kernel: the universal trace in memory (trace/model), the recordings' words and ports, and the UI protocol; imports nothing", "by": "user" },
-    { "match": "packages.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "user" },
-    { "match": "packages.adapters.src.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
-    { "match": "packages.adapters.src.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
-    { "match": "packages.adapters.src.project-files.**", "zone": "outbound-adapter", "reason": "the project's own working tree, for the recordings workflow: implements the ProjectFiles port (core's recordings-ports.ts)", "by": "user" },
-    { "match": "packages.adapters.src.node-hashing.**", "zone": "outbound-adapter", "reason": "SHA-256 from Node's crypto: implements the Hashing port (core's recordings-ports.ts)", "by": "user" },
-    { "match": "packages.adapters.src.pull-requests.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (core's recordings-ports.ts)", "by": "user" },
+    { "match": "packages.adapters.src.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "user" },
+    { "match": "packages.adapters.src.recorders.docker-recorder.**", "zone": "outbound-adapter", "reason": "records a commit in a container: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
+    { "match": "packages.adapters.src.recorders.shell-recorder.**", "zone": "outbound-adapter", "reason": "records as a local process: implements the Recorder port (core's recordings-ports.ts)", "by": "user" },
+    { "match": "packages.adapters.src.project.**", "zone": "outbound-adapter", "reason": "the project's own working tree, for the recordings workflow: implements the ProjectFiles port (core's recordings-ports.ts)", "by": "user" },
+    { "match": "packages.adapters.src.github.**", "zone": "outbound-adapter", "reason": "asks GitHub, through gh, which pull requests request a review: implements the PullRequests port (core's recordings-ports.ts)", "by": "user" },
     { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing each command into a call on the workflows' Recordings, the launchd job it prints, the composition root", "by": "user" }
   ]
 }
