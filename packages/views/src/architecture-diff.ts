@@ -1,8 +1,7 @@
-import { ComponentKind, QualifiedName } from "@runshape/trace";
+import { ComponentKind, QualifiedName, ZoneSource } from "@runshape/trace";
 import { ZoneRule } from "@runshape/architecture";
 import { Moves } from "./moves";
 import { ArchitectureSnapshot, byCodeUnit, Placement } from "./placements";
-import { ZoneSource } from "./system-graph";
 
 /** One component's place before and after; null on the side it doesn't exist. */
 export interface PlacementChange {

@@ -7,12 +7,11 @@
  */
 import { describe, expect, test } from "vitest";
 
+import { diffOf } from "./graphs";
+
 import { Op } from "../src";
-import { CodeSymbol, FunctionInfo, Phase, Role, Run, Span, SymbolKind } from "@runshape/trace";
-import {  } from "@runshape/trace";
-import { pythonSymbol } from "@runshape/trace";
+import { CodeSymbol, FunctionInfo, Phase, pythonSymbol, Role, Run, Span, SymbolKind } from "@runshape/trace";
 import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src";
-import { diffRuns } from "../src";
 import { fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
@@ -129,7 +128,7 @@ describe("diffRuns on the same refactor", () => {
   test("lines-reached compares statements by text too, so the moved function isn't listed", async () => {
     const { before, after } = await loadRefactor();
 
-    const changed = diffRuns(before, after).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
+    const changed = diffOf(before, after).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
 
     // check_article_exists moved down four lines and is absent; get_slug_for_article's one
     // statement really did change (it now normalises the title first).
@@ -164,7 +163,7 @@ describe("diffRuns: identical lines", () => {
       return copy;
     };
 
-    const changed = diffRuns(withTwins(before, 0), withTwins(after, 2)).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
+    const changed = diffOf(withTwins(before, 0), withTwins(after, 2)).scenarios.find((s) => s.id === CREATE)!.functionsChanged;
 
     expect(changed.find((fn) => fn.symbol.path === "check_article_exists")).toBeDefined();
   });

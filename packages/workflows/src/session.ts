@@ -1,6 +1,6 @@
-import { CodeSymbol, Grouping, Outcome, Run } from "@runshape/trace";
-import { ArchitectureProfile, ArchitectureStyle, profileFor, PROFILES, RULES_FILE, ZoneRules } from "@runshape/architecture";
-import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildPlacements, buildReplay, buildReview, buildRouteMap, buildSystemGraph, buildTimeline, detectMoves, diffArchitecture, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves, UnknownFunctionError } from "@runshape/views";
+import { ArchitectureProfile, CodeSymbol, Grouping, Run } from "@runshape/trace";
+import { buildSystemGraph, comparedGraphs, profileFor, PROFILES, RULES_FILE, ZoneRules } from "@runshape/architecture";
+import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildPlacements, buildReplay, buildReview, buildRouteMap, buildTimeline, detectMoves, diffArchitecture, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves, UnknownFunctionError } from "@runshape/views";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, detectArchitecture, parseArchitectureAdvice, parseZoneAdvice, projectPackages, proposedRules, RunSummary, ScenarioSummary, UiRequest, UiResponse, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */
@@ -158,11 +158,13 @@ export class ViewerSession {
         // A head runshape.json that can't be read has no rules to compare: not "every rule removed".
         const baseRulesKnown = this.baselineRules !== null && this.rulesProblem === null;
         const baseRules = baseRulesKnown ? this.baselineRules! : this.rules;
-        const drawing = { phases: request.phases, grouping: request.grouping, rules: this.rules, baseRules, moves: this.moves() };
+        const sides = { phases: request.phases, grouping: request.grouping };
+        const drawing = { ...sides, moves: this.moves() };
+        const zones = { ...sides, rules: this.rules, baseRules };
         return {
           type: "diff",
-          diff: diffRuns(this.baseline, this.run, { ...drawing, profile }),
-          review: buildReview(this.baseline, this.run, drawing),
+          diff: diffRuns(this.baseline, this.run, comparedGraphs(this.baseline, this.run, { ...zones, profile }), drawing),
+          review: buildReview(this.baseline, this.run, comparedGraphs(this.baseline, this.run, zones), drawing),
           // Both placed in head's style, so a style change doesn't read as every class moving.
           architecture: diffArchitecture(buildPlacements(this.baseline, baseRules, this.rules.profile), buildPlacements(this.run, this.rules), this.moves()),
           baseRulesKnown,

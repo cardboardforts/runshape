@@ -12,9 +12,11 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { QualifiedName } from "@runshape/trace";
+import { diffOf } from "./graphs";
+
+import { QualifiedName, ZoneSource } from "@runshape/trace";
 import { ZoneRules } from "@runshape/architecture";
-import { ArchitectureDiff, ArchitectureSnapshot, buildPlacements, detectMoves, diffArchitecture, diffRuns, Moves, Placement, ZoneSource } from "../src";
+import { ArchitectureDiff, ArchitectureSnapshot, buildPlacements, detectMoves, diffArchitecture, Moves, Placement } from "../src";
 import { fixtureRuns, loadFixtureRun } from "../../trace/test/fixtures";
 
 const rules = (zones: { match: string; zone: string; reason: string; by: string }[]) => ZoneRules.parse(JSON.stringify({ version: 2, style: "hexagonal", zones }));
@@ -180,7 +182,7 @@ describe("diffRuns with each side's own rules", () => {
   test("a box whose zone a rule changed is changed, even though it was called the same", async () => {
     const run = await loadFixtureRun("go-shop");
 
-    const diff = diffRuns(run, run, { baseRules: rules([ORDERS]), rules: rules([ORDERS, STORAGE]) });
+    const diff = diffOf(run, run, { baseRules: rules([ORDERS]), rules: rules([ORDERS, STORAGE]) });
 
     expect(diff.nodes.filter((node) => node.change !== "unchanged").map((node) => `${node.label}: ${node.change}, ${node.zoneBefore} -> ${node.zone}`)).toEqual([
       "MemoryRepository: changed, core -> outbound-adapter",

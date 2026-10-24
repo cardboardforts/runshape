@@ -11,9 +11,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Run, TraceDirectory, TraceFiles } from "@runshape/trace";
-import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Scenario, Span, SymbolKind } from "@runshape/trace";
-import { buildReview, Change, detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, diffRuns, mergeReplays, Op } from "../src";
+import { diffOf, reviewOf } from "./graphs";
+
+import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Run, Scenario, Span, SymbolKind, TraceDirectory, TraceFiles } from "@runshape/trace";
+import { Change, detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, mergeReplays, Op } from "../src";
 import { fixtureFiles } from "../../trace/test/fixtures";
 
 const FROM = "app.services.articles";
@@ -73,7 +74,7 @@ async function baseAndMoved(options?: { keepSources: boolean }): Promise<{ base:
 
 /** Boxes and edges that appear or disappear between the runs: none, for a pure move. */
 function churn(base: Run, head: Run): string[] {
-  const diff = diffRuns(base, head);
+  const diff = diffOf(base, head);
   return [...diff.nodes, ...diff.edges].filter((item) => item.change === Change.Added || item.change === Change.Removed).map((item) => `${item.change} ${item.id}`);
 }
 
@@ -94,8 +95,8 @@ describe("moved code", () => {
   test("a pure move compares as unchanged, test by test, box by box and route by route, and the review says what moved", async () => {
     const { base, head } = await baseAndMoved();
 
-    const diff = diffRuns(base, head);
-    const review = buildReview(base, head);
+    const diff = diffOf(base, head);
+    const review = reviewOf(base, head);
     const routes = diffRouteMaps(base, head, { moves: detectMoves(base, head) });
 
     expect(diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).map((scenario) => scenario.name)).toEqual([]);
@@ -128,7 +129,7 @@ describe("moved code", () => {
     const { base, head } = await baseAndMoved({ keepSources: false });
 
     expect(detectMoves(base, head).functions).toEqual([]);
-    expect(diffRuns(base, head).scenarios.some((scenario) => scenario.change !== Change.Unchanged)).toBe(true);
+    expect(diffOf(base, head).scenarios.some((scenario) => scenario.change !== Change.Unchanged)).toBe(true);
   });
 });
 
@@ -147,7 +148,7 @@ describe("moves the first version got wrong (second-model review)", () => {
     const base = await new TraceDirectory(SLUG()).latest();
     const head = await new TraceDirectory(rewritten(SLUG(), { modules: { "app.services.authentication": "app.services.jwt" } })).latest();
 
-    const jwt = diffRuns(base, head).nodes.find((node) => node.id === "module:app.services.jwt")!;
+    const jwt = diffOf(base, head).nodes.find((node) => node.id === "module:app.services.jwt")!;
     expect([jwt.change, churn(base, head)]).toEqual([Change.Unchanged, []]);
   });
 
@@ -172,8 +173,8 @@ describe("moves the first version got wrong (second-model review)", () => {
     ).latest();
 
     const moves = detectMoves(base, head);
-    const create = diffRuns(base, head).scenarios.find((scenario) => scenario.id === CREATE)!;
-    const reviewed = buildReview(base, head).items.find((item) => item.scenarioId === CREATE)!;
+    const create = diffOf(base, head).scenarios.find((scenario) => scenario.id === CREATE)!;
+    const reviewed = reviewOf(base, head).items.find((item) => item.scenarioId === CREATE)!;
 
     expect(moves.describe()).toEqual([`${FROM} -> ${TO} (5 functions, 1 edited)`]);
     expect(create.functionsChanged.map((fn) => `${fn.symbol.namespace}:${fn.symbol.path} +${fn.linesNowReached} -${fn.linesNoLongerReached}`)).toEqual([
@@ -228,8 +229,8 @@ describe("moved tests", () => {
     const head = await new TraceDirectory(movedTests(SLUG())).latest();
     const movedCreate = CREATE.replace(FROM_FILE, TO_FILE);
 
-    const diff = diffRuns(base, head);
-    const review = buildReview(base, head);
+    const diff = diffOf(base, head);
+    const review = reviewOf(base, head);
     const moves = detectMoves(base, head);
 
     expect(diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).map((scenario) => `${scenario.change} ${scenario.id}`)).toEqual([]);

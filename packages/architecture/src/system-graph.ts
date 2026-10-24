@@ -1,58 +1,8 @@
 import { CLIENT_ID, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Span, SymbolKind } from "@runshape/trace";
-import { ArchitectureProfile, FixedZone, forbiddenCall, zoneFromName, ZoneRules } from "@runshape/architecture";
+import { ArchitectureProfile, ComparedGraphs, FixedZone, GraphEdge, GraphNode, Smell, SystemGraph, ZoneId, ZoneSource } from "@runshape/trace";
 
-/**
- * Where a component sits, in the active profile's zones (see profiles.ts): a FixedZone for
- * framework, test-double and external code, otherwise one of the style's own zones. A rule in
- * runshape.json decides when one matches; otherwise it's inferred, by the style's rules for
- * names and for runtime behaviour (does the framework hand it requests? does it call an
- * external system?).
- */
-export type ZoneId = string;
-
-export enum Smell {
-  /** Talks to an external system directly from a zone the style says shouldn't. */
-  TouchesExternal = "touches-external",
-}
-
-export enum ZoneSource {
-  /** Framework, external system, test double: what the component is, not a judgement. */
-  Fixed = "fixed",
-  Rule = "rule",
-  Inferred = "inferred",
-}
-
-export interface GraphNode {
-  id: string;
-  kind: ComponentKind;
-  label: string;
-  qualifiedName: string | null;
-  zone: ZoneId;
-  zoneSource: ZoneSource;
-  /** Why it has this zone: the rule (pattern and reason) or the observed behaviour. */
-  zoneReason: string;
-  smells: Smell[];
-  calls: number;
-  instances: number;
-  scenarioIds: string[];
-}
-
-export interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-  calls: number;
-  scenarioIds: string[];
-  /** Why this call breaks the active style; null when the style allows it. */
-  violation: string | null;
-}
-
-export interface SystemGraph {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  /** The style the graph was drawn in: its zones name and order what the viewer shows. */
-  profile: ArchitectureProfile;
-}
+import { forbiddenCall, zoneFromName } from "./profiles";
+import { ZoneRules } from "./zones";
 
 export interface GraphOptions {
   /** Defaults to the test body only; include Setup to see app startup and fixtures. */
@@ -68,6 +18,23 @@ export interface GraphOptions {
 const DEFAULT_PHASES = [Phase.Call];
 
 const EDGE_KINDS = new Set([ComponentKind.Client, ComponentKind.Entry, ComponentKind.Middleware, ComponentKind.Router]);
+
+/**
+ * Two runs' graphs for a comparison: both in one style (the given one, else the rules'), so
+ * their zones compare, and the base with its own rules (its commit's runshape.json), so a zone
+ * a branch changed shows as a change. The base's rules for another style place nothing in it:
+ * its code is inferred.
+ */
+export function comparedGraphs(
+  before: Run,
+  after: Run,
+  options: { phases?: Phase[]; grouping?: Grouping; rules?: ZoneRules; baseRules?: ZoneRules; profile?: ArchitectureProfile | null } = {},
+): ComparedGraphs {
+  const rules = options.rules ?? ZoneRules.none();
+  const profile = options.profile ?? rules.profile;
+  const drawing = { phases: options.phases, grouping: options.grouping, profile };
+  return { before: buildSystemGraph(before, { ...drawing, rules: options.baseRules ?? rules }), after: buildSystemGraph(after, { ...drawing, rules }) };
+}
 
 export function buildSystemGraph(run: Run, options: GraphOptions = {}): SystemGraph {
   const phases = new Set(options.phases ?? DEFAULT_PHASES);

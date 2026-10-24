@@ -6,8 +6,10 @@
  */
 import { describe, expect, test } from "vitest";
 
+import { diffOf } from "./graphs";
+
 import {  } from "@runshape/trace";
-import { Change, diffRuns } from "../src";
+import { Change } from "../src";
 import { fixtureRuns } from "../../trace/test/fixtures";
 
 async function loadFeedFix() {
@@ -22,7 +24,7 @@ describe("diffRuns", () => {
   test("the routing fix changes one journey: the feed request now reaches the feed view", async () => {
     const { before, after } = await loadFeedFix();
 
-    const diff = diffRuns(before, after, { grouping: { collapseMiddleware: true } });
+    const diff = diffOf(before, after, { grouping: { collapseMiddleware: true } });
 
     const changed = diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged);
     expect(changed).toMatchInlineSnapshot(`
@@ -165,7 +167,7 @@ describe("diffRuns", () => {
   test("on the graph, the feed view is new and the components it uses carry more traffic", async () => {
     const { before, after } = await loadFeedFix();
 
-    const diff = diffRuns(before, after, { grouping: { collapseMiddleware: true } });
+    const diff = diffOf(before, after, { grouping: { collapseMiddleware: true } });
 
     expect(diff.nodes.filter((n) => n.change !== Change.Unchanged).map((n) => `${n.change} ${n.label}`)).toMatchInlineSnapshot(`
       [
@@ -197,8 +199,8 @@ describe("diffRuns", () => {
     const withVersion = (run: typeof before, version: string) =>
       Object.assign(Object.create(Object.getPrototypeOf(run)), run, { recorderVersion: version });
 
-    expect(diffRuns(before, after).caveats).toEqual([]);
-    expect(diffRuns(withVersion(before, "0.1.0"), withVersion(after, "0.2.0")).caveats).toMatchInlineSnapshot(`
+    expect(diffOf(before, after).caveats).toEqual([]);
+    expect(diffOf(withVersion(before, "0.1.0"), withVersion(after, "0.2.0")).caveats).toMatchInlineSnapshot(`
       [
         "Recorded by different recorder versions (0.1.0 → 0.2.0); some differences may come from the recorder, not the code.",
       ]

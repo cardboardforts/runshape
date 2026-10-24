@@ -4,15 +4,16 @@
  */
 import { describe, expect, test } from "vitest";
 
-import {  } from "@runshape/trace";
+import { reviewOf } from "./graphs";
+
 import { Outcome } from "@runshape/trace";
 import { Change } from "../src";
-import { buildReview, ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src";
+import { ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src";
 import { FixtureApp, fixtureRuns } from "../../trace/test/fixtures";
 
 async function review(app: FixtureApp) {
   const runs = fixtureRuns(app);
-  return buildReview((await runs.previous())!, await runs.latest());
+  return reviewOf((await runs.previous())!, await runs.latest());
 }
 
 describe("buildReview", () => {
@@ -110,7 +111,7 @@ describe("a new test has no base to differ from", () => {
     const base = await fixtureRuns("go-shop").latest();
     const head = await fixtureRuns("go-shop-running").latest();
 
-    const added = buildReview(base, head).items.filter((item) => item.outcomeBefore === null);
+    const added = reviewOf(base, head).items.filter((item) => item.outcomeBefore === null);
 
     expect({ added: added.length, listingLines: added.filter((item) => item.changedPaths.length > 0).map((item) => item.name) }).toEqual({ added: 7, listingLines: [] });
   });

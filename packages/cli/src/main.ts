@@ -2,7 +2,7 @@
 // the previous one (as runshape-review leaves them), as Markdown for a pull request comment.
 import { resolve } from "node:path";
 
-import { buildReview, reviewMarkdown, TraceDirectory } from "@runshape/core";
+import { buildReview, comparedGraphs, reviewMarkdown, TraceDirectory } from "@runshape/core";
 import { NodeFiles } from "@runshape/infra";
 
 const DEFAULT_TRACES = ".runshape/traces";
@@ -14,7 +14,7 @@ export async function reviewFromDirectory(tracesDirectory: string): Promise<stri
   if (base === null) {
     throw new Error(`${tracesDirectory} has only one recording; run runshape-review --base <ref> to record a base to compare with`);
   }
-  return reviewMarkdown(buildReview(base, head));
+  return reviewMarkdown(buildReview(base, head, comparedGraphs(base, head)));
 }
 
 export async function main(argv: string[]): Promise<number> {

@@ -3,7 +3,8 @@
 // two disagree is the architecture finding.
 
 import { QualifiedName, splitDotted } from "@runshape/trace";
-import { ArchitectureProfile, HEXAGONAL, PROFILES, profileFor } from "./profiles";
+import { HEXAGONAL, PROFILES, profileFor } from "./profiles";
+import { ArchitectureProfile } from "@runshape/trace";
 
 export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */

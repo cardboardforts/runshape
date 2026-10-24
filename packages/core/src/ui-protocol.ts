@@ -3,9 +3,9 @@
 import { Outcome, Phase } from "@runshape/trace";
 import type { ArchitectureCandidate } from "./architecture";
 import type { ZoneAdvice } from "./zone-advice";
-import type { ArchitectureStyle, ZoneRule } from "@runshape/architecture";
-import type { Grouping } from "@runshape/trace";
-import type { ArchitectureDiff, ComponentView, ComponentWiring, ExecutionDiff, FunctionExecutionDiff, FunctionView, MergedReplayStep, ObjectGraph, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, SystemGraph, Timeline } from "@runshape/views";
+import type { ZoneRule } from "@runshape/architecture";
+import type { ArchitectureStyle, Grouping, SystemGraph } from "@runshape/trace";
+import type { ArchitectureDiff, ComponentView, ComponentWiring, ExecutionDiff, FunctionExecutionDiff, FunctionView, MergedReplayStep, ObjectGraph, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, Timeline } from "@runshape/views";
 
 export interface ScenarioSummary {
   id: string;

@@ -5,12 +5,11 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "@runshape/trace";
+import { Phase, pythonSymbol, SystemGraph } from "@runshape/trace";
 import { buildComponentView } from "../src";
 import { buildFunctionView, FunctionView } from "../src";
-import { pythonSymbol } from "@runshape/trace";
 import { buildReplay } from "../src";
-import { buildSystemGraph, SystemGraph } from "../src";
+import { buildSystemGraph } from "@runshape/architecture";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 function describeGraph(graph: SystemGraph): string {

@@ -7,7 +7,8 @@
 import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/trace";
-import { buildReplay, buildSystemGraph, StepKind } from "../src";
+import { buildReplay, StepKind } from "../src";
+import { buildSystemGraph } from "@runshape/architecture";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 describe("a Go service", () => {

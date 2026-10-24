@@ -4,8 +4,7 @@
 import { ArchitectureCandidate } from "./architecture";
 import type { QualifiedName } from "@runshape/trace";
 import { Confidence, languageName } from "./zone-advice";
-import { PROFILES, profileFor } from "@runshape/architecture";
-import { ZoneRule, ZoneRules } from "@runshape/architecture";
+import { profileFor, PROFILES, ZoneRule, ZoneRules } from "@runshape/architecture";
 
 export interface ArchitectureAdvice {
   rules: ZoneRules;

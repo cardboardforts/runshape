@@ -1,8 +1,6 @@
-import { CodeSymbol, componentOf, FINE_GROUPING, FunctionRef, functionRef, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/trace";
+import { ArchitectureProfile, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/trace";
 import { detectMoves, Moves } from "./moves";
 import { buildReplay, StepKind } from "./replay";
-import { ArchitectureProfile, ZoneRules } from "@runshape/architecture";
-import { buildSystemGraph, GraphEdge, GraphNode } from "./system-graph";
 
 /**
  * What a code change did to behaviour: the same tests recorded before and after, compared
@@ -64,27 +62,15 @@ export interface RunDiff {
 export interface DiffOptions {
   phases?: Phase[];
   grouping?: Grouping;
-  rules?: ZoneRules;
-  /**
-   * The base's own rules (its commit's runshape.json): a zone a branch changed is then a
-   * change. Defaults to `rules`, both sides drawn with the same zones.
-   */
-  baseRules?: ZoneRules;
-  /** The style to draw both sides in; defaults to the rules' style. */
-  profile?: ArchitectureProfile;
   /** What moved between the runs; detected when not given. */
   moves?: Moves;
 }
 
-export function diffRuns(before: Run, after: Run, options: DiffOptions = {}): RunDiff {
+/** The runs compared, and their graphs as the arch module drew them for it (comparedGraphs). */
+export function diffRuns(before: Run, after: Run, graphs: ComparedGraphs, options: DiffOptions = {}): RunDiff {
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
-  const rules = options.rules ?? ZoneRules.none();
-  // Both sides in one style, so their zones compare: the base's rules for another style place
-  // nothing in it, and its code is inferred.
-  const profile = options.profile ?? rules.profile;
-  const graphBefore = buildSystemGraph(before, { phases, grouping, rules: options.baseRules ?? rules, profile });
-  const graphAfter = buildSystemGraph(after, { phases, grouping, rules, profile });
+  const { before: graphBefore, after: graphAfter } = graphs;
   const moves = options.moves ?? detectMoves(before, after);
   // The base's boxes under head's names: a moved module is the same box, not one gone and one new.
   const headId = (id: string) => renamedComponentId(id, moves);

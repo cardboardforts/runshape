@@ -1,6 +1,5 @@
 import { Op } from "./align";
-import { FINE_GROUPING, Grouping, Outcome, Phase, Run, SymbolKind } from "@runshape/trace";
-import { ZoneRules } from "@runshape/architecture";
+import { ComparedGraphs, FINE_GROUPING, Grouping, Outcome, Phase, Run, SymbolKind } from "@runshape/trace";
 import { diffExecution } from "./execution-diff";
 import { detectMoves, Moves } from "./moves";
 import { Change, diffRuns } from "./run-diff";
@@ -69,15 +68,11 @@ export interface ReviewSummary {
 
 const FAILING = new Set([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
 
-export function buildReview(
-  base: Run,
-  head: Run,
-  options: { phases?: Phase[]; grouping?: Grouping; rules?: ZoneRules; baseRules?: ZoneRules; moves?: Moves } = {},
-): ReviewSummary {
+export function buildReview(base: Run, head: Run, graphs: ComparedGraphs, options: { phases?: Phase[]; grouping?: Grouping; moves?: Moves } = {}): ReviewSummary {
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
   const moves = options.moves ?? detectMoves(base, head);
-  const diff = diffRuns(base, head, { phases, grouping, rules: options.rules, baseRules: options.baseRules, moves });
+  const diff = diffRuns(base, head, graphs, { phases, grouping, moves });
   const items: ReviewItem[] = [];
 
   for (const scenario of diff.scenarios) {

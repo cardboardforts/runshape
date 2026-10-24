@@ -1,11 +1,11 @@
 // Asking a language model where a component belongs. The model only proposes; a person
 // accepts, and only then does it become a rule in runshape.json. Everything here is pure so
 // the prompt and the validation of the answer are testable without a model.
-import { ArchitectureProfile } from "@runshape/architecture";
+import { ArchitectureProfile } from "@runshape/trace";
 
 import type { LanguageModel } from "./language-model";
 import type { ComponentView } from "@runshape/views";
-import type { GraphNode, SystemGraph } from "@runshape/views";
+import type { GraphNode, SystemGraph } from "@runshape/trace";
 
 /** What zone advice needs of a language model: one prompt in, its text back. */
 export type ZoneAdvisor = Pick<LanguageModel, "available" | "complete">;

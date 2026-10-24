@@ -4,8 +4,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { HexagonalZone, HEXAGONAL, ZoneRules } from "@runshape/architecture";
-import { buildSystemGraph, SystemGraph } from "../src";
+import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "@runshape/architecture";
+import { SystemGraph } from "@runshape/trace";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 function describeZones(graph: SystemGraph, labels: string[]): string[] {

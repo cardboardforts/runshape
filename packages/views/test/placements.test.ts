@@ -11,7 +11,8 @@
 import { describe, expect, test } from "vitest";
 
 import { ZoneRules } from "@runshape/architecture";
-import { ArchitectureSnapshot, buildPlacements, byCodeUnit, ZoneSource } from "../src";
+import { ArchitectureSnapshot, buildPlacements, byCodeUnit } from "../src";
+import { ZoneSource } from "@runshape/trace";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const GO_SHOP_RULES = JSON.stringify({

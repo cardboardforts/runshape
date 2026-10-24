@@ -7,13 +7,10 @@ import { describe, expect, test } from "vitest";
 
 import { parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
 
-import { Phase } from "@runshape/trace";
-import { HexagonalZone, HEXAGONAL } from "@runshape/architecture";
-import { ZoneRules } from "@runshape/architecture";
+import { Phase, pythonSymbol } from "@runshape/trace";
+import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "@runshape/architecture";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
-import { pythonSymbol } from "@runshape/trace";
 import { buildComponentView } from "@runshape/views";
-import { buildSystemGraph } from "@runshape/views";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";

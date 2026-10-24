@@ -1,6 +1,6 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { Grouping, Phase, Run } from "@runshape/trace";
-import { ZoneRule, ZoneRules } from "@runshape/architecture";
+import { comparedGraphs, ZoneRule, ZoneRules } from "@runshape/architecture";
 import {
   ArchitectureDiff,
   buildPlacements,
@@ -100,7 +100,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     head: input.headSide,
     options: BUNDLE_OPTIONS,
     baseRulesKnown: input.baseRules !== null,
-    review: withoutQueryText(buildReview(base, head, { ...BUNDLE_OPTIONS, rules, baseRules, moves })),
+    review: withoutQueryText(buildReview(base, head, comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules }), { ...BUNDLE_OPTIONS, moves })),
     // Both placed in head's style: a style change is one change, not every class moving.
     architecture: diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves),
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),

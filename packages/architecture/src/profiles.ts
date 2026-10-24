@@ -4,61 +4,13 @@
 // profile; hexagonal is the default and reproduces the viewer's original behaviour exactly.
 
 import type { QualifiedName } from "@runshape/trace";
-
-export enum ArchitectureStyle {
-  Hexagonal = "hexagonal",
-  Layered = "layered",
-  Mvc = "mvc",
-  Mvvm = "mvvm",
-  Mvp = "mvp",
-}
-
-/** How a style is drawn: the hexagon floor, stacked bands, or a triangle of three roles. */
-export enum LayoutShape {
-  Hexagon = "hexagon",
-  Bands = "bands",
-  Triangle = "triangle",
-}
-
-/** Zones every style shares; they describe what code is, so no rule or style changes them. */
-export enum FixedZone {
-  /** The client and the framework's request path: entry, middleware, router. */
-  Edge = "edge",
-  TestDouble = "test-double",
-  External = "external",
-}
+import { ArchitectureProfile, ArchitectureStyle, LayoutShape } from "@runshape/trace";
 
 /** The hexagonal profile's zone ids (also the ids of the original "rings"). */
 export enum HexagonalZone {
   InboundAdapter = "inbound-adapter",
   Core = "core",
   OutboundAdapter = "outbound-adapter",
-}
-
-export interface ZoneDefinition {
-  id: string;
-  name: string;
-  meaning: string;
-}
-
-export interface ArchitectureProfile {
-  style: ArchitectureStyle;
-  name: string;
-  layout: LayoutShape;
-  /** In drawing order: the side facing the requests first. */
-  zones: ZoneDefinition[];
-  /** Calls the style permits between different zones; every other cross-zone call is a finding. */
-  allowedCalls: [from: string, to: string][];
-  /** What a forbidden call means, where there's more to say than "not allowed". */
-  forbiddenBecause: Record<string, string>;
-  /** Zones allowed to talk to external systems (databases, HTTP) directly. */
-  externalAccess: string[];
-  /** Words that, in module or class names, suggest each zone. */
-  vocabulary: Record<string, string[]>;
-  /** Place unplaced components by their names before their behaviour. */
-  namesFirst: boolean;
-  /** What runtime behaviour means in this style, when no rule or name decides. */
-  behaviour: { handlesRequests: string; callsExternal: string; otherwise: string };
 }
 
 export const HEXAGONAL: ArchitectureProfile = {

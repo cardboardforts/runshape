@@ -8,12 +8,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Run } from "@runshape/trace";
-import { TraceDirectory, TraceFiles } from "@runshape/trace";
-import { pythonSymbol } from "@runshape/trace";
-import { ManifestDto, ScenarioDto } from "@runshape/trace";
-import { diffRuns } from "../src";
-import { buildSystemGraph } from "../src";
+import { diffOf } from "./graphs";
+
+import { ManifestDto, pythonSymbol, Run, ScenarioDto, TraceDirectory, TraceFiles } from "@runshape/trace";
+import { buildSystemGraph } from "@runshape/architecture";
 import { FixtureApp, fixtureFiles, fixtureRuns } from "../../trace/test/fixtures";
 
 /** A v1 trace directory, served as v2: what a recorder writing v2 would have produced. */
@@ -73,7 +71,7 @@ describe("trace format version 2", () => {
   test("and compares the same: the Django routing fix still changes one journey", async () => {
     const { v1, v2, v1Before, v2Before } = await bothVersions("django-feed-fix");
 
-    expect(JSON.stringify(diffRuns(v2Before!, v2))).toBe(JSON.stringify(diffRuns(v1Before!, v1)));
+    expect(JSON.stringify(diffOf(v2Before!, v2))).toBe(JSON.stringify(diffOf(v1Before!, v1)));
   });
 
   test("version 2 input is checked like any other: the manifest is fatal, a bad entry is skipped and named", async () => {
