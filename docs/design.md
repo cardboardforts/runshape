@@ -63,11 +63,11 @@ places each package in a zone; `npm run runshape -- readmes` writes a guide in e
 with what doesn't fit.
 
 - The kernel and the modules import nothing from Node, VS Code or React. File access comes
-  in through ports: `TraceFiles` (declared by the kernel's trace format, `core/src/trace/data`) and the
+  in through ports: `TraceFiles` (declared by the kernel's trace format, `kernel/src/trace/data`) and the
   session's `SourceReader`.
 - Storage, format and translation have separate owners. `packages/infra` keeps files and
   knows no format: it imports no other Runshape package, and its stores fit the domain's ports
-  by shape. The kernel owns the format (`core/src/trace`): `model/` is the run in memory and the
+  by shape. The kernel owns the format (`kernel/src/trace`): `model/` is the run in memory and the
   `RunSource` port, `data/` the wire shape, its parsing and a traces directory's layout. Each
   recorder translates its language's own trace into the format before writing it, so nothing
   past the recorder sees a language's native trace.

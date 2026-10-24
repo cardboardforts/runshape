@@ -109,6 +109,10 @@ describe("package boundaries", () => {
           const runshape = specifier.match(/^@runshape\/([^/]+)/)?.[1];
           if (runshape !== undefined) {
             used.add(`@runshape/${runshape}`);
+            // The kernel may name a module's types (NOT_YET), never load it: that would be a cycle.
+            if (ROLES[pkg] === "kernel" && ROLES[`packages/${runshape}`] !== "kernel" && !new RegExp(`import type [^;]*["']${specifier}["']`).test(text)) {
+              violations.push(`${where} loads @runshape/${runshape} at runtime: the kernel may only import its types`);
+            }
             if (!allowed.includes(runshape)) violations.push(`${where} imports @runshape/${runshape}`);
             // A package by its name, never its insides: what it exports is what it offers.
             if (specifier !== `@runshape/${runshape}`) violations.push(`${where} reaches inside @runshape/${runshape}: ${specifier}`);

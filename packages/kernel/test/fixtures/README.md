@@ -23,7 +23,7 @@ over `<app>/run/`. The inline snapshots in `test/*.test.ts` will show what chang
 
 - `go-shop/` — examples/go-shop recorded by recorder-go (trace format version 2, with source,
   the routes it read from the source, and each request):
-  `npm run record-go -- -out packages/trace/test/fixtures/go-shop -run run examples/go-shop`.
+  `npm run record-go -- -out packages/kernel/test/fixtures/go-shop -run run examples/go-shop`.
 - `go-shop-running/` — go-shop's real binary recorded by `runshape-go run` while curl sent it a
   session (a warm-up probe, a placed order, a fetch, a refused order, a malformed one, an unknown
   id): startup and one scenario per request.
