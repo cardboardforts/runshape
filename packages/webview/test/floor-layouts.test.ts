@@ -7,7 +7,8 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { ArchitectureStyle, buildSystemGraph, FixedZone, profileFor, SystemGraph, TraceDirectory } from "@runshape/core";
+import { buildSystemGraph, profileFor } from "@runshape/architecture";
+import { ArchitectureStyle, FixedZone, SystemGraph, TraceDirectory } from "@runshape/trace";
 
 import { layoutBands, STEP_RISE } from "../src/three/bands-layout";
 import type { Tile } from "../src/three/floor";

@@ -6,7 +6,10 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { ArchitectureProfile, Change, ComponentWiring, GraphNode, HEXAGONAL, ObjectGraph, Op, StepKind, SystemGraph } from "@runshape/core";
+import { HEXAGONAL } from "@runshape/architecture";
+import { ArchitectureProfile, GraphNode, SystemGraph } from "@runshape/trace";
+import { Change, Op, StepKind } from "@runshape/views";
+import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 
 import { zoneColor } from "../zone-style";
 

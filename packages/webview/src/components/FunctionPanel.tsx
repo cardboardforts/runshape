@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { FunctionView, LineView, ScenarioPath } from "@runshape/core";
+import { FunctionView, LineView, ScenarioPath } from "@runshape/visualizer";
 
 import { wireColor } from "../wire-colors";
 

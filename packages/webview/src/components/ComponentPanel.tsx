@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import { ComponentView, formatMicros, FunctionSummary } from "@runshape/core";
+import { ComponentView, FunctionSummary } from "@runshape/trace";
+import { formatMicros } from "@runshape/views";
 
 interface Props {
   view: ComponentView;

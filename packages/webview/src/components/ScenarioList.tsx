@@ -1,4 +1,6 @@
-import { Outcome, REVIEW_ORDER, ReviewCategory, ScenarioSummary } from "@runshape/core";
+import { ScenarioSummary } from "@runshape/core";
+import { Outcome } from "@runshape/trace";
+import { REVIEW_ORDER, ReviewCategory } from "@runshape/views";
 
 const OUTCOME_LABEL: Record<Outcome, string> = {
   [Outcome.Passed]: "passed",

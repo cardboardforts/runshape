@@ -1,4 +1,4 @@
-import { ArchitectureCandidate, profileFor } from "@runshape/core";
+import { ArchitectureCandidate, profileFor } from "@runshape/architecture";
 
 export type ModelAdvice =
   | { kind: "idle" }

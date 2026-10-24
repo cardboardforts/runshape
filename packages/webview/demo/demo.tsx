@@ -10,7 +10,9 @@ import { createRoot } from "react-dom/client";
 import "@xyflow/react/dist/style.css";
 import "../src/styles.css";
 
-import { Run, RunSource, TraceDirectory, UiRequest, UiResponse, ZoneRules, ZoneRulesError } from "@runshape/core";
+import { ZoneRules, ZoneRulesError } from "@runshape/architecture";
+import { UiRequest, UiResponse } from "@runshape/core";
+import { Run, RunSource, TraceDirectory } from "@runshape/trace";
 import { RuleChange, ViewerSession } from "@runshape/workflows";
 
 import { App } from "../src/App";

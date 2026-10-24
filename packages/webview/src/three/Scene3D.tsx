@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Change, ComponentWiring, GraphNode, ObjectGraph, Op, ReplayStep, SystemGraph } from "@runshape/core";
+import { GraphNode, SystemGraph } from "@runshape/trace";
+import { Change, Op, ReplayStep } from "@runshape/views";
+import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 
 import { Emphasis, HexScene } from "./hex-scene";
 import { layoutFloor } from "./layout-floor";

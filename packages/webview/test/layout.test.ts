@@ -10,7 +10,8 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { ArchitectureStyle, buildSystemGraph, FixedZone, GraphNode, profileFor, PROFILES, SystemGraph, TraceDirectory } from "@runshape/core";
+import { buildSystemGraph, profileFor, PROFILES } from "@runshape/architecture";
+import { ArchitectureStyle, FixedZone, GraphNode, SystemGraph, TraceDirectory } from "@runshape/trace";
 
 import { layoutGraph } from "../src/layout";
 

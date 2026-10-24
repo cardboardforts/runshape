@@ -1,4 +1,5 @@
-import { ComponentKind, FixedZone, GraphNode, SystemGraph, zonePosition } from "@runshape/core";
+import { zonePosition } from "@runshape/architecture";
+import { ComponentKind, FixedZone, GraphNode, SystemGraph } from "@runshape/trace";
 
 import { byLabel, FloorLayout, MAX_TILE, Tile, TILE_SPACING, tileSize } from "./floor";
 

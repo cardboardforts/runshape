@@ -1,4 +1,4 @@
-import { CallStep, Change, ExecutionDiff, FunctionChange, ScenarioDiff } from "@runshape/core";
+import { CallStep, Change, ExecutionDiff, FunctionChange, ScenarioDiff } from "@runshape/views";
 
 import { ExecutionCalls } from "./ExecutionDiffView";
 

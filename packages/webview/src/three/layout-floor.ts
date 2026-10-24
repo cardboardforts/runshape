@@ -1,4 +1,4 @@
-import { LayoutShape, SystemGraph } from "@runshape/core";
+import { LayoutShape, SystemGraph } from "@runshape/trace";
 
 import { layoutBands } from "./bands-layout";
 import type { FloorLayout } from "./floor";

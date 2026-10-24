@@ -33,10 +33,14 @@ const echoAdvisor = {
 };
 
 test("dump every view", async () => {
-  // Through core's index, and workflows' where the revision has it (the session moved there in
-  // Phase 0b): modules move between packages, these indexes keep exporting them.
-  const workflowsIndex = join(CORE_SRC, "..", "..", "workflows", "src", "index.ts");
-  const exported = { ...(await import(join(CORE_SRC, "index.ts"))), ...(existsSync(workflowsIndex) ? await import(workflowsIndex) : {}) };
+  // Through core's index, and the packages Phase 0b moved things to, where the revision has
+  // them: modules move between packages, these indexes keep exporting them.
+  const packages = join(CORE_SRC, "..", "..");
+  const exported: Record<string, any> = { ...(await import(join(CORE_SRC, "index.ts"))) };
+  for (const name of ["trace", "architecture", "workflows"]) {
+    const index = join(packages, name, "src", "index.ts");
+    if (existsSync(index)) Object.assign(exported, await import(index));
+  }
   const { ViewerSession, PROFILES, TraceDirectory, loadLatestRun, loadPreviousRun } = exported;
   const phases = PHASE_SETS.call;
   const responses: Record<string, unknown> = {};

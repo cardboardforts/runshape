@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { ArchitectureProfile, GraphNode, ZoneAdvice, ZoneSource, Smell } from "@runshape/core";
+import { ZoneAdvice } from "@runshape/architecture";
+import { ArchitectureProfile, GraphNode, Smell, ZoneSource } from "@runshape/trace";
 
 import { zoneClass, zoneLabel } from "../zone-style";
 

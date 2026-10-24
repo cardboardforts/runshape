@@ -4,7 +4,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, FixedZone, HEXAGONAL, HexagonalZone, TraceDirectory } from "@runshape/core";
+import { buildSystemGraph, HEXAGONAL, HexagonalZone } from "@runshape/architecture";
+import { FixedZone, TraceDirectory } from "@runshape/trace";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 

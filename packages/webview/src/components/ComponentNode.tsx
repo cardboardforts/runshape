@@ -1,6 +1,7 @@
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 
-import { ArchitectureProfile, Change, GraphNode } from "@runshape/core";
+import { ArchitectureProfile, GraphNode } from "@runshape/trace";
+import { Change } from "@runshape/views";
 
 import { zoneClass, zoneLabel } from "../zone-style";
 

@@ -1,4 +1,4 @@
-import { Op, ReplayPace, ReplayStep, StepKind } from "@runshape/core";
+import { Op, ReplayPace, ReplayStep, StepKind } from "@runshape/views";
 
 interface Props {
   scenarioName: string;
