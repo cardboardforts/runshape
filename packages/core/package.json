@@ -9,8 +9,9 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@runshape/trace": "0.1.0",
     "@runshape/architecture": "0.1.0",
-    "@runshape/views": "0.1.0"
+    "@runshape/trace": "0.1.0",
+    "@runshape/views": "0.1.0",
+    "@runshape/visualizer": "0.1.0"
   }
 }

@@ -4,6 +4,7 @@
 export * from "@runshape/trace";
 export * from "@runshape/architecture";
 export * from "@runshape/views";
+export * from "@runshape/visualizer";
 export * from "./recordings-model";
 export * from "./recordings-ports";
 export * from "./ui-protocol";

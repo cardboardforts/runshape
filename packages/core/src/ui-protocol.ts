@@ -3,7 +3,8 @@
 import { Outcome, Phase } from "@runshape/trace";
 import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } from "@runshape/architecture";
 import type { ArchitectureStyle, ComponentView, Grouping, SystemGraph } from "@runshape/trace";
-import type { ComponentWiring, ExecutionDiff, FunctionExecutionDiff, FunctionView, MergedReplayStep, ObjectGraph, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, Timeline } from "@runshape/views";
+import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/views";
+import type { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
 
 export interface ScenarioSummary {
   id: string;

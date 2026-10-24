@@ -10,7 +10,7 @@ import { parseZoneAdvice, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runs
 import { Phase, pythonSymbol } from "@runshape/trace";
 import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "@runshape/architecture";
 import { RuleChange, ViewerSession, ZoneRuleStore } from "../src/session";
-import { buildComponentView } from "@runshape/views";
+import { buildComponentView } from "@runshape/visualizer";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 
 const USERS_REPOSITORY = "class:app.db.repositories.users.UsersRepository";

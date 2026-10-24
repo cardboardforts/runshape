@@ -31,6 +31,7 @@ const ROLES: Record<string, Role> = {
   "packages/architecture": "module",
   "packages/views": "module",
   "packages/explainer": "module",
+  "packages/visualizer": "module",
   "packages/workflows": "workflows",
   "packages/infra": "infra",
   "packages/library": "infra",
@@ -56,7 +57,7 @@ const PERMITTED: Record<Role, string[]> = {
 
 /** Imports the target forbids that the code still has. Phase 0b removes them. */
 const NOT_YET: Record<string, string[]> = {
-  "packages/core": ["architecture", "views"], // core's orchestration and LLM skills (step 2)
+  "packages/core": ["architecture", "views", "visualizer"], // the UI protocol's view models (Phase 3)
 };
 
 /** Which @runshape packages each one may import: its role's, and what it doesn't yet do without. */
