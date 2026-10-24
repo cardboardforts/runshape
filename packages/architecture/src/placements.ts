@@ -1,5 +1,6 @@
 import { ArchitectureProfile, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/trace";
-import { buildSystemGraph, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { buildSystemGraph } from "./system-graph";
+import { ZoneRule, ZoneRules } from "./zones";
 
 /** One of the project's classes or modules, where it sits, and who put it there. */
 export interface Placement {

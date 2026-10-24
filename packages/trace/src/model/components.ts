@@ -85,6 +85,9 @@ export interface Renaming {
   type(name: QualifiedName): QualifiedName;
 }
 
+/** Nothing renamed: every name stays as it is. */
+export const NO_RENAMING: Renaming = { module: (name) => name, type: (name) => name };
+
 /** The same box under the name `renaming` gives it. */
 export function renamedComponent(ref: ComponentRef, renaming: Renaming): ComponentRef {
   if (ref.name === null) return ref;

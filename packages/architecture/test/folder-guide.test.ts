@@ -11,7 +11,7 @@
 import { describe, expect, test } from "vitest";
 
 import { Run } from "@runshape/trace";
-import { ZoneRules } from "@runshape/architecture";
+import { ZoneRules } from "../src";
 import { buildFolderGuides, buildPlacements, FolderGuide } from "../src";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 

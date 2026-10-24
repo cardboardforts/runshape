@@ -57,7 +57,6 @@ const PERMITTED: Record<Role, string[]> = {
 /** Imports the target forbids that the code still has. Phase 0b removes them. */
 const NOT_YET: Record<string, string[]> = {
   "packages/core": ["architecture", "views"], // core's orchestration and LLM skills (step 2)
-  "packages/views": ["architecture"], // views splits into modules (step 3)
 };
 
 /** Which @runshape packages each one may import: its role's, and what it doesn't yet do without. */
@@ -141,8 +140,14 @@ describe("package boundaries", () => {
     const HOST_ALSO: Record<string, Record<string, string[]>> = {
       "packages/webview": { demo: ["library", "workflows"], "dev-server": ["library", "infra"], test: ["library", "infra"] },
     };
+    // A module's tests may wire other modules the way a workflow does (the arch module draws
+    // the graphs the trace module's diffs take): values between them, never imports in src.
+    const WIRING = PERMITTED.workflows;
     const folders = Object.entries(ALLOWED).flatMap(([pkg, allowed]) =>
-      ["test", "demo", "dev-server"].map((folder) => ({ pkg, allowed: [...allowed, ...(HOST_ALSO[pkg]?.[folder] ?? [])], folder: join(ROOT, pkg, folder) })),
+      ["test", "demo", "dev-server"].map((folder) => {
+        const wiring = folder === "test" && ROLES[pkg] === "module" ? WIRING : [];
+        return { pkg, allowed: [...allowed, ...wiring, ...(HOST_ALSO[pkg]?.[folder] ?? [])], folder: join(ROOT, pkg, folder) };
+      }),
     );
     for (const { pkg, allowed, folder } of folders) {
       if (!existsSync(folder)) continue;

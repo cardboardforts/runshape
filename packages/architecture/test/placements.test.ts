@@ -10,7 +10,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { ZoneRules } from "@runshape/architecture";
+import { ZoneRules } from "../src";
 import { ArchitectureSnapshot, buildPlacements, byCodeUnit } from "../src";
 import { ZoneSource } from "@runshape/trace";
 import { loadFixtureRun } from "../../trace/test/fixtures";

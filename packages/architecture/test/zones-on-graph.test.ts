@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "@runshape/architecture";
+import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "../src";
 import { SystemGraph } from "@runshape/trace";
 import { loadFixtureRun } from "../../trace/test/fixtures";
 

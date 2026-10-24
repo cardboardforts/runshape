@@ -1,6 +1,5 @@
-import { ComponentKind, QualifiedName, ZoneSource } from "@runshape/trace";
-import { ZoneRule } from "@runshape/architecture";
-import { Moves } from "./moves";
+import { ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/trace";
+import { ZoneRule } from "./zones";
 import { ArchitectureSnapshot, byCodeUnit, Placement } from "./placements";
 
 /** One component's place before and after; null on the side it doesn't exist. */
@@ -37,7 +36,7 @@ export interface ArchitectureDiff {
   unusedRules: string[];
 }
 
-export function diffArchitecture(before: ArchitectureSnapshot, after: ArchitectureSnapshot, moves: Moves = Moves.none()): ArchitectureDiff {
+export function diffArchitecture(before: ArchitectureSnapshot, after: ArchitectureSnapshot, moves: Renaming = NO_RENAMING): ArchitectureDiff {
   // The base's components under head's names: a moved class is the same class.
   const headName = (placement: Placement): string => {
     const name = QualifiedName.parse(placement.component);

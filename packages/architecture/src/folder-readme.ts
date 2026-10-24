@@ -1,6 +1,6 @@
 // A folder's guide (views/folder-guide.ts) as its README.md: the generated part between
 // markers, everything else a person's.
-import type { FolderGuide } from "@runshape/views";
+import type { FolderGuide } from "./folder-guide";
 
 import type { FolderDescription } from "./folder-description";
 

@@ -1,8 +1,7 @@
 // The recordings workflow (runshape list | record | compare | review-requests | readmes |
 // forget): the CLI parses the command line and wires the adapters; this decides and records.
 import { Outcome, Run, TraceDirectory, ZoneSource } from "@runshape/trace";
-import { RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
-import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, byCodeUnit, FolderGuide } from "@runshape/views";
+import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, byCodeUnit, FolderGuide, RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { ArchitectureSummary, CommitSummary, describeFolder, describeReadme, folderGuideMarkdown, GitError, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, mergeIntoReadme, ModelChoice, needsDescription, openingComment, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, SANDBOX_SUFFIX, VERSION_DIGITS, WORKING_TREE_ID } from "@runshape/core";
 import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
 

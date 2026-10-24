@@ -11,12 +11,10 @@
  */
 import { describe, expect, test } from "vitest";
 
-import {  } from "@runshape/trace";
-import { ZoneRules } from "@runshape/architecture";
-import { buildFolderGuides, buildPlacements } from "@runshape/views";
+import { LanguageModel } from "@runshape/trace";
+import { buildFolderGuides, buildPlacements, ZoneRules } from "../src";
 import { DescriptionError, describeFolder, openingComment, parseFolderDescription } from "../src/folder-description";
 import { describeReadme, mergeIntoReadme, needsDescription, README_PLACEHOLDER } from "../src/folder-readme";
-import { LanguageModel } from "../src/language-model";
 import { fixtureRuns } from "../../trace/test/fixtures";
 
 class FakeModel implements LanguageModel {

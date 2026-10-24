@@ -2,9 +2,8 @@
 // Inference says what a component *does*; a rule says what it *is supposed to be*. Where the
 // two disagree is the architecture finding.
 
-import { QualifiedName, splitDotted } from "@runshape/trace";
+import { ArchitectureProfile, QualifiedName, splitDotted } from "@runshape/trace";
 import { HEXAGONAL, PROFILES, profileFor } from "./profiles";
-import { ArchitectureProfile } from "@runshape/trace";
 
 export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */

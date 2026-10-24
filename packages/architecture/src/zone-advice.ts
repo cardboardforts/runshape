@@ -3,9 +3,7 @@
 // the prompt and the validation of the answer are testable without a model.
 import { ArchitectureProfile } from "@runshape/trace";
 
-import type { LanguageModel } from "./language-model";
-import type { ComponentView } from "@runshape/views";
-import type { GraphNode, SystemGraph } from "@runshape/trace";
+import type { ComponentView, GraphNode, LanguageModel, SystemGraph } from "@runshape/trace";
 
 /** What zone advice needs of a language model: one prompt in, its text back. */
 export type ZoneAdvisor = Pick<LanguageModel, "available" | "complete">;

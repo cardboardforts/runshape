@@ -6,8 +6,7 @@
 import { describe, expect, test } from "vitest";
 
 import {  } from "@runshape/trace";
-import { ZoneRules } from "@runshape/architecture";
-import { buildFolderGuides, buildPlacements } from "@runshape/views";
+import { buildFolderGuides, buildPlacements, ZoneRules } from "../src";
 import { folderGuideMarkdown, mergeIntoReadme } from "../src/folder-readme";
 import { fixtureRuns } from "../../trace/test/fixtures";
 

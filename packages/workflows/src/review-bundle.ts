@@ -1,21 +1,7 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { Grouping, Phase, Run } from "@runshape/trace";
-import { comparedGraphs, ZoneRule, ZoneRules } from "@runshape/architecture";
-import {
-  ArchitectureDiff,
-  buildPlacements,
-  buildReview,
-  Change,
-  detectMoves,
-  diffArchitecture,
-  diffRouteMaps,
-  Op,
-  Placement,
-  PlacementChange,
-  ReviewSummary,
-  reviewMarkdown,
-  RouteMapDiff,
-} from "@runshape/views";
+import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { buildReview, Change, detectMoves, diffRouteMaps, Op, reviewMarkdown, ReviewSummary, RouteMapDiff } from "@runshape/views";
 
 /** One side of the comparison: what was asked for, and the recording that answered it. */
 export interface ReviewSide {

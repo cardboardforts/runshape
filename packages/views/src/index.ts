@@ -1,15 +1,12 @@
-// What the viewer shows, computed from a recording: the system graph, replays, timelines,
-// object wiring, component and function views, and the comparisons between two recordings
-// (run diff, execution diff, review). Depends on @runshape/trace and @runshape/architecture.
+// What two recordings did differently, and what one did, for the viewer: run and execution
+// diffs, routes, the review, replays and timelines, object wiring, component and function
+// views. Becomes the trace module (diffs) and the visualizer module in Phase 0b.
 export * from "./align";
-export * from "./architecture-diff";
 export * from "./component-view";
 export * from "./execution-diff";
-export * from "./folder-guide";
 export * from "./function-view";
 export * from "./moves";
 export * from "./object-graph";
-export * from "./placements";
 export * from "./replay";
 export * from "./review";
 export * from "./routes";

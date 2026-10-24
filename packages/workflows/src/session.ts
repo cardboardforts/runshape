@@ -1,6 +1,6 @@
 import { ArchitectureProfile, CodeSymbol, Grouping, Run } from "@runshape/trace";
-import { buildSystemGraph, comparedGraphs, profileFor, PROFILES, RULES_FILE, ZoneRules } from "@runshape/architecture";
-import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildPlacements, buildReplay, buildReview, buildRouteMap, buildTimeline, detectMoves, diffArchitecture, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves, UnknownFunctionError } from "@runshape/views";
+import { buildPlacements, buildSystemGraph, comparedGraphs, diffArchitecture, profileFor, PROFILES, RULES_FILE, ZoneRules } from "@runshape/architecture";
+import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildReplay, buildReview, buildRouteMap, buildTimeline, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves, UnknownFunctionError } from "@runshape/views";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, detectArchitecture, parseArchitectureAdvice, parseZoneAdvice, projectPackages, proposedRules, RunSummary, ScenarioSummary, UiRequest, UiResponse, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts } from "@runshape/core";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */

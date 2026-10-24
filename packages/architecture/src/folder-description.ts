@@ -1,9 +1,8 @@
 // What a folder is for, drafted by a model for its README: see folder-description.test.ts.
-import type { FolderGuide } from "@runshape/views";
+import type { FolderGuide } from "./folder-guide";
 
 import { folderGuideMarkdown, GuideContext, README_BEGIN, README_END, README_PLACEHOLDER } from "./folder-readme";
-import { firstJsonObject } from "./json-answer";
-import { LanguageModel } from "./language-model";
+import { firstJsonObject, LanguageModel } from "@runshape/trace";
 
 export interface FolderDescription {
   text: string;
