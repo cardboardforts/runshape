@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { Phase, pythonSymbol, SystemGraph } from "@runshape/core";
 import { buildComponentView } from "../src";
 import { buildFunctionView, FunctionView } from "../src";
-import { buildReplay } from "@runshape/views";
+import { buildReplay } from "@runshape/trace";
 import { buildSystemGraph } from "@runshape/architecture";
 import { loadFixtureRun } from "../../core/test/fixtures";
 

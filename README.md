@@ -159,7 +159,7 @@ cd recorder && uv run pytest   # recorder; add --python 3.9 to check the settrac
 | `recorder/src/runshape_recorder/adapters` | tracing backends, JSON store, catalog, framework introspection | domain |
 | `recorder/src/runshape_recorder/pytest_plugin.py` | composition root | everything |
 | `packages/core` | the kernel: the trace model and format, shared words, ports | nothing (target) |
-| `packages/architecture`, `views`, `visualizer`, `explainer` | modules: values in, values out | the kernel |
+| `packages/architecture`, `trace`, `visualizer`, `explainer` | modules: values in, values out | the kernel |
 | `packages/workflows` | the recordings workflow, review bundle, viewer session | modules, the kernel |
 | `packages/infra`, `library`, `adapters` | IO: files, git, recorders, gh, language models | the kernel, infra's toolkit |
 | `packages/webview` | React renderer of the view models | the kernel |

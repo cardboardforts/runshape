@@ -6,7 +6,7 @@
     { "match": "packages.core.src.trace.data.**", "zone": "outbound-adapter", "reason": "the trace format's codec and a traces directory's layout: implements RunSource (model/) over the TraceFiles port infra's stores fit", "by": "user" },
     { "match": "packages.architecture.**", "zone": "core", "reason": "the arch module: styles, zones and their rules, the system graph drawn with them, placements, folder guides, and the advice prompts", "by": "user" },
     { "match": "packages.visualizer.**", "zone": "core", "reason": "the visualizer module: component, function and object views and the timeline, from the kernel's values", "by": "llm" },
-    { "match": "packages.views.**", "zone": "core", "reason": "the trace module: what two runs did differently (run and execution diffs, moves, routes, the review, replays)", "by": "user" },
+    { "match": "packages.trace.**", "zone": "core", "reason": "the trace module: what two runs did differently (run and execution diffs, moves, routes, the review, replays)", "by": "user" },
     { "match": "packages.workflows.**", "zone": "core", "reason": "what the apps run: the recordings workflow, the review bundle, the viewer session; modules and the kernel, no IO of its own", "by": "llm" },
     { "match": "packages.explainer.**", "zone": "core", "reason": "the explainer module: a review's Markdown and commit messages in, a checked explanation out, through the LanguageModel port", "by": "llm" },
     { "match": "packages.core.**", "zone": "core", "reason": "the kernel: the universal trace in memory (trace/model), the recordings' words and ports, and the UI protocol; imports nothing", "by": "user" },

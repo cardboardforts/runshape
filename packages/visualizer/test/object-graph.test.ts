@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 
 import { Phase } from "@runshape/core";
 import { aggregateWiring, buildObjectGraph } from "../src";
-import { buildReplay } from "@runshape/views";
+import { buildReplay } from "@runshape/trace";
 import { buildSystemGraph } from "@runshape/architecture";
 import { loadFixtureRun } from "../../core/test/fixtures";
 

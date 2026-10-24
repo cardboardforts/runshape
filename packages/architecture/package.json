@@ -11,6 +11,6 @@
     "@runshape/core": "0.1.0"
   },
   "devDependencies": {
-    "@runshape/views": "0.1.0"
+    "@runshape/trace": "0.1.0"
   }
 }

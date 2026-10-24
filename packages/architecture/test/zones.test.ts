@@ -1,6 +1,6 @@
 /**
  * Declared zones: the rules a project checks in as runshape.json, read, matched and written. How
- * they place boxes on the system graph is in packages/views/test/zones-on-graph.test.ts.
+ * they place boxes on the system graph is in packages/architecture/test/zones-on-graph.test.ts.
  */
 import { describe, expect, test } from "vitest";
 

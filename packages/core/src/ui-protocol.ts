@@ -5,7 +5,7 @@ import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } fr
 import type { ArchitectureStyle, SystemGraph } from "./trace/model/arch-trace";
 import type { ComponentView } from "./trace/model/component-view";
 import type { Grouping } from "./trace/model/components";
-import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/views";
+import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/trace";
 import type { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
 
 export interface ScenarioSummary {

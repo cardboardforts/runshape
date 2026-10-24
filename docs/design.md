@@ -25,10 +25,10 @@ recorded **scenario**. Three views come out of the same recordings:
 | pytest recorder, `settrace` (3.9+) and `sys.monitoring` (3.12+) backends | `recorder/` | done, tested on 3.9 / 3.11 / 3.12 / 3.14 |
 | Django and FastAPI introspection: middleware, router, routes, databases | `recorder/.../frameworks/` | done |
 | trace format v1 | `docs/trace-format.md` | done |
-| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/core` (trace/), `architecture`, `visualizer`, `views` | done, tested on real recordings |
+| trace model and format; system graph and zones (arch); component and function views (visualizer); replay (trace module) | `packages/core` (trace/), `architecture`, `visualizer`, `trace` | done, tested on real recordings |
 | webview: graph (React Flow + ELK), scenario list, replay pulses, drill-in, wires | `packages/webview` | done; checked in a browser via the demo |
 | VS Code extension: open, reload on re-record, open source at line, logging | `packages/extension` | done; end-to-end test in a real VS Code |
-| behavioural diff (compare with previous recording) | `packages/views/src/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
+| behavioural diff (compare with previous recording) | `packages/trace/src/run-diff.ts` | done; tested on a real before/after fix of the Django routing bug |
 | declared zones (`runshape.json`), provenance, onion violations, LLM zone proposals | `packages/architecture/src/zones.ts`, `zone-advice.ts` | done; the model call runs end to end against a fake model in the e2e test, and was checked by hand with a real model (Copilot) on the Django example on 2026-10-13 |
 | 3D renderer (three.js): hexagon floor, tiles and objects, call arcs, replay packets | `packages/webview/src/three` | first version; layout tested, scene checked in a browser |
 
@@ -40,7 +40,7 @@ The same onion it's meant to show. Imports point inward only:
 recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
 kernel:     packages/core: the trace model and format (trace/), shared words, ports, the UI
             protocol
-modules:    packages/architecture (styles, zones, the system graph, advice), packages/views
+modules:    packages/architecture (styles, zones, the system graph, advice), packages/trace
             (the trace module: diffs), packages/visualizer (views of one run), and
             packages/explainer: values in, values out
 workflows:  packages/workflows (the recordings workflow, the review bundle, the viewer
@@ -245,7 +245,7 @@ Accepted risks:
   that function returns; Fuzz and Example functions run but aren't scenarios; a recorded call
   costs about 3 µs (a mutex and a stack read), so hot loops slow down a lot even past the
   per-caller limit.
-- Routes (`packages/views/src/routes.ts`): a request belongs to the route whose handler ran
+- Routes (`packages/trace/src/routes.ts`): a request belongs to the route whose handler ran
   under it: the registered function itself, or for a registered class (Django REST) a method
   named for a verb or viewset action (`post`, `create`, …), else the first of its methods that
   ran, so a class whose only methods to run were hooks (`get_permissions`) still counts as

@@ -1,5 +1,5 @@
-// What two recordings did differently: run and execution diffs, the moves between them, routes
-// and their variants, the review, and replays. Becomes the trace module in Phase 0b, step 4.
+// The trace module: what two recordings did differently. Run and execution diffs, the moves
+// between them, routes and their variants, the review, and replays. Imports only the kernel.
 export * from "./align";
 export * from "./execution-diff";
 export * from "./moves";

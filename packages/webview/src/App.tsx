@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ArchitectureCandidate, ArchitectureDiff, PROFILES } from "@runshape/architecture";
 import { ArchitectureProfile, ArchitectureStyle, ComponentView, FunctionRef, GraphNode, Grouping, Phase, RunSummary, SystemGraph, UiResponse } from "@runshape/core";
-import { CallStep, Change, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/views";
+import { CallStep, Change, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/trace";
 import { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
 
 import { ComponentPanel } from "./components/ComponentPanel";

@@ -5,7 +5,7 @@
   "workspaces": [
     "packages/infra",
     "packages/architecture",
-    "packages/views",
+    "packages/trace",
     "packages/visualizer",
     "packages/core",
     "packages/explainer",

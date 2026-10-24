@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 import { comparedGraphs } from "@runshape/architecture";
 import { TraceDirectory } from "@runshape/core";
-import { buildReview, reviewMarkdown } from "@runshape/views";
+import { buildReview, reviewMarkdown } from "@runshape/trace";
 import { NodeFiles } from "@runshape/infra";
 
 const DEFAULT_TRACES = ".runshape/traces";

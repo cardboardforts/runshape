@@ -1,6 +1,6 @@
 import { BaseEdge, Edge, EdgeProps, getBezierPath } from "@xyflow/react";
 
-import { Change, Op, StepKind } from "@runshape/views";
+import { Change, Op, StepKind } from "@runshape/trace";
 
 import type { Emphasis } from "./ComponentNode";
 

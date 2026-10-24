@@ -1,7 +1,7 @@
 import { Background, Controls, ReactFlow } from "@xyflow/react";
 
 import { GraphNode, SystemGraph } from "@runshape/core";
-import { Change, Op, ReplayStep } from "@runshape/views";
+import { Change, Op, ReplayStep } from "@runshape/trace";
 
 import { flowsDown, Positioned } from "../layout";
 import { ComponentFlowNode, ComponentNode, Emphasis } from "./ComponentNode";

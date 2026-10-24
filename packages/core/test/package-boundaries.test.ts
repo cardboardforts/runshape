@@ -5,7 +5,7 @@
  *
  *   apps (cli, extension) ──> modules, workflows, infra, kernel
  *   workflows ──> modules, kernel          ui (webview) ──> kernel
- *   modules (architecture, views) ──> kernel, never each other
+ *   modules (architecture, trace, visualizer, explainer) ──> kernel, never each other
  *   infra layer (infra, library, adapters) ──> kernel, and infra's generic Node toolkit
  *   kernel (core) ──> nothing
  *
@@ -28,7 +28,7 @@ type Role = "kernel" | "module" | "workflows" | "infra" | "ui" | "app" | "record
 const ROLES: Record<string, Role> = {
   "packages/core": "kernel",
   "packages/architecture": "module",
-  "packages/views": "module",
+  "packages/trace": "module",
   "packages/explainer": "module",
   "packages/visualizer": "module",
   "packages/workflows": "workflows",
@@ -56,8 +56,8 @@ const PERMITTED: Record<Role, string[]> = {
 
 /** Imports the target forbids that the code still has. Phase 0b removes them. */
 const NOT_YET: Record<string, string[]> = {
-  "packages/core": ["architecture", "views", "visualizer"], // the UI protocol's view models, type-only (Phase 3)
-  "packages/webview": ["architecture", "views", "visualizer"], // the UI draws the modules' view models (Phase 3)
+  "packages/core": ["architecture", "trace", "visualizer"], // the UI protocol's view models, type-only (Phase 3)
+  "packages/webview": ["architecture", "trace", "visualizer"], // the UI draws the modules' view models (Phase 3)
 };
 
 /** Which @runshape packages each one may import: its role's, and what it doesn't yet do without. */
@@ -69,7 +69,7 @@ const SHARED_TEST_HELPERS = new Set(["@runshape/library/test/repository"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
 const DISK = new Set(["packages/infra", "packages/adapters", "packages/cli", "packages/extension", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */
-const DOMAIN = new Set(["packages/trace", "packages/architecture", "packages/views", "packages/core"]);
+const DOMAIN = new Set(Object.keys(ROLES).filter((pkg) => ["kernel", "module", "workflows"].includes(ROLES[pkg]!)));
 const NODE_BUILTINS = new Set(builtinModules);
 function isPlatform(specifier: string): boolean {
   return specifier.startsWith("node:") || NODE_BUILTINS.has(specifier.split("/")[0]!) || /^(vscode$|react($|-dom|\/))/.test(specifier);

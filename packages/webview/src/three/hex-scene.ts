@@ -8,7 +8,7 @@ import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRe
 
 import { HEXAGONAL } from "@runshape/architecture";
 import { ArchitectureProfile, GraphNode, SystemGraph } from "@runshape/core";
-import { Change, Op, StepKind } from "@runshape/views";
+import { Change, Op, StepKind } from "@runshape/trace";
 import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 
 import { zoneColor } from "../zone-style";

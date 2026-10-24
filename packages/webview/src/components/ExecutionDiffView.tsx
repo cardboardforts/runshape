@@ -1,4 +1,4 @@
-import { CallStep, ExecutionDiff, FunctionExecutionDiff, Op } from "@runshape/views";
+import { CallStep, ExecutionDiff, FunctionExecutionDiff, Op } from "@runshape/trace";
 
 /** Unchanged calls kept around each change, so it's clear where in the flow it happened. */
 const CONTEXT = 2;

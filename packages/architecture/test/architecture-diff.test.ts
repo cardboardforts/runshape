@@ -14,7 +14,7 @@ import { describe, expect, test } from "vitest";
 
 
 import { QualifiedName, ZoneSource } from "@runshape/core";
-import { detectMoves, diffRuns, Moves } from "@runshape/views";
+import { detectMoves, diffRuns, Moves } from "@runshape/trace";
 import { ArchitectureDiff, ArchitectureSnapshot, buildPlacements, comparedGraphs, diffArchitecture, Placement, ZoneRules } from "../src";
 import { fixtureRuns, loadFixtureRun } from "../../core/test/fixtures";
 

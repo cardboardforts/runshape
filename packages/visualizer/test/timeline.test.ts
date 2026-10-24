@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { formatMicros } from "@runshape/views";
+import { formatMicros } from "@runshape/trace";
 import { buildTimeline } from "../src";
 import { loadFixtureRun } from "../../core/test/fixtures";
 
