@@ -9,9 +9,17 @@ Mostly **Core** code. Drawn hexagonal, from 15 runshape.json rules and what the 
 
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
-| `components.ts` | Core | — | `componentOf`, `renamedComponentId`, `renamedComponent`, `externalComponent`, `classComponentId` |
+| `architecture-advice.ts` | Core | — | `parseArchitectureAdvice`, `architecturePrompt` |
+| `architecture-diff.ts` | Core | — | `diffArchitecture` |
+| `architecture.ts` | Core | — | `detectArchitecture`, `proposedRules`, `projectPackages` |
+| `folder-description.ts` | Core | `DescriptionError` | `openingComment`, `describeFolder`, `parseFolderDescription`, `DescriptionError.constructor` |
+| `folder-guide.ts` | Core | — | `buildFolderGuides` |
+| `folder-readme.ts` | Core | — | `folderGuideMarkdown`, `mergeIntoReadme`, `needsDescription`, `describeReadme` |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
+| `placements.ts` | Core | — | `buildPlacements` |
 | `profiles.ts` | Core | — | `forbiddenCall`, `zoneFromName`, `profileFor` |
+| `system-graph.ts` | Core | `EdgeTally`, `GraphBuilder`, `NodeTally` | `buildSystemGraph`, `comparedGraphs` |
+| `zone-advice.ts` | Core | — | `parseZoneAdvice`, `zoneAdvicePrompt`, `zoneFacts`, `languageName` |
 | `zones.ts` | Core | `Glob`, `ZoneRules`, `ZoneRulesError` | `ZoneRules.matchFor`, `ZoneRules.static none`, `ZoneRules.static parse`, `ZoneRules.constructor`, `ZoneRules.serialize` |
 
 <!-- runshape:end -->

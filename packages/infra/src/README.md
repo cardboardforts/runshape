@@ -20,8 +20,8 @@ Mostly **Outbound adapters** code. Drawn hexagonal, from 15 runshape.json rules 
 | File | Zone | Classes | Used from other files |
 |---|---|---|---|
 | `folders.ts` | Outbound adapters | `LockHeld`, `NotPlainFiles` | `holdingLock`, `swapIntoPlace`, `removeAnyway`, `assertPlainFiles` |
+| `hashing.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
-| `language-models.ts` | Outbound adapters | `AnthropicApiModel`, `ClaudeCliModel` | `ClaudeCliModel.constructor`, `AnthropicApiModel.constructor`, `ClaudeCliModel.complete`, `ClaudeCliModel.runs`, `AnthropicApiModel.complete` |
 | `node-files.ts` | Outbound adapters | `NodeFiles` | `NodeFiles.readText`, `NodeFiles.constructor`, `NodeFiles.list`, `NodeFiles.writeText`, `NodeFiles.makeFolder` |
 | `paths.ts` | Outbound adapters | — | `safeSegments` |
 

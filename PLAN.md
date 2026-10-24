@@ -302,6 +302,15 @@ moves each file once.
      Runshape package. My reading of "infra imports only the kernel": the adapters may use that
      toolkit (the boundary test says so).
 7. **runshape.json placements redone** for the new packages. You approve them in the diff.
+   - **Drafted (2026-10-24), for your approval in the diff.** One rule per package, and per
+     adapters folder. A rule keeps `"by": "user"` where its placement and wording are the ones
+     you approved; new rules and rewritten reasons say `"llm"`. The folder guides then ask 3
+     questions, all decided: the CLI's composition root and `chooseModel` wiring adapters (a
+     Runshape misreading, Phase 2) and `list` reading the library's overview.
+   - **Phase 0b's state:** `NOT_YET` holds only the UI protocol's deferral to Phase 3 (the
+     kernel names the modules' view-model types, type-only, and the webview draws them). Found
+     along the way, for later: `readmes` leaves a stale guide in a folder whose code moved away
+     (removed by hand for `adapters/src`).
 
 **Done when:** the boundary test's allowlist is empty, `npm test`, `npm run typecheck` and
 `view-diff` show no viewer response changes, and the folder guides ask only questions you've
