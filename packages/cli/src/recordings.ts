@@ -25,7 +25,8 @@ export async function runRecordings(argv: string[], dependencies: CommandDepende
   const { logger, now } = dependencies;
   const started = now().getTime();
   const [command = "list"] = argv.filter((arg) => !arg.startsWith("--"));
-  logger.log("info", "command.start", { command, args: argv.join(" ") });
+  // Flags by name only: the values (and the refs named) are the person's, not the log's.
+  logger.log("info", "command.start", { command, flags: argv.filter((arg) => arg.startsWith("--")).map((arg) => arg.split("=")[0]).join(" ") });
   try {
     const exit = await runCommand(argv, dependencies);
     logger.log(exit === 0 ? "info" : "warn", "command.end", { command, exit, duration_ms: now().getTime() - started });

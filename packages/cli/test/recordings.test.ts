@@ -192,7 +192,7 @@ describe("runshape record", () => {
       lines: ["runshape: git doesn't know nope"],
       recorded: [],
       logs: [
-        'ts=2026-10-14T12:00:00.000Z level=info run=r1 event=command.start command=record args="record nope"',
+        'ts=2026-10-14T12:00:00.000Z level=info run=r1 event=command.start command=record flags=""',
         `ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.refused command=record error="git doesn't know nope"`,
         "ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.end command=record exit=1 duration_ms=0",
       ],
@@ -759,7 +759,7 @@ describe("runshape review-requests: every open PR that asks for your review", ()
     // and time, and the whole error for the one that failed (git's message, then its stack).
     const review = `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`;
     expect(logs.map((line) => line.replace(/ error="[^]*$/, ' error="…"'))).toEqual([
-      'ts=2026-10-14T12:00:00.000Z level=info run=r1 event=command.start command=review-requests args=review-requests',
+      'ts=2026-10-14T12:00:00.000Z level=info run=r1 event=command.start command=review-requests flags=""',
       `ts=2026-10-14T12:00:00.000Z level=info run=r1 pr=7 event=pr.reviewed head=${prHead} review=${review} explained=false problem= duration_ms=0`,
       `ts=2026-10-14T12:00:00.000Z level=error run=r1 pr=8 event=pr.failed head=${"0".repeat(40)} error="…"`,
       "ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.end command=review-requests exit=1 duration_ms=0",

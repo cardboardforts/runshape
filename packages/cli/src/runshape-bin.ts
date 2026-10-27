@@ -20,9 +20,15 @@ const repository = new GitRepository(new GitCli(root));
 // back (a night's review-requests, say). One id per invocation ties its lines together.
 /** Enough to tell one night's runs apart in a grep, short enough to type. */
 const RUN_ID_LENGTH = 8;
+// A log that can't be written is said once and dropped: it never stops a command (see LogfmtLogger).
 const logs = join(root, ".runshape", "logs");
-mkdirSync(logs, { recursive: true });
-const logger = new LogfmtLogger((line) => appendFileSync(join(logs, "runshape.log"), `${line}\n`), () => new Date()).with({ service: "runshape", run: randomUUID().slice(0, RUN_ID_LENGTH) });
+const writeLog = (line: string) => {
+  mkdirSync(logs, { recursive: true });
+  // Only its owner reads it: errors can carry more than the redaction catches.
+  appendFileSync(join(logs, "runshape.log"), `${line}\n`, { mode: 0o600 });
+};
+const logFailed = (error: unknown) => console.error(`runshape: not logging to ${logs}: ${error instanceof Error ? error.message : String(error)}`);
+const logger = new LogfmtLogger(writeLog, () => new Date(), {}, logFailed).with({ service: "runshape", run: randomUUID().slice(0, RUN_ID_LENGTH) });
 process.exitCode = await runRecordings(process.argv.slice(2), {
   root,
   repository,
