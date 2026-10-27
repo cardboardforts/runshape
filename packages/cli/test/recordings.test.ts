@@ -21,7 +21,7 @@ import { describe, expect, test } from "vitest";
 import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/kernel";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
 import { assertPlainRecording, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
-import { nodeHashing } from "@runshape/infra";
+import { LogfmtLogger, nodeHashing } from "@runshape/infra";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/adapters/test/repository";
 
@@ -74,6 +74,8 @@ async function run(
   unavailable: Error | null = null,
 ) {
   const lines: string[] = [];
+  const logs: string[] = [];
+  const logger = new LogfmtLogger((line) => logs.push(line), () => NOW).with({ run: "r1" });
   const chosen: string[] = [];
   /** The image versions the sandbox was asked for: a hash of what HEAD builds it from. */
   const sandboxVersions: string[] = [];
@@ -85,8 +87,8 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), now: () => NOW, models, pullRequests });
-  return { code, lines, recorder, model, chosen, sandbox, sandboxVersions };
+  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests });
+  return { code, lines, logs, recorder, model, chosen, sandbox, sandboxVersions };
 }
 
 const metadataOf = (root: string, id: string) => JSON.parse(readFileSync(join(root, ".runshape", "recordings", id, "recording.json"), "utf8"));
@@ -180,12 +182,21 @@ describe("runshape record", () => {
     });
   });
 
-  test("a ref git doesn't know is refused before anything runs", async () => {
+  test("a ref git doesn't know is refused before anything runs, and the log says why", async () => {
     const { root } = repository();
 
-    const { code, lines, recorder } = await run(root, ["record", "nope"]);
+    const { code, lines, logs, recorder } = await run(root, ["record", "nope"]);
 
-    expect({ code, lines, recorded: recorder.recorded }).toEqual({ code: 1, lines: ["runshape: git doesn't know nope"], recorded: [] });
+    expect({ code, lines, recorded: recorder.recorded, logs }).toEqual({
+      code: 1,
+      lines: ["runshape: git doesn't know nope"],
+      recorded: [],
+      logs: [
+        'ts=2026-10-14T12:00:00.000Z level=info run=r1 event=command.start command=record args="record nope"',
+        `ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.refused command=record error="git doesn't know nope"`,
+        "ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.end command=record exit=1 duration_ms=0",
+      ],
+    });
   });
 });
 
@@ -717,7 +728,7 @@ describe("runshape review-requests: every open PR that asks for your review", ()
     const { root, commits, prHead, pr } = withPullRequests();
     const requested = [pr(7, prHead, "Teach orders to refuse"), pr(8, "0".repeat(40), "A PR whose head is gone")];
 
-    const { code, lines, recorder, sandbox } = await run(root, ["review-requests"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), requested);
+    const { code, lines, logs, recorder, sandbox } = await run(root, ["review-requests"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), requested);
 
     const index = JSON.parse(readFileSync(join(root, ".runshape", "reviews", "requested.json"), "utf8"));
     expect({
@@ -744,6 +755,16 @@ describe("runshape review-requests: every open PR that asks for your review", ()
     });
     const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`, "review.json"), "utf8"));
     expect(bundle.head.asked).toBe("#7 Teach orders to refuse");
+    // The log, apart from what's printed: the run's id on every line, each PR's number, outcome
+    // and time, and the whole error for the one that failed (git's message, then its stack).
+    const review = `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`;
+    expect(logs.map((line) => line.replace(/ error="[^]*$/, ' error="…"'))).toEqual([
+      'ts=2026-10-14T12:00:00.000Z level=info run=r1 event=command.start command=review-requests args=review-requests',
+      `ts=2026-10-14T12:00:00.000Z level=info run=r1 pr=7 event=pr.reviewed head=${prHead} review=${review} explained=false problem= duration_ms=0`,
+      `ts=2026-10-14T12:00:00.000Z level=error run=r1 pr=8 event=pr.failed head=${"0".repeat(40)} error="…"`,
+      "ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.end command=review-requests exit=1 duration_ms=0",
+    ]);
+    expect(logs[2]).toMatch(/ error="fetching it failed: [^"]*refs\/pull\/8\/head[^]* stack="Error: fetching it failed[^]*\\n    at [^]* duration_ms=0$/);
   });
 
   test("with --explain each review is explained too; with no PRs asking, it says so", async () => {

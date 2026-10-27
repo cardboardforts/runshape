@@ -343,6 +343,13 @@ decided.
 4. **Structured CLI logging:** logfmt, with a run ID and PR number on every line, duration
    per PR, and the full error for each PR that fails. Workflows log through the kernel's `Logger`
    port, and the CLI wires a logfmt sink for it.
+   - **Done (2026-10-26).** Kernel `Logger` port; infra's `LogfmtLogger` fits it by shape
+     (newlines escaped, so an error can't forge a line). The CLI appends to
+     `.runshape/logs/runshape.log`, not the terminal, with `service` and a `run` id on every
+     line: `command.start`, `command.end` (exit, duration), `command.refused` (why), and
+     `command.failed` (message and stack) before an unexpected error is rethrown.
+     `review-requests` logs `pr.reviewed` / `pr.failed` per PR with `pr`, head, duration and,
+     for a failure, the whole error.
 
 **Done when:** morning list → a PR → "these 6 workflows run through `Service.place`; 2
 behave differently" works on a real Runshape PR.

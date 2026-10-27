@@ -1,6 +1,6 @@
 // The recordings workflow (runshape list | record | compare | review-requests | readmes |
 // forget): the CLI parses the command line and wires the adapters; this decides and records.
-import { ArchitectureSummary, byCodeUnit, CommitSummary, GitError, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, ModelChoice, Outcome, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, Run, SANDBOX_SUFFIX, TraceDirectory, VERSION_DIGITS, WORKING_TREE_ID, ZoneSource } from "@runshape/kernel";
+import { ArchitectureSummary, byCodeUnit, CommitSummary, GitError, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, Logger, ModelChoice, Outcome, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, Run, SANDBOX_SUFFIX, TraceDirectory, VERSION_DIGITS, WORKING_TREE_ID, ZoneSource } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, describeFolder, describeReadme, FolderGuide, folderGuideMarkdown, mergeIntoReadme, needsDescription, openingComment, RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
 
@@ -20,6 +20,8 @@ export interface RecordingsDependencies {
   /** Records commits in a container (`--sandbox`): made when first needed. */
   sandbox: () => Promise<Recorder>;
   print: (line: string) => void;
+  /** Events to look back on (each pull request's outcome and how long it took), apart from what's printed. */
+  logger: Logger;
   now: () => Date;
   /** The language model `--explain` asks. */
   models: (choice: ModelChoice) => Promise<LanguageModel>;
@@ -179,6 +181,9 @@ export class Recordings {
     const repository = await this.dependencies.pullRequests.repository();
     for (const pr of requested) {
       const name = `#${pr.number} ${pr.title}`;
+      const log = this.dependencies.logger.with({ pr: pr.number });
+      const started = this.dependencies.now().getTime();
+      const took = () => this.dependencies.now().getTime() - started;
       const entry: RequestedReview = { ...pr, head: pr.headRefOid, review: null, explained: false, problem: null, summary: null };
       entries.push(entry);
       try {
@@ -203,10 +208,12 @@ export class Recordings {
           }
         }
         this.dependencies.print(`${name}: reviewed${entry.explained ? " and explained" : entry.problem ? `; ${entry.problem}` : ""}`);
+        log.log(entry.problem === null ? "info" : "warn", "pr.reviewed", { head: entry.head, review: entry.review, explained: entry.explained, problem: entry.problem, duration_ms: took() });
       } catch (error) {
         // Whatever stopped this one, the rest go on.
         entry.problem = error instanceof Error ? error.message : String(error);
         this.dependencies.print(`${name}: failed: ${entry.problem}`);
+        log.log("error", "pr.failed", { head: pr.headRefOid, error: entry.problem, stack: error instanceof Error ? (error.stack ?? null) : null, duration_ms: took() });
       }
       // Written after each, so a run cut short still lists what it got to.
       await this.writeRequested(entries, requested.length);

@@ -5,3 +5,4 @@ export * from "./paths";
 export * from "./node-files";
 export * from "./folders";
 export * from "./hashing";
+export * from "./logfmt";

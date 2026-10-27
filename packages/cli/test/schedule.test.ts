@@ -32,7 +32,7 @@ test("the instructions say where to put it and how to start it, and --at must be
   expect(scheduleInstructions("/Users/me/code/shop")).toEqual([
     "Save the job above as ~/Library/LaunchAgents/com.runshape.review-requests.plist, then:",
     "  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.runshape.review-requests.plist",
-    "Its output goes to /Users/me/code/shop/.runshape/reviews/nightly.log. To stop it:",
+    "Its output goes to /Users/me/code/shop/.runshape/reviews/nightly.log, and its log (logfmt: each PR's outcome, time and error, by run=) to /Users/me/code/shop/.runshape/logs/runshape.log. To stop it:",
     "  launchctl bootout gui/$(id -u)/com.runshape.review-requests",
     "It records in Docker: Docker Desktop has to be running (its settings can start it at login).",
     "Install it from a clone kept for it: it runs this checkout's runshape, so not one where someone's PR may be checked out.",

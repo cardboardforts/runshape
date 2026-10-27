@@ -17,7 +17,26 @@ export const DEMO_URL = "http://localhost:5173/demo/index.html";
 
 class UsageError extends Error {}
 
+/**
+ * A command, logged at its edges: what was asked, how it ended and how long it took, and the
+ * whole error when one escapes (it's rethrown: the process still fails loudly).
+ */
 export async function runRecordings(argv: string[], dependencies: CommandDependencies): Promise<number> {
+  const { logger, now } = dependencies;
+  const started = now().getTime();
+  const [command = "list"] = argv.filter((arg) => !arg.startsWith("--"));
+  logger.log("info", "command.start", { command, args: argv.join(" ") });
+  try {
+    const exit = await runCommand(argv, dependencies);
+    logger.log(exit === 0 ? "info" : "warn", "command.end", { command, exit, duration_ms: now().getTime() - started });
+    return exit;
+  } catch (error) {
+    logger.log("error", "command.failed", { command, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? (error.stack ?? null) : null, duration_ms: now().getTime() - started });
+    throw error;
+  }
+}
+
+async function runCommand(argv: string[], dependencies: CommandDependencies): Promise<number> {
   // "--explain=api": a flag's name, and its value if it has one.
   const flagValues = new Map(argv.filter((arg) => arg.startsWith("--")).map((arg) => [arg.split("=")[0]!, arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : null]));
   const flags = new Set(flagValues.keys());
@@ -106,6 +125,7 @@ export async function runRecordings(argv: string[], dependencies: CommandDepende
   } catch (error) {
     if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError) {
       dependencies.print(`runshape: ${error.message}`);
+      dependencies.logger.log("warn", "command.refused", { command, error: error.message });
       return 1;
     }
     throw error;
