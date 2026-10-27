@@ -158,6 +158,11 @@
   border-left-width: 3px;
 }
 
+.stacked-on {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
 .attention {
   list-style: none;
   display: flex;

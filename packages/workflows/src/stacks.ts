@@ -13,10 +13,12 @@ export interface StackedPullRequest {
  * branch names are its own). Stacks and lone PRs keep the order the bottom one was listed in.
  */
 export function stackOrder(prs: PullRequestSummary[]): StackedPullRequest[] {
-  const byHead = new Map(prs.filter((pr) => !pr.isCrossRepository).map((pr) => [pr.headRefName, pr]));
+  const byHead = new Map<string, PullRequestSummary[]>();
+  for (const pr of prs.filter((candidate) => !candidate.isCrossRepository)) byHead.set(pr.headRefName, [...(byHead.get(pr.headRefName) ?? []), pr]);
+  // Two of ours from one branch name: no telling which it builds on, so it's on neither.
   const below = (pr: PullRequestSummary) => {
-    const parent = byHead.get(pr.baseRefName);
-    return parent === undefined || parent === pr ? null : parent;
+    const parents = byHead.get(pr.baseRefName);
+    return parents === undefined || parents.length !== 1 || parents[0] === pr ? null : parents[0]!;
   };
   const above = new Map<number, PullRequestSummary[]>();
   for (const pr of prs) {

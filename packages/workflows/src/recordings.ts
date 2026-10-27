@@ -180,7 +180,8 @@ export class Recordings {
   async reviewPullRequests(requested: PullRequestSummary[], explain: ModelChoice | null): Promise<number> {
     const entries: RequestedReview[] = [];
     const repository = await this.dependencies.pullRequests.repository();
-    // A stack bottom first: each is reviewed against where it left the one below.
+    // A stack bottom first, the order to read them in. Each is still compared with where it left
+    // its own base branch, which for a stacked PR is the branch of the one below.
     for (const { pr, stackedOn } of stackOrder(requested)) {
       const name = `#${pr.number} ${pr.title}`;
       const log = this.dependencies.logger.with({ pr: pr.number });

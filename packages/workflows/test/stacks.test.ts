@@ -30,6 +30,10 @@ describe("stackOrder", () => {
     expect(order([pr(7, "a", "main", true), pr(8, "b", "a")])).toEqual(["#7", "#8"]);
   });
 
+  test("two of ours with one branch name: a PR on that name is on neither (second-model review)", () => {
+    expect(order([pr(5, "a"), pr(6, "a", "develop"), pr(7, "b", "a")])).toEqual(["#5", "#6", "#7"]);
+  });
+
   test("branches based on each other in a loop (not possible on GitHub, but data is data) are each listed once", () => {
     expect(order([pr(1, "a", "b"), pr(2, "b", "a")])).toEqual(["#1", "#2 on #1"]);
   });

@@ -194,9 +194,13 @@ function PullRequestRow({ pr }: { pr: RequestedReview }) {
   const reviewFile = (file: string) => `/__runshape/reviews/${encodeURIComponent(pr.review ?? "")}/${file}`;
   const stackedOn = pr.stackedOn ?? null;
   return (
-    <li className={stackedOn === null ? undefined : "stacked"}>
+    <li id={`pr-${pr.number}`} className={stackedOn === null ? undefined : "stacked"}>
       <div className="pr-head">
-        {stackedOn !== null && <span className="muted">on #{stackedOn} · </span>}
+        {stackedOn !== null && (
+          <p className="muted stacked-on">
+            Stacked on <a href={`#pr-${stackedOn}`}>#{stackedOn}</a>: review that first; this shows what it adds on top.
+          </p>
+        )}
         <a href={pr.url} target="_blank" rel="noreferrer">
           #{pr.number}
         </a>{" "}
