@@ -737,8 +737,9 @@ describe("runshape review-requests: every open PR that asks for your review", ()
       sandbox: sandbox.recorded,
       // The failure's line goes on with git's reason ("couldn't find remote ref refs/pull/8/head").
       summary: lines.filter((line) => line.startsWith("#")).map((line) => line.split(": ").slice(0, 3).join(": ")),
-      index: index.pullRequests.map((entry: { number: number; head: string; review: string | null; problem: string | null }) => ({
+      index: index.pullRequests.map((entry: { number: number; head: string; review: string | null; problem: string | null; stackedOn: number | null }) => ({
         number: entry.number,
+        stackedOn: entry.stackedOn,
         head: entry.head.slice(0, 7),
         review: entry.review,
         problem: entry.problem?.split(":")[0] ?? null,
@@ -749,8 +750,8 @@ describe("runshape review-requests: every open PR that asks for your review", ()
       sandbox: [commits.second!.slice(0, 7), prHead.slice(0, 7)],
       summary: [`#7 Teach orders to refuse: reviewed`, `#8 A PR whose head is gone: failed: fetching it failed`],
       index: [
-        { number: 7, head: prHead.slice(0, 7), review: `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`, problem: null },
-        { number: 8, head: "0000000", review: null, problem: "fetching it failed" },
+        { number: 7, stackedOn: null, head: prHead.slice(0, 7), review: `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`, problem: null },
+        { number: 8, stackedOn: null, head: "0000000", review: null, problem: "fetching it failed" },
       ],
     });
     const bundle = JSON.parse(readFileSync(join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`, "review.json"), "utf8"));

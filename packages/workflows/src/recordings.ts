@@ -5,6 +5,7 @@ import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, describeFolde
 import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
 
 import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown } from "./review-bundle";
+import { stackOrder } from "./stacks";
 
 /** What the recordings workflow is given: its ports, and how to talk to the person. */
 export interface RecordingsDependencies {
@@ -179,12 +180,13 @@ export class Recordings {
   async reviewPullRequests(requested: PullRequestSummary[], explain: ModelChoice | null): Promise<number> {
     const entries: RequestedReview[] = [];
     const repository = await this.dependencies.pullRequests.repository();
-    for (const pr of requested) {
+    // A stack bottom first: each is reviewed against where it left the one below.
+    for (const { pr, stackedOn } of stackOrder(requested)) {
       const name = `#${pr.number} ${pr.title}`;
       const log = this.dependencies.logger.with({ pr: pr.number });
       const started = this.dependencies.now().getTime();
       const took = () => this.dependencies.now().getTime() - started;
-      const entry: RequestedReview = { ...pr, head: pr.headRefOid, review: null, explained: false, problem: null, summary: null };
+      const entry: RequestedReview = { ...pr, head: pr.headRefOid, review: null, explained: false, problem: null, summary: null, stackedOn };
       entries.push(entry);
       try {
         let fetched: { head: string; base: string };

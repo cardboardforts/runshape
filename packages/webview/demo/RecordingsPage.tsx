@@ -192,9 +192,11 @@ function PullRequestRow({ pr }: { pr: RequestedReview }) {
   const [base, head] = pr.review?.split("..") ?? [];
   const highlights = pr.summary === null ? [] : attention(pr.summary);
   const reviewFile = (file: string) => `/__runshape/reviews/${encodeURIComponent(pr.review ?? "")}/${file}`;
+  const stackedOn = pr.stackedOn ?? null;
   return (
-    <li>
+    <li className={stackedOn === null ? undefined : "stacked"}>
       <div className="pr-head">
+        {stackedOn !== null && <span className="muted">on #{stackedOn} · </span>}
         <a href={pr.url} target="_blank" rel="noreferrer">
           #{pr.number}
         </a>{" "}

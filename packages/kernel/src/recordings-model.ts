@@ -97,6 +97,8 @@ export interface RequestedReview extends PullRequestSummary {
   explained: boolean;
   problem: string | null;
   summary: ReviewHighlights | null;
+  /** The listed PR this one builds on (its base is that one's branch); absent in lists written before stacks were kept. */
+  stackedOn?: number | null;
 }
 
 /** .runshape/reviews/requested.json, as `review-requests` writes it. */

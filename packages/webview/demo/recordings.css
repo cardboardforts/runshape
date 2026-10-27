@@ -152,6 +152,12 @@
   margin-bottom: 8px;
 }
 
+/* A stacked PR sits under the one it builds on: review the stack top-down as listed, bottom PR first. */
+.pull-requests > li.stacked {
+  margin-left: 24px;
+  border-left-width: 3px;
+}
+
 .attention {
   list-style: none;
   display: flex;

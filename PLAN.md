@@ -329,6 +329,10 @@ decided.
      functions listing the same 26-31 workflows.
 2. **One PR page:** summary, threads, callouts, and a way into each thread's graph and wires.
    Opened from the morning list, where stacked PRs are grouped and ordered bottom-up.
+   - **Stacks done (2026-10-26).** `review-requests` reviews a stack bottom first (`stackOrder`:
+     a PR is on another when its base is that one's branch, ours, not a fork's) and writes
+     `stackedOn` into `requested.json`; the morning list shows "on #7", indented under it.
+     The page itself is next.
 3. **Group by cause:** Runshape's review of its own PR 3a listed 66 "run differently" tests,
    every one because calls now go through `ReviewStore`. Threads with the same change
    collapse into one row ("66 tests: now save reviews through ReviewStore"), expandable.
