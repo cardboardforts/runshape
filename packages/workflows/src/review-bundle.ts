@@ -1,7 +1,7 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { Grouping, Phase, Run } from "@runshape/kernel";
 import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, ZoneRule, ZoneRules } from "@runshape/architecture";
-import { buildReview, Change, detectMoves, diffRouteMaps, Op, reviewMarkdown, ReviewSummary, RouteMapDiff } from "@runshape/trace";
+import { buildReview, buildThreads, Change, detectMoves, diffRouteMaps, diffRuns, Op, reviewMarkdown, ReviewSummary, RouteMapDiff, ThreadKind, Threads } from "@runshape/trace";
 
 /** One side of the comparison: what was asked for, and the recording that answered it. */
 export interface ReviewSide {
@@ -56,6 +56,8 @@ export interface ReviewBundle {
   architecture: ArchitectureDiff;
   /** Changed routes in full; unchanged ones only counted (they'd make the bundle as big as the suite). */
   routes: { routes: BundleRoute[]; unchanged: number };
+  /** Each function the change touched, and the workflows (tests, requests) that run through it. */
+  threads: Threads;
 }
 
 export const REVIEW_FORMAT = "runshape-review";
@@ -78,6 +80,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
   const { base, head, rules } = input;
   const baseRules = input.baseRules ?? rules;
   const moves = detectMoves(base, head);
+  const graphs = comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules });
   return {
     format: REVIEW_FORMAT,
     version: REVIEW_VERSION,
@@ -86,10 +89,11 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     head: input.headSide,
     options: BUNDLE_OPTIONS,
     baseRulesKnown: input.baseRules !== null,
-    review: withoutQueryText(buildReview(base, head, comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules }), { ...BUNDLE_OPTIONS, moves })),
+    review: withoutQueryText(buildReview(base, head, graphs, { ...BUNDLE_OPTIONS, moves })),
     // Both placed in head's style: a style change is one change, not every class moving.
     architecture: diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves),
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),
+    threads: buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves }),
   };
 }
 
@@ -143,6 +147,7 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
     "",
     `Compared ${sideText(bundle.base)} with ${sideText(bundle.head)}.`,
     "",
+    ...threadsMarkdown(bundle.threads),
     ...architectureMarkdown(bundle.architecture, bundle.baseRulesKnown),
     ...routesMarkdown(bundle.routes),
   ];
@@ -228,3 +233,36 @@ function decider(by: ZoneRule["by"]): string {
 function code(text: string): string {
   return text.includes("`") ? `\`\` ${text} \`\`` : `\`${text}\``;
 }
+
+/** More than this many functions or workflow names is a list to open, not to read. */
+const SHOWN_FUNCTIONS = 15;
+const SHOWN_NAMES = 6;
+
+/** "Threads to follow": each changed function, how many workflows run through it, and which changed. */
+function threadsMarkdown(threads: Threads | undefined): string[] {
+  if (threads === undefined || threads.functions.length === 0) return [];
+  const out = [`### Threads to follow (${threads.functions.length} changed function${threads.functions.length === 1 ? "" : "s"})`, ""];
+  if (threads.basis === "behaviour") out.push("These recordings don't keep their source: a function counts as changed when a workflow ran it differently.", "");
+  for (const fn of threads.functions.slice(0, SHOWN_FUNCTIONS)) {
+    const count = (kind: ThreadKind) => fn.threads.filter((thread) => thread.kind === kind).length;
+    const parts = [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone, ThreadKind.Same].filter((kind) => count(kind) > 0).map((kind) => `${count(kind)} ${THREAD_WORDS[kind]}`);
+    const through = fn.threads.length === 0 ? "no recorded workflow runs through it" : `${fn.threads.length} workflow${fn.threads.length === 1 ? "" : "s"}: ${parts.join(", ")}`;
+    out.push(`- ${code(fn.symbol.path)} (${fn.symbol.namespace}), ${fn.change}: ${through}`);
+    for (const kind of [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone]) {
+      const names = fn.threads.filter((thread) => thread.kind === kind).map((thread) => code(thread.name));
+      if (names.length > 0) out.push(`  - ${THREAD_WORDS[kind]}: ${names.slice(0, SHOWN_NAMES).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""}`);
+    }
+    if (fn.routes.length > 0) out.push(`  - routes: ${fn.routes.map((route) => code(route.label) + (route.on === "both" ? "" : route.on === "head" ? " (new)" : " (gone)")).join(", ")}`);
+  }
+  if (threads.functions.length > SHOWN_FUNCTIONS) out.push(`- and ${threads.functions.length - SHOWN_FUNCTIONS} more (review.json lists them all)`);
+  out.push("");
+  return out;
+}
+
+/** How a workflow relates to the function: it's the workflows that are new to it, not new tests. */
+const THREAD_WORDS: Record<ThreadKind, string> = {
+  [ThreadKind.Different]: "now run differently",
+  [ThreadKind.New]: "newly run through it",
+  [ThreadKind.Gone]: "no longer run through it",
+  [ThreadKind.Same]: "run as before",
+};

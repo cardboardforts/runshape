@@ -57,6 +57,21 @@ describe("buildReviewBundle", () => {
 
       Compared \`main\` (\`0123456\` the main commit) with the working tree (on \`0123456\`).
 
+      ### Threads to follow (4 changed functions)
+
+      - \`_normalize_title\` (app.services.articles), added: 2 workflows: 2 newly run through it
+        - newly run through it: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
+        - routes: \`POST /api/articles\` (new)
+      - \`create_new_article\` (app.api.routes.articles.articles_resource), edited: 2 workflows: 2 now run differently
+        - now run differently: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
+        - routes: \`POST /api/articles\`
+      - \`ensure_slug_available\` (app.services.articles), added: 2 workflows: 2 newly run through it
+        - newly run through it: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
+        - routes: \`POST /api/articles\` (new)
+      - \`get_slug_for_article\` (app.services.articles), edited: 2 workflows: 2 now run differently
+        - now run differently: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
+        - routes: \`POST /api/articles\`
+
       ### Architecture
 
       No architecture changes.

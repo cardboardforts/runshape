@@ -321,6 +321,12 @@ decided.
 1. **Threads:** for each changed function or class, the scenarios and routes that run
    through it, on base and head. Grouped as same / different / new / gone, and written into
    `review.json` and `review.md`.
+   - **Done (2026-10-26).** `buildThreads` (trace module): changed means a function's own
+     source text changed, or it was added or removed, read from the source each recording
+     keeps; moved code is paired with itself, not counted. Recordings without source fall back
+     to "some workflow ran it differently". In `review.json` (`threads`) and `review.md`
+     ("Threads to follow"). On Runshape's own branch it showed the next step's problem: five
+     functions listing the same 26-31 workflows.
 2. **One PR page:** summary, threads, callouts, and a way into each thread's graph and wires.
    Opened from the morning list, where stacked PRs are grouped and ordered bottom-up.
 3. **Group by cause:** Runshape's review of its own PR 3a listed 66 "run differently" tests,

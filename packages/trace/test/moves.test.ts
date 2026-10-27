@@ -16,52 +16,11 @@ import { diffOf, reviewOf } from "./graphs";
 import { CodeSymbol, FunctionInfo, Outcome, Phase, Role, Run, Scenario, Span, SymbolKind, TraceDirectory, TraceFiles } from "@runshape/kernel";
 import { Change, detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, mergeReplays, Op } from "../src";
 import { fixtureFiles } from "../../kernel/test/fixtures";
+import { rewritten } from "./rewrite";
 
 const FROM = "app.services.articles";
 const TO = "app.domain.articles";
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
-
-/** What to change in a recording, to stage a move from real data. */
-interface Rewrite {
-  /** Whole modules renamed (the module itself and the classes in it). */
-  modules?: Record<string, string>;
-  /** Single functions moved: "module:qualname" -> new module. */
-  functions?: Record<string, string>;
-  /** Object classes renamed, by full dotted name. */
-  classes?: Record<string, string>;
-  /** Source lines rewritten in the manifest's sources: file -> line number -> new text. */
-  lines?: Record<string, Record<number, string>>;
-  keepSources?: boolean;
-}
-
-function rewritten(files: TraceFiles, rewrite: Rewrite): TraceFiles {
-  const modules = rewrite.modules ?? {};
-  const renameModule = (name: string) => modules[name] ?? name;
-  const renameDotted = (name: string) => {
-    for (const [from, to] of Object.entries(modules)) if (name.startsWith(`${from}.`)) return to + name.slice(from.length);
-    return rewrite.classes?.[name] ?? name;
-  };
-  const moveFunction = (fn: { module: string; qualname: string }) => {
-    fn.module = rewrite.functions?.[`${fn.module}:${fn.qualname}`] ?? renameModule(fn.module);
-  };
-  return {
-    async readText(path) {
-      const data = JSON.parse(await files.readText(path));
-      if (path.endsWith("manifest.json")) {
-        for (const fn of data.catalog) moveFunction(fn);
-        for (const route of data.framework?.routes ?? []) route.handler = renameDotted(route.handler);
-        for (const [file, edits] of Object.entries(rewrite.lines ?? {})) {
-          for (const [line, text] of Object.entries(edits)) data.sources[file][Number(line) - 1] = text;
-        }
-        if (rewrite.keepSources === false) delete data.sources;
-      } else if (path.includes("/scenarios/")) {
-        for (const fn of data.functions) moveFunction(fn);
-        for (const event of data.events) if (event[0] === "O") event[3] = renameDotted(event[3]);
-      }
-      return JSON.stringify(data);
-    },
-  };
-}
 
 const SLUG = () => fixtureFiles("fastapi-slug-refactor");
 
