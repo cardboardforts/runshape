@@ -102,10 +102,16 @@ export class Moves implements Renaming {
   }
 }
 
-/** The span a test's own function opened, at the root of its scenario. */
+/**
+ * The span a test's own function opened, at the root of its scenario. pytest's fixtures are test
+ * code at the root too: then it's the one named as the test is ("test_x" in "a.py::test_x[1]").
+ */
 function testFunction(scenario: Scenario): CodeSymbol | null {
   const roots = scenario.spans.filter((span) => span.parent === null && span.fn.role === Role.Test);
-  return roots.length === 1 ? roots[0]!.fn.symbol : null;
+  if (roots.length === 1) return roots[0]!.fn.symbol;
+  const name = scenario.nodeid.split("::").at(-1)!.replace(/\[.*\]$/, "");
+  const named = [...new Map(roots.filter((span) => span.fn.symbol.name === name).map((span) => [span.fn.symbol.key, span.fn.symbol])).values()];
+  return named.length === 1 ? named[0]! : null;
 }
 
 /**
@@ -131,8 +137,8 @@ function testMoves(base: Run, head: Run): TestMove[] {
   // file when they ran exactly the same project code, and nothing else did. A test whose body
   // changed too doesn't pair: then it is a different test.
   const pairedTo = new Set(moves.map((move) => move.to.nodeid));
-  const stayed = groupBy(firsts(base.scenarios.filter((scenario) => !headIds.has(scenario.nodeid) && headFiles.has(scenario.file))), signature);
-  const arrived = groupBy(firsts(head.scenarios.filter((scenario) => !baseIds.has(scenario.nodeid) && !pairedTo.has(scenario.nodeid))), signature);
+  const stayed = groupBy(firsts(base.scenarios.filter((scenario) => !headIds.has(scenario.nodeid) && headFiles.has(scenario.file))), (scenario) => signature(base, scenario));
+  const arrived = groupBy(firsts(head.scenarios.filter((scenario) => !baseIds.has(scenario.nodeid) && !pairedTo.has(scenario.nodeid))), (scenario) => signature(head, scenario));
   for (const [ran, candidates] of stayed) {
     const targets = arrived.get(ran);
     if (ran.endsWith("\n") || candidates.length !== 1 || targets?.length !== 1) continue;
@@ -141,10 +147,17 @@ function testMoves(base: Run, head: Run): TestMove[] {
   return moves;
 }
 
-/** A test's file and the project code it ran, in order: its own function and fixtures left out, since a rename renames them. */
-function signature(scenario: Scenario): string {
+/**
+ * A test's file and the project code it ran, in order, then its own body below the line that
+ * names it when the source was kept: a test deleted and another added that happen to run the
+ * same code aren't a rename.
+ */
+function signature(run: Run, scenario: Scenario): string {
   const ran = scenario.spans.filter((span) => span.fn.role === Role.Source).map((span) => span.fn.symbol.key);
-  return `${scenario.file}\n${ran.join("\n")}`;
+  const own = testFunction(scenario);
+  const fn = own === null ? undefined : run.catalog.find((candidate) => candidate.symbol.key === own.key);
+  const body = fn === undefined ? null : run.sources?.get(fn.file)?.slice(fn.firstLine, fn.lastLine).join("\n");
+  return `${scenario.file}\n${body ?? ""}\n${ran.join("\n")}`;
 }
 
 /**

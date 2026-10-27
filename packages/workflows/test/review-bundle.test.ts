@@ -50,7 +50,7 @@ describe("buildReviewBundle", () => {
 
       | Test | What changed |
       |---|---|
-      | 2 tests: \`test_user_can_not_create_article_with_duplicated_slug\`, \`test_user_can_create_article\` | all through what changed: \`_normalize_title\` (added), \`create_new_article\` (edited), \`ensure_slug_available\` (added), \`get_slug_for_article\` (edited); now calls \`ensure_slug_available\`, \`_normalize_title\`; 17 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` (the first of them) |
+      | 2 tests: \`test_user_can_not_create_article_with_duplicated_slug\`, \`test_user_can_create_article\` | through changed code: \`_normalize_title\` (added), \`create_new_article\` (edited), \`ensure_slug_available\` (added), \`get_slug_for_article\` (edited); 2 ways: now calls \`ensure_slug_available\`, \`_normalize_title\`; 17 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\`; now calls \`ensure_slug_available\`, \`_normalize_title\`; 4 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` |
 
       2 tests behave exactly as before.
 

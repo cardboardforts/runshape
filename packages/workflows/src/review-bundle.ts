@@ -259,7 +259,7 @@ function threadsMarkdown(threads: Threads | undefined): string[] {
     }
     if (group.routes.length > 0) out.push(`  - routes: ${group.routes.map((route) => code(route.label) + (route.on === "both" ? "" : route.on === "head" ? " (new)" : " (gone)")).join(", ")}`);
   }
-  if (groups.length > SHOWN_FUNCTIONS) out.push(`- and ${groups.length - SHOWN_FUNCTIONS} more (review.json lists them all)`);
+  if (groups.length > SHOWN_FUNCTIONS) out.push(`- and ${groups.length - SHOWN_FUNCTIONS} more threads (review.json lists every function)`);
   out.push("");
   return out;
 }

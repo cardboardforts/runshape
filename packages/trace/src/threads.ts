@@ -1,8 +1,8 @@
-import { CatalogFunction, FunctionRef, functionRef, Phase, Run, Scenario } from "@runshape/kernel";
+import { CatalogFunction, FunctionRef, functionRef, Phase, Role, Run, Scenario } from "@runshape/kernel";
 
 import { Moves } from "./moves";
 import { buildRouteMap, RouteMap } from "./routes";
-import { Change, RunDiff } from "./run-diff";
+import { RunDiff } from "./run-diff";
 
 /** How a workflow through a changed function fares: it ran the same, ran differently, or only one side has it. */
 export enum ThreadKind {
@@ -57,11 +57,12 @@ export function buildThreads(base: Run, head: Run, diff: RunDiff, options: { pha
   const phases = new Set(options.phases ?? [Phase.Call]);
   const moves = options.moves ?? Moves.none();
   const basis = base.sources !== null && head.sources !== null ? "source" : "behaviour";
-  const changed = basis === "source" ? changedBySource(base, head, moves) : changedByBehaviour(base, head, diff, moves);
+  // Per workflow, the functions it ran differently (head's keys): what "different" means for one function.
+  const ranDifferently = new Map(diff.scenarios.map((scenario) => [scenario.id, new Set(scenario.functionsChanged.map((change) => change.symbol.key))]));
+  const changed = basis === "source" ? changedBySource(base, head, moves, ranDifferently) : changedByBehaviour(base, head, ranDifferently, moves);
 
   const headRuns = scenariosByFunction(head.scenarios, phases, (key) => key, (id) => id);
   const baseRuns = scenariosByFunction(base.scenarios, phases, moves.headKey, moves.headScenarioId);
-  const changeOf = new Map(diff.scenarios.map((scenario) => [scenario.id, scenario.change]));
   const names = new Map([...base.scenarios.map((s) => [moves.headScenarioId(s.nodeid), s.name] as const), ...head.scenarios.map((s) => [s.nodeid, s.name] as const)]);
   const headRoutes = routesByFunction(buildRouteMap(head, { phases: [...phases] }));
   const baseRoutes = routesByFunction(buildRouteMap(base, { phases: [...phases], keyOf: moves.headKey }));
@@ -73,7 +74,7 @@ export function buildThreads(base: Run, head: Run, diff: RunDiff, options: { pha
       .map((id): Thread => {
         const onHead = headRuns.get(key)?.has(id) ?? false;
         const onBase = baseRuns.get(key)?.has(id) ?? false;
-        const kind = onHead && onBase ? (changeOf.get(id) === Change.Unchanged ? ThreadKind.Same : ThreadKind.Different) : onHead ? ThreadKind.New : ThreadKind.Gone;
+        const kind = onHead && onBase ? (ranDifferently.get(id)?.has(key) ? ThreadKind.Different : ThreadKind.Same) : onHead ? ThreadKind.New : ThreadKind.Gone;
         return { scenarioId: id, name: names.get(id) ?? id, kind };
       })
       .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name));
@@ -98,23 +99,41 @@ interface Changed {
   change: ChangedFunction["change"];
 }
 
-/** Functions whose own lines differ, or that only one side has; a moved function is paired with itself. */
-function changedBySource(base: Run, head: Run, moves: Moves): Changed[] {
+/**
+ * Functions whose own lines differ, or that only one side has; a moved function is paired with
+ * itself. Tests are the workflows, not the code they follow. A function whose source wasn't kept
+ * counts when some workflow ran it differently, as without source.
+ */
+function changedBySource(base: Run, head: Run, moves: Moves, ranDifferently: Map<string, Set<string>>): Changed[] {
+  const tests = new Set([...testKeys(base, moves.headKey), ...testKeys(head, (key) => key)]);
+  const behaved = new Set([...ranDifferently.values()].flatMap((keys) => [...keys]));
   const baseByHeadKey = new Map(base.catalog.map((fn) => [moves.headKey(fn.symbol.key), fn]));
   const headKeys = new Set(head.catalog.map((fn) => fn.symbol.key));
   const changed: Changed[] = [];
   for (const fn of head.catalog) {
+    if (tests.has(fn.symbol.key)) continue;
     const before = baseByHeadKey.get(fn.symbol.key);
-    if (before === undefined) changed.push({ fn, change: "added" });
-    else if (bodyOf(base, before) !== bodyOf(head, fn)) changed.push({ fn, change: "edited" });
+    if (before === undefined) {
+      changed.push({ fn, change: "added" });
+      continue;
+    }
+    const [was, now] = [bodyOf(base, before), bodyOf(head, fn)];
+    if (was === null || now === null) {
+      if (behaved.has(fn.symbol.key)) changed.push({ fn, change: "ran differently" });
+    } else if (was !== now) changed.push({ fn, change: "edited" });
   }
-  for (const [headKey, fn] of baseByHeadKey) if (!headKeys.has(headKey)) changed.push({ fn, change: "removed" });
+  for (const [headKey, fn] of baseByHeadKey) if (!headKeys.has(headKey) && !tests.has(headKey)) changed.push({ fn, change: "removed" });
   return changed;
 }
 
+/** The test functions a run's workflows start in (by head's key). */
+function testKeys(run: Run, keyOf: (key: string) => string): string[] {
+  return run.scenarios.flatMap((scenario) => scenario.spans.filter((span) => span.fn.role === Role.Test).map((span) => keyOf(span.fn.symbol.key)));
+}
+
 /** Without source: the functions some test ran differently (lines now or no longer reached). */
-function changedByBehaviour(base: Run, head: Run, diff: RunDiff, moves: Moves): Changed[] {
-  const keys = new Set(diff.scenarios.flatMap((scenario) => scenario.functionsChanged.map((change) => change.symbol.key)));
+function changedByBehaviour(base: Run, head: Run, ranDifferently: Map<string, Set<string>>, moves: Moves): Changed[] {
+  const keys = new Set([...ranDifferently.values()].flatMap((keys) => [...keys]));
   const baseByHeadKey = new Map(base.catalog.map((fn) => [moves.headKey(fn.symbol.key), fn]));
   return [...keys].flatMap((key) => {
     const fn = head.catalogFunction(key) ?? baseByHeadKey.get(key);
@@ -122,9 +141,10 @@ function changedByBehaviour(base: Run, head: Run, diff: RunDiff, moves: Moves): 
   });
 }
 
-/** A function's lines as recorded, trailing space ignored: what a reviewer would read as its body. */
-function bodyOf(run: Run, fn: CatalogFunction): string {
-  const lines = run.sources?.get(fn.file) ?? [];
+/** A function's lines as recorded, trailing space ignored: what a reviewer would read as its body. Null when they weren't kept. */
+function bodyOf(run: Run, fn: CatalogFunction): string | null {
+  const lines = run.sources?.get(fn.file);
+  if (lines === undefined || !Number.isInteger(fn.firstLine) || !Number.isInteger(fn.lastLine) || fn.lastLine > lines.length) return null;
   return lines.slice(fn.firstLine - 1, fn.lastLine).map((line) => line.trimEnd()).join("\n");
 }
 
@@ -157,7 +177,7 @@ function routesByFunction(map: RouteMap): Map<string, Set<string>> {
   return routes;
 }
 
-/** Changed functions every one of whose workflows is the same, the same way: one entry to follow. */
+/** Changed functions with the same workflows, the same way, and the same routes: one entry to follow. */
 export interface ThreadGroup {
   functions: ChangedFunction[];
   threads: Thread[];
@@ -171,15 +191,10 @@ export interface ThreadGroup {
 export function groupThreads(threads: Threads): ThreadGroup[] {
   const groups = new Map<string, ThreadGroup>();
   for (const fn of threads.functions) {
-    const key = fn.threads.map((thread) => `${thread.kind}:${thread.scenarioId}`).join("\n");
+    const key = [...fn.threads.map((thread) => `${thread.kind}:${thread.scenarioId}`), ...fn.routes.map((route) => `${route.on}:${route.label}`)].join("\n");
     const group = groups.get(key);
     if (group === undefined) groups.set(key, { functions: [fn], threads: fn.threads, routes: fn.routes });
-    else {
-      group.functions.push(fn);
-      const labels = new Map(group.routes.map((route) => [route.label, route]));
-      for (const route of fn.routes) if (!labels.has(route.label)) labels.set(route.label, route);
-      group.routes = [...labels.values()].sort((a, b) => a.label.localeCompare(b.label));
-    }
+    else group.functions.push(fn);
   }
   return [...groups.values()];
 }

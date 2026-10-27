@@ -228,6 +228,15 @@ describe("renamed tests", () => {
     expect([moves.baseScenarioId(renamedCreate), diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).map((scenario) => `${scenario.change} ${scenario.id}`)]).toEqual([CREATE, []]);
   });
 
+  test("a test deleted and another added that run the same code aren't a rename: their bodies differ (second-model review)", async () => {
+    const renamedCreate = CREATE.replace("test_user_can_create_article", "test_creating_an_article");
+    const base = await new TraceDirectory(SLUG()).latest();
+    const own = base.catalog.find((fn) => fn.symbol.key.includes('"test_user_can_create_article"'))!;
+    const head = await new TraceDirectory(rewritten(SLUG(), { tests: { [CREATE]: renamedCreate }, lines: { [own.file]: { [own.firstLine + 1]: "    # another test" } } })).latest();
+
+    expect(detectMoves(base, head).describe()).toEqual([]);
+  });
+
   test("a renamed test pairs only with the one new test in its file that ran exactly its code", async () => {
     // Every test here runs the same project code; the span's role says which are tests.
     const ran = (nodeid: string, code: string[]) => {

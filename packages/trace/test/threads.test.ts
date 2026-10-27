@@ -63,6 +63,41 @@ describe("buildThreads", () => {
     expect(summary(threadsOf(base, head))).toEqual(["edited: get_slug_for_article (app.domain.articles) | different different | POST /api/articles (both)"]);
   });
 
+  test("a function edited where nothing runs (a comment) is a change, but the workflows through it run as before", async () => {
+    const base = await new TraceDirectory(fixtureFiles("fastapi-slug-refactor")).latest();
+    const fn = base.catalog.find((candidate) => candidate.symbol.key.includes('"get_slug_for_article"'))!;
+    // Its def line holds no statement that runs: a comment added there changes the text alone.
+    const def = base.sourceLine(fn.file, fn.firstLine)!;
+    const head = await new TraceDirectory(rewritten(fixtureFiles("fastapi-slug-refactor"), { lines: { [fn.file]: { [fn.firstLine]: `${def}  # reworded` } } })).latest();
+
+    // "Different" is about this function: a workflow that changed only elsewhere isn't counted here.
+    expect(summary(threadsOf(base, head))).toEqual(["edited: get_slug_for_article (app.services.articles) | same same | POST /api/articles (both)"]);
+  });
+
+  test("tests are the workflows, not code to follow: a test edited is no changed function", async () => {
+    const base = await new TraceDirectory(fixtureFiles("fastapi-slug-refactor")).latest();
+    const test = base.catalog.find((candidate) => candidate.symbol.key.includes('"test_user_can_create_article"'))!;
+    const head = await new TraceDirectory(rewritten(fixtureFiles("fastapi-slug-refactor"), { lines: { [test.file]: { [test.firstLine + 1]: "    # reworded" } } })).latest();
+
+    expect(threadsOf(base, head).functions).toEqual([]);
+  });
+
+  test("a file whose source wasn't kept: its functions count only when a workflow ran them differently", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const [base, head] = [(await runs.previous())!, await runs.latest()];
+    // As if the recorder hadn't kept app/services/articles.py on head (a file too big to keep, say).
+    (head.sources as Map<string, string[]>).delete("app/services/articles.py");
+
+    // check_article_exists wasn't edited, but its lines moved down the file: without the text,
+    // a moved line reads as another line run. The same blind spot as recordings with no source.
+    expect(summary(threadsOf(base, head)).filter((line) => line.includes("app.services.articles"))).toEqual([
+      "added: _normalize_title (app.services.articles) | new new | POST /api/articles (head)",
+      "ran differently: check_article_exists (app.services.articles) | different different | POST /api/articles (both)",
+      "added: ensure_slug_available (app.services.articles) | new new | POST /api/articles (head)",
+      "ran differently: get_slug_for_article (app.services.articles) | different different | POST /api/articles (both)",
+    ]);
+  });
+
   test("recordings without their source: changed means some workflow ran the function differently", async () => {
     const runs = fixtureRuns("django-feed-fix");
 

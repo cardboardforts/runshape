@@ -170,7 +170,6 @@ const HEADINGS: Record<ReviewCategory, string> = {
 
 const MAX_LISTED = 5;
 
-/** Markdown for a PR comment. Test names and function names only; no SQL text or source. */
 /** A row of the review: one test, or several whose change has one cause. */
 export interface ReviewRow {
   items: ReviewItem[];
@@ -206,9 +205,14 @@ function rowCells(row: ReviewRow): [string, string] {
   if (row.items.length === 1) return [codeSpan(escapeCell(first!.name)), escapeCell(describeChange(first!))];
   const names = row.items.slice(0, SHOWN_IN_ROW).map((item) => codeSpan(escapeCell(item.name)));
   const more = row.items.length > SHOWN_IN_ROW ? ` and ${row.items.length - SHOWN_IN_ROW} more` : "";
-  const cause = row.cause.slice(0, SHOWN_IN_ROW + 1).map((fn) => `${codeSpan(fn.symbol.path)} (${fn.change})`);
+  const cause = row.cause.slice(0, SHOWN_IN_ROW + 1).map((fn) => `${codeSpan(escapeCell(fn.symbol.path))} (${fn.change})`);
   const moreCause = row.cause.length > SHOWN_IN_ROW + 1 ? ` and ${row.cause.length - SHOWN_IN_ROW - 1} more` : "";
-  return [`${row.items.length} tests: ${names.join(", ")}${more}`, `all through what changed: ${cause.join(", ")}${moreCause}; ${escapeCell(describeChange(first!))} (the first of them)`];
+  // One cause can still change tests in different ways: each way is said, not just the first's.
+  const changes = [...new Set(row.items.map((item) => describeChange(item)))];
+  const shown = changes.slice(0, SHOWN_IN_ROW).map(escapeCell).join("; ");
+  const moreChanges = changes.length > SHOWN_IN_ROW ? `; and ${changes.length - SHOWN_IN_ROW} other ways` : "";
+  const ways = changes.length === 1 ? `each: ${shown}` : `${changes.length} ways: ${shown}${moreChanges}`;
+  return [`${row.items.length} tests: ${names.join(", ")}${more}`, `through changed code: ${cause.join(", ")}${moreCause}; ${ways}`];
 }
 
 /** The review as Markdown; with the threads, tests with one cause are one row. */
