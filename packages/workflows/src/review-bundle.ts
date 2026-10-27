@@ -1,7 +1,7 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { Grouping, Phase, Run } from "@runshape/kernel";
 import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, ZoneRule, ZoneRules } from "@runshape/architecture";
-import { buildReview, buildThreads, Change, detectMoves, diffRouteMaps, diffRuns, Op, reviewMarkdown, ReviewSummary, RouteMapDiff, ThreadKind, Threads } from "@runshape/trace";
+import { buildReview, buildThreads, Change, detectMoves, diffRouteMaps, diffRuns, groupThreads, Op, reviewMarkdown, ReviewSummary, RouteMapDiff, ChangedFunction, ThreadKind, Threads } from "@runshape/trace";
 
 /** One side of the comparison: what was asked for, and the recording that answered it. */
 export interface ReviewSide {
@@ -143,7 +143,7 @@ function bundleRoutes(diff: RouteMapDiff): ReviewBundle["routes"] {
  */
 export function reviewBundleMarkdown(bundle: ReviewBundle): string {
   const out = [
-    reviewMarkdown(bundle.review).trimEnd(),
+    reviewMarkdown(bundle.review, bundle.threads).trimEnd(),
     "",
     `Compared ${sideText(bundle.base)} with ${sideText(bundle.head)}.`,
     "",
@@ -234,29 +234,45 @@ function code(text: string): string {
   return text.includes("`") ? `\`\` ${text} \`\`` : `\`${text}\``;
 }
 
-/** More than this many functions or workflow names is a list to open, not to read. */
+/** More than this many entries or workflow names is a list to open, not to read. */
 const SHOWN_FUNCTIONS = 15;
 const SHOWN_NAMES = 6;
 
-/** "Threads to follow": each changed function, how many workflows run through it, and which changed. */
+/**
+ * "Threads to follow": each changed function, how many workflows run through it, and which
+ * changed. Functions with the same workflows are one entry: one thread to follow.
+ */
 function threadsMarkdown(threads: Threads | undefined): string[] {
   if (threads === undefined || threads.functions.length === 0) return [];
+  const groups = groupThreads(threads);
   const out = [`### Threads to follow (${threads.functions.length} changed function${threads.functions.length === 1 ? "" : "s"})`, ""];
   if (threads.basis === "behaviour") out.push("These recordings don't keep their source: a function counts as changed when a workflow ran it differently.", "");
-  for (const fn of threads.functions.slice(0, SHOWN_FUNCTIONS)) {
-    const count = (kind: ThreadKind) => fn.threads.filter((thread) => thread.kind === kind).length;
-    const parts = [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone, ThreadKind.Same].filter((kind) => count(kind) > 0).map((kind) => `${count(kind)} ${THREAD_WORDS[kind]}`);
-    const through = fn.threads.length === 0 ? "no recorded workflow runs through it" : `${fn.threads.length} workflow${fn.threads.length === 1 ? "" : "s"}: ${parts.join(", ")}`;
-    out.push(`- ${code(fn.symbol.path)} (${fn.symbol.namespace}), ${fn.change}: ${through}`);
+  for (const group of groups.slice(0, SHOWN_FUNCTIONS)) {
+    const count = (kind: ThreadKind) => group.threads.filter((thread) => thread.kind === kind).length;
+    const words = (kind: ThreadKind) => (group.functions.length === 1 ? THREAD_WORDS[kind] : THREAD_WORDS[kind].replace(/ it$/, " them"));
+    const parts = [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone, ThreadKind.Same].filter((kind) => count(kind) > 0).map((kind) => `${count(kind)} ${words(kind)}`);
+    const workflows = group.threads.length === 0 ? `no recorded workflow runs through ${group.functions.length === 1 ? "it" : "them"}` : `${group.threads.length} workflow${group.threads.length === 1 ? "" : "s"}: ${parts.join(", ")}`;
+    out.push(`- ${functionsText(group.functions)}: ${workflows}`);
     for (const kind of [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone]) {
-      const names = fn.threads.filter((thread) => thread.kind === kind).map((thread) => code(thread.name));
-      if (names.length > 0) out.push(`  - ${THREAD_WORDS[kind]}: ${names.slice(0, SHOWN_NAMES).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""}`);
+      const names = group.threads.filter((thread) => thread.kind === kind).map((thread) => code(thread.name));
+      if (names.length > 0) out.push(`  - ${words(kind)}: ${names.slice(0, SHOWN_NAMES).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""}`);
     }
-    if (fn.routes.length > 0) out.push(`  - routes: ${fn.routes.map((route) => code(route.label) + (route.on === "both" ? "" : route.on === "head" ? " (new)" : " (gone)")).join(", ")}`);
+    if (group.routes.length > 0) out.push(`  - routes: ${group.routes.map((route) => code(route.label) + (route.on === "both" ? "" : route.on === "head" ? " (new)" : " (gone)")).join(", ")}`);
   }
-  if (threads.functions.length > SHOWN_FUNCTIONS) out.push(`- and ${threads.functions.length - SHOWN_FUNCTIONS} more (review.json lists them all)`);
+  if (groups.length > SHOWN_FUNCTIONS) out.push(`- and ${groups.length - SHOWN_FUNCTIONS} more (review.json lists them all)`);
   out.push("");
   return out;
+}
+
+/** "`a` (ns), edited" for one; "`a`, `b` (ns), added; `c` (ns2), edited" for several. */
+function functionsText(functions: ChangedFunction[]): string {
+  const byWhere = new Map<string, ChangedFunction[]>();
+  for (const fn of functions) {
+    const where = `${fn.symbol.namespace}|${fn.change}`;
+    if (!byWhere.has(where)) byWhere.set(where, []);
+    byWhere.get(where)!.push(fn);
+  }
+  return [...byWhere.values()].map((fns) => `${fns.map((fn) => code(fn.symbol.path)).join(", ")} (${fns[0]!.symbol.namespace}), ${fns[0]!.change}`).join("; ");
 }
 
 /** How a workflow relates to the function: it's the workflows that are new to it, not new tests. */

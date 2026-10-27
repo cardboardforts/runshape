@@ -334,6 +334,12 @@ decided.
    collapse into one row ("66 tests: now save reviews through ReviewStore"), expandable.
    A test whose title changed pairs with its old self, as moved tests do (PR 3b's renamed
    test read as one removed and one new).
+   - **Done (2026-10-26).** `groupThreads`: changed functions with the same workflows, the same
+     way, are one thread in `review.md`. `reviewRows`: tests that changed through the same
+     changed functions are one row ("2 tests: ... all through what changed: ..."). A test gone
+     from a file that still has tests pairs with the one new test there that ran exactly its
+     project code (`a.py: test_x -> test_y (renamed)`); one whose code changed too stays
+     removed + new.
 4. **Structured CLI logging:** logfmt, with a run ID and PR number on every line, duration
    per PR, and the full error for each PR that fails. Workflows log through the kernel's `Logger`
    port, and the CLI wires a logfmt sink for it.

@@ -9,9 +9,9 @@
 import { describe, expect, test } from "vitest";
 
 import { Run, TraceDirectory } from "@runshape/kernel";
-import { buildThreads, detectMoves, Threads } from "../src";
+import { buildThreads, detectMoves, groupThreads, reviewRows, Threads } from "../src";
 import { fixtureFiles, fixtureRuns } from "../../kernel/test/fixtures";
-import { diffOf } from "./graphs";
+import { diffOf, reviewOf } from "./graphs";
 import { rewritten } from "./rewrite";
 
 /** One line per changed function: what changed, its threads (by kind) and routes (and on which side). */
@@ -77,5 +77,28 @@ describe("buildThreads", () => {
       "ran differently: ArticlesFeedAPIView.list (conduit.apps.articles.views) | new | GET /api/articles/feed (head)",
       "ran differently: ArticleViewSet.retrieve (conduit.apps.articles.views) | gone | GET /api/articles/{slug} (base)",
     ]);
+  });
+});
+
+describe("group by cause", () => {
+  test("functions with the same workflows are one thread; tests through the same changed functions are one review row", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const [base, head] = [(await runs.previous())!, await runs.latest()];
+    const threads = threadsOf(base, head);
+
+    const groups = groupThreads(threads).map((group) => `${group.functions.map((fn) => fn.symbol.path).join(", ")}: ${group.threads.map((t) => t.kind).join(" ")}`);
+    const rows = reviewRows(reviewOf(base, head).items.filter((item) => item.category === "silent-change"), threads).map((row) => `${row.items.length} tests through ${row.cause.length} changed functions`);
+
+    // The two added helpers share both tests, as do the two edited functions: two threads, not four.
+    expect(groups).toEqual(["_normalize_title, ensure_slug_available: new new", "create_new_article, get_slug_for_article: different different"]);
+    // Both tests that run differently do so through the same four functions: one row, not two.
+    expect(rows).toEqual(["2 tests through 4 changed functions"]);
+  });
+
+  test("without threads every test is its own row, as before", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const items = reviewOf((await runs.previous())!, await runs.latest()).items;
+
+    expect(reviewRows(items).every((row) => row.items.length === 1 && row.cause.length === 0)).toBe(true);
   });
 });

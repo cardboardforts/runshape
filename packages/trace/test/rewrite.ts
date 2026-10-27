@@ -12,6 +12,8 @@ export interface Rewrite {
   classes?: Record<string, string>;
   /** Source lines rewritten in the manifest's sources: file -> line number -> new text. */
   lines?: Record<string, Record<number, string>>;
+  /** Tests renamed, by whole nodeid (their own function renamed with them). */
+  tests?: Record<string, string>;
   keepSources?: boolean;
 }
 
@@ -30,12 +32,27 @@ export function rewritten(files: TraceFiles, rewrite: Rewrite): TraceFiles {
       const data = JSON.parse(await files.readText(path));
       if (path.endsWith("manifest.json")) {
         for (const fn of data.catalog) moveFunction(fn);
+        for (const [was, now] of Object.entries(rewrite.tests ?? {})) {
+          const [file, from, to] = [was.split("::")[0], was.split("::").pop(), now.split("::").pop()];
+          for (const fn of data.catalog) if (fn.file === file && fn.qualname === from) fn.qualname = to;
+          for (const entry of data.scenarios) if (entry.nodeid === was) entry.nodeid = now;
+        }
         for (const route of data.framework?.routes ?? []) route.handler = renameDotted(route.handler);
         for (const [file, edits] of Object.entries(rewrite.lines ?? {})) {
           for (const [line, text] of Object.entries(edits)) data.sources[file][Number(line) - 1] = text;
         }
         if (rewrite.keepSources === false) delete data.sources;
       } else if (path.includes("/scenarios/")) {
+        const renamed = rewrite.tests?.[data.nodeid];
+        if (renamed !== undefined) {
+          const [was, now] = [data.nodeid.split("::").pop(), renamed.split("::").pop()];
+          for (const fn of data.functions) {
+            if (fn.role !== "test" || fn.qualname !== was) continue;
+            fn.qualname = now;
+            fn.key = `${fn.module}:${now}`;
+          }
+          data.nodeid = renamed;
+        }
         for (const fn of data.functions) moveFunction(fn);
         for (const event of data.events) if (event[0] === "O") event[3] = renameDotted(event[3]);
       }

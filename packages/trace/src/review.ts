@@ -3,6 +3,7 @@ import { ComparedGraphs, FINE_GROUPING, Grouping, Outcome, Phase, Run, SymbolKin
 import { diffExecution } from "./execution-diff";
 import { detectMoves, Moves } from "./moves";
 import { Change, diffRuns } from "./run-diff";
+import { causesByScenario, ChangedFunction, Threads } from "./threads";
 
 /**
  * A pull request reviewed by its behaviour: every test run on the base and on the head,
@@ -170,7 +171,48 @@ const HEADINGS: Record<ReviewCategory, string> = {
 const MAX_LISTED = 5;
 
 /** Markdown for a PR comment. Test names and function names only; no SQL text or source. */
-export function reviewMarkdown(summary: ReviewSummary): string {
+/** A row of the review: one test, or several whose change has one cause. */
+export interface ReviewRow {
+  items: ReviewItem[];
+  /** The changed functions they run differently, newly or no longer: empty when not known. */
+  cause: ChangedFunction[];
+}
+
+/**
+ * Review items as rows to read: with the threads, tests whose change has one cause (they run
+ * through the same changed functions) are one row. A refactor that sends every test through
+ * one new store reads as one row of 66 tests, not 66 rows saying the same thing.
+ */
+export function reviewRows(items: ReviewItem[], threads?: Threads): ReviewRow[] {
+  if (threads === undefined) return items.map((item) => ({ items: [item], cause: [] }));
+  const causes = causesByScenario(threads);
+  const rows = new Map<string, ReviewRow>();
+  for (const item of items) {
+    const cause = causes.get(item.scenarioId) ?? [];
+    // A change no changed function accounts for (a test that moved, say) stands alone.
+    const key = cause.length === 0 ? `alone:${item.scenarioId}` : cause.map((fn) => fn.symbol.key).sort().join("\n");
+    const row = rows.get(key);
+    if (row === undefined) rows.set(key, { items: [item], cause });
+    else row.items.push(item);
+  }
+  return [...rows.values()];
+}
+
+/** More names than this in one row is a list to open in review.json. */
+const SHOWN_IN_ROW = 3;
+
+function rowCells(row: ReviewRow): [string, string] {
+  const [first] = row.items;
+  if (row.items.length === 1) return [codeSpan(escapeCell(first!.name)), escapeCell(describeChange(first!))];
+  const names = row.items.slice(0, SHOWN_IN_ROW).map((item) => codeSpan(escapeCell(item.name)));
+  const more = row.items.length > SHOWN_IN_ROW ? ` and ${row.items.length - SHOWN_IN_ROW} more` : "";
+  const cause = row.cause.slice(0, SHOWN_IN_ROW + 1).map((fn) => `${codeSpan(fn.symbol.path)} (${fn.change})`);
+  const moreCause = row.cause.length > SHOWN_IN_ROW + 1 ? ` and ${row.cause.length - SHOWN_IN_ROW - 1} more` : "";
+  return [`${row.items.length} tests: ${names.join(", ")}${more}`, `all through what changed: ${cause.join(", ")}${moreCause}; ${escapeCell(describeChange(first!))} (the first of them)`];
+}
+
+/** The review as Markdown; with the threads, tests with one cause are one row. */
+export function reviewMarkdown(summary: ReviewSummary, threads?: Threads): string {
   const out: string[] = ["## Behaviour changes (Runshape)", ""];
   // Three counts that add up, so "N on both" isn't read as the total (a model read it so).
   const onBothSides = summary.items.filter((item) => item.category !== ReviewCategory.Removed && item.outcomeBefore !== null).length;
@@ -190,7 +232,7 @@ export function reviewMarkdown(summary: ReviewSummary): string {
     const items = summary.items.filter((item) => item.category === category);
     if (items.length === 0) continue;
     out.push(`### ${HEADINGS[category]} (${items.length})`, "", "| Test | What changed |", "|---|---|");
-    for (const item of items) out.push(`| ${codeSpan(escapeCell(item.name))} | ${escapeCell(describeChange(item))} |`);
+    for (const row of reviewRows(items, threads)) out.push(`| ${rowCells(row).join(" | ")} |`);
     out.push("");
   }
   out.push(`${summary.counts[ReviewCategory.Unchanged]} tests behave exactly as before.`);

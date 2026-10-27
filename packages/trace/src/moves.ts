@@ -93,7 +93,10 @@ export class Moves implements Renaming {
       lines.push(`${from.localName.text}: ${from.namespaceName.text} -> ${to.namespaceName.text}`);
     }
     const testFiles = new Map<string, number>();
-    for (const { from, to } of this.tests) testFiles.set(`${from.file} -> ${to.file}`, (testFiles.get(`${from.file} -> ${to.file}`) ?? 0) + 1);
+    for (const { from, to } of this.tests) {
+      if (from.file === to.file) lines.push(`${from.file}: ${from.name} -> ${to.name} (renamed)`);
+      else testFiles.set(`${from.file} -> ${to.file}`, (testFiles.get(`${from.file} -> ${to.file}`) ?? 0) + 1);
+    }
     for (const [files, count] of testFiles) lines.push(`${files} (${count} test${count === 1 ? "" : "s"})`);
     return lines;
   }
@@ -124,7 +127,24 @@ function testMoves(base: Run, head: Run): TestMove[] {
     const targets = added.get(name);
     if (candidates.length === 1 && targets?.length === 1) moves.push({ from: candidates[0]!, to: targets[0]! });
   }
+  // Renamed where it stands: a test gone from a file head still has pairs with a new one in that
+  // file when they ran exactly the same project code, and nothing else did. A test whose body
+  // changed too doesn't pair: then it is a different test.
+  const pairedTo = new Set(moves.map((move) => move.to.nodeid));
+  const stayed = groupBy(firsts(base.scenarios.filter((scenario) => !headIds.has(scenario.nodeid) && headFiles.has(scenario.file))), signature);
+  const arrived = groupBy(firsts(head.scenarios.filter((scenario) => !baseIds.has(scenario.nodeid) && !pairedTo.has(scenario.nodeid))), signature);
+  for (const [ran, candidates] of stayed) {
+    const targets = arrived.get(ran);
+    if (ran.endsWith("\n") || candidates.length !== 1 || targets?.length !== 1) continue;
+    moves.push({ from: candidates[0]!, to: targets[0]! });
+  }
   return moves;
+}
+
+/** A test's file and the project code it ran, in order: its own function and fixtures left out, since a rename renames them. */
+function signature(scenario: Scenario): string {
+  const ran = scenario.spans.filter((span) => span.fn.role === Role.Source).map((span) => span.fn.symbol.key);
+  return `${scenario.file}\n${ran.join("\n")}`;
 }
 
 /**

@@ -50,8 +50,7 @@ describe("buildReviewBundle", () => {
 
       | Test | What changed |
       |---|---|
-      | \`test_user_can_not_create_article_with_duplicated_slug\` | now calls \`ensure_slug_available\`, \`_normalize_title\`; 17 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` |
-      | \`test_user_can_create_article\` | now calls \`ensure_slug_available\`, \`_normalize_title\`; 4 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` |
+      | 2 tests: \`test_user_can_not_create_article_with_duplicated_slug\`, \`test_user_can_create_article\` | all through what changed: \`_normalize_title\` (added), \`create_new_article\` (edited), \`ensure_slug_available\` (added), \`get_slug_for_article\` (edited); now calls \`ensure_slug_available\`, \`_normalize_title\`; 17 calls moved under a new caller; different lines run in \`create_new_article\`, \`get_slug_for_article\` (the first of them) |
 
       2 tests behave exactly as before.
 
@@ -59,16 +58,10 @@ describe("buildReviewBundle", () => {
 
       ### Threads to follow (4 changed functions)
 
-      - \`_normalize_title\` (app.services.articles), added: 2 workflows: 2 newly run through it
-        - newly run through it: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
+      - \`_normalize_title\`, \`ensure_slug_available\` (app.services.articles), added: 2 workflows: 2 newly run through them
+        - newly run through them: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
         - routes: \`POST /api/articles\` (new)
-      - \`create_new_article\` (app.api.routes.articles.articles_resource), edited: 2 workflows: 2 now run differently
-        - now run differently: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
-        - routes: \`POST /api/articles\`
-      - \`ensure_slug_available\` (app.services.articles), added: 2 workflows: 2 newly run through it
-        - newly run through it: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
-        - routes: \`POST /api/articles\` (new)
-      - \`get_slug_for_article\` (app.services.articles), edited: 2 workflows: 2 now run differently
+      - \`create_new_article\` (app.api.routes.articles.articles_resource), edited; \`get_slug_for_article\` (app.services.articles), edited: 2 workflows: 2 now run differently
         - now run differently: \`test_user_can_create_article\`, \`test_user_can_not_create_article_with_duplicated_slug\`
         - routes: \`POST /api/articles\`
 

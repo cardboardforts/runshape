@@ -156,3 +156,46 @@ function routesByFunction(map: RouteMap): Map<string, Set<string>> {
   }
   return routes;
 }
+
+/** Changed functions every one of whose workflows is the same, the same way: one entry to follow. */
+export interface ThreadGroup {
+  functions: ChangedFunction[];
+  threads: Thread[];
+  routes: ThreadRoute[];
+}
+
+/**
+ * Functions with the same threads, grouped: a change that adds five helpers along one path is
+ * one thread to follow, not five copies of the same workflow list. In the order of their first.
+ */
+export function groupThreads(threads: Threads): ThreadGroup[] {
+  const groups = new Map<string, ThreadGroup>();
+  for (const fn of threads.functions) {
+    const key = fn.threads.map((thread) => `${thread.kind}:${thread.scenarioId}`).join("\n");
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, { functions: [fn], threads: fn.threads, routes: fn.routes });
+    else {
+      group.functions.push(fn);
+      const labels = new Map(group.routes.map((route) => [route.label, route]));
+      for (const route of fn.routes) if (!labels.has(route.label)) labels.set(route.label, route);
+      group.routes = [...labels.values()].sort((a, b) => a.label.localeCompare(b.label));
+    }
+  }
+  return [...groups.values()];
+}
+
+/**
+ * What a workflow's change comes from: the changed functions it now runs differently, newly, or
+ * no longer, by scenario (head's id). Workflows with the same cause are one row to review.
+ */
+export function causesByScenario(threads: Threads): Map<string, ChangedFunction[]> {
+  const causes = new Map<string, ChangedFunction[]>();
+  for (const fn of threads.functions) {
+    for (const thread of fn.threads) {
+      if (thread.kind === ThreadKind.Same) continue;
+      if (!causes.has(thread.scenarioId)) causes.set(thread.scenarioId, []);
+      causes.get(thread.scenarioId)!.push(fn);
+    }
+  }
+  return causes;
+}

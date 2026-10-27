@@ -214,6 +214,42 @@ describe("moved tests", () => {
   });
 });
 
+describe("renamed tests", () => {
+  test("a test renamed in its file pairs with its old self when it ran the same code, and compares as unchanged", async () => {
+    const renamedCreate = CREATE.replace("test_user_can_create_article", "test_creating_an_article");
+    const base = await new TraceDirectory(SLUG()).latest();
+    const head = await new TraceDirectory(rewritten(SLUG(), { tests: { [CREATE]: renamedCreate } })).latest();
+
+    const moves = detectMoves(base, head);
+    const diff = diffOf(base, head);
+
+    // PR 3b's renamed test read as one removed and one new; now it is one test, renamed.
+    expect(moves.describe()).toEqual([`tests/test_api/test_routes/test_articles.py: test_user_can_create_article -> test_creating_an_article (renamed)`]);
+    expect([moves.baseScenarioId(renamedCreate), diff.scenarios.filter((scenario) => scenario.change !== Change.Unchanged).map((scenario) => `${scenario.change} ${scenario.id}`)]).toEqual([CREATE, []]);
+  });
+
+  test("a renamed test pairs only with the one new test in its file that ran exactly its code", async () => {
+    // Every test here runs the same project code; the span's role says which are tests.
+    const ran = (nodeid: string, code: string[]) => {
+      const scenario = scenarioNamed(nodeid);
+      const spans = code.map((name, i) => new Span(i + 2, { ...scenario.spans[0]!.fn, role: Role.Source, symbol: new CodeSymbol(["app"], [], name, SymbolKind.Function, null) }, null, null, Phase.Call, 0, 1));
+      return new Scenario(nodeid, Outcome.Passed, 0, [...scenario.spans, ...spans], [], [], []);
+    };
+    const run = (scenarios: Scenario[]) => ({ scenarios, catalog: [], sources: null }) as unknown as Run;
+    const pairs = (base: Scenario[], head: Scenario[]) => detectMoves(run(base), run(head)).describe();
+
+    expect([
+      pairs([ran("a.py::test_x", ["f"])], [ran("a.py::test_y", ["f"])]),
+      // Ran other code: a different test, not a rename.
+      pairs([ran("a.py::test_x", ["f"])], [ran("a.py::test_y", ["g"])]),
+      // Two new tests ran the same code: no telling which it became.
+      pairs([ran("a.py::test_x", ["f"])], [ran("a.py::test_y", ["f"]), ran("a.py::test_z", ["f"])]),
+      // Ran no project code at all: nothing to tell it by.
+      pairs([ran("a.py::test_x", [])], [ran("a.py::test_y", [])]),
+    ]).toEqual([["a.py: test_x -> test_y (renamed)"], [], [], []]);
+  });
+});
+
 /** Just enough of a scenario for pairing tests: its id, and a test span at its root. */
 function scenarioNamed(nodeid: string) {
   const symbol = new CodeSymbol([nodeid.split("::")[0]!], [], nodeid.split("::").at(-1)!, SymbolKind.Function, null);
