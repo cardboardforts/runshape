@@ -1,4 +1,4 @@
-import { ArchitectureProfile, CodeSymbol, Grouping, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse } from "@runshape/kernel";
+import { ArchitectureProfile, CodeSymbol, ComponentKind, Grouping, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse } from "@runshape/kernel";
 import { ArchitectureAdvice, ArchitectureAdviceError, moduleRoots, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 import { buildReplay, buildReview, buildRouteMap, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves } from "@runshape/trace";
 import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, UnknownFunctionError } from "@runshape/visualizer";
@@ -41,6 +41,9 @@ export interface SessionDependencies {
  * Answers the viewer's requests about one recorded run. The VS Code extension forwards
  * webview messages here; the standalone demo calls it directly.
  */
+/** Every phase: a module only startup code reaches is still one of the project's modules. */
+const EVERY_PHASE = [Phase.Setup, Phase.Call, Phase.Teardown];
+
 export class ViewerSession {
   private readonly sources: SourceReader;
   private readonly baseline: Run | null;
@@ -77,6 +80,17 @@ export class ViewerSession {
     return this.rules;
   }
 
+  /**
+   * The module view's boxes, from what the graph draws as the project's classes and modules on
+   * either side (a package only one side has is still a box). Test code is drawn as the client.
+   */
+  modules(): string[] {
+    const runs = this.baseline === null ? [this.run] : [this.run, this.baseline];
+    const drawn = runs.flatMap((run) => buildSystemGraph(run, { phases: EVERY_PHASE, rules: this.rules }).nodes);
+    const names = drawn.filter((node) => node.qualifiedName !== null && (node.kind === ComponentKind.Class || node.kind === ComponentKind.Module)).map((node) => QualifiedName.parse(node.qualifiedName!));
+    return moduleRoots(names, this.rules);
+  }
+
   summary(): RunSummary {
     const run = this.run;
     return {
@@ -101,8 +115,7 @@ export class ViewerSession {
       style: this.rules.profile.style,
       canEditRules: this.ruleStore !== null,
       canAdviseZones: this.advisor?.available ?? false,
-      // Both sides' code: a package only the base or only head has is still a box.
-      modules: moduleRoots([...run.catalog, ...(this.baseline?.catalog ?? [])].map((fn) => fn.symbol.namespaceName), this.rules),
+      modules: this.modules(),
     };
   }
 
@@ -202,7 +215,7 @@ export class ViewerSession {
         const saved = await this.ruleStore.save(next, { question: `Add this rule to ${RULES_FILE}?`, detail: change, confirm: "Add rule" });
         if (!saved) return null;
         this.rules = next;
-        return { type: "rulesChanged", count: next.rules.length, style: next.profile.style };
+        return { type: "rulesChanged", count: next.rules.length, style: next.profile.style, modules: this.modules() };
       }
       case "detectArchitecture":
         return { type: "architecture", candidates: detectArchitecture(this.run) };
@@ -275,7 +288,7 @@ export class ViewerSession {
     if (!saved) return null;
     this.rules = next;
     this.rulesProblem = null;
-    return { type: "rulesChanged", count: next.rules.length, style: next.profile.style };
+    return { type: "rulesChanged", count: next.rules.length, style: next.profile.style, modules: this.modules() };
   }
 
   private async adviseArchitecture(): Promise<UiResponse> {

@@ -167,7 +167,7 @@ describe("detect and adopt", () => {
 
       runshape.json has no rules now (hexagonal style)."
     `);
-    expect(adopted).toEqual({ type: "rulesChanged", count: 5, style: "layered" });
+    expect(adopted).toEqual({ type: "rulesChanged", count: 5, style: "layered", modules: ["app.api", "app.core", "app.db", "app.main", "app.models", "app.services"] });
     expect(JSON.parse(saved!).style).toBe("layered");
     expect(session.summary().style).toBe("layered");
     const userInDb = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.label === "UserInDB") : undefined;

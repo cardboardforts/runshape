@@ -202,7 +202,10 @@ class GraphBuilder {
     if (fixed !== null) return { zone: fixed, source: ZoneSource.Fixed, reason: "framework, test or external code" };
     // Rules name zones of the style they were written for; drawing another style ignores them.
     if (tally.ref.name !== null && this.rules.profile.style === this.profile.style) {
-      const match = this.rules.matchFor(tally.ref.name) ?? this.membersMatch(tally);
+      const own = this.rules.matchFor(tally.ref.name);
+      // A module placed by its members' rules says so, and isn't a composition root for their sake.
+      const members = own === null ? this.membersMatch(tally) : null;
+      const match = own ?? (members === null ? null : { ...members, rule: { ...members.rule, role: undefined, reason: `most of its code: ${members.rule.reason}` } });
       if (match !== null) {
         const decidedBy = match.rule.by === "llm" ? "proposed by a model, accepted" : "declared";
         return {

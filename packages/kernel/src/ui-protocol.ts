@@ -81,7 +81,8 @@ export type UiResponse =
   /** `baseRulesKnown`: the base was drawn with its own commit's rules, not the current ones. */
   | { type: "diff"; diff: RunDiff; review: ReviewSummary; architecture: ArchitectureDiff; baseRulesKnown: boolean }
   | { type: "routes"; routes: RouteMap; diff: RouteMapDiff | null }
-  | { type: "rulesChanged"; count: number; style: string }
+  /** `modules`: the module view's boxes under the new rules (a region added is a module). */
+  | { type: "rulesChanged"; count: number; style: string; modules: string[] }
   | { type: "architecture"; candidates: ArchitectureCandidate[] }
   | { type: "architectureAdvice"; style: string; reason: string; confidence: string; rules: { match: string; zone: string }[] }
   | { type: "architectureAdviceFailed"; message: string }

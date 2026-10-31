@@ -85,7 +85,7 @@ describe("asking, then adopting the model's proposal", () => {
       ],
     });
     expect(wrongStyle?.type).toBe("error");
-    expect(adopted).toEqual({ type: "rulesChanged", count: 3, style: "layered" });
+    expect(adopted).toEqual({ type: "rulesChanged", count: 3, style: "layered", modules: ["app.api", "app.core", "app.db", "app.main", "app.models", "app.services"] });
     expect(JSON.parse(saved!).zones.map((rule: { by: string }) => rule.by)).toEqual(["llm", "llm", "llm"]);
     const repository = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.label === "UsersRepository") : undefined;
     expect(`${repository?.zone} (${repository?.zoneSource})`).toBe("data (rule)");

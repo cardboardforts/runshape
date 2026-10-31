@@ -388,7 +388,8 @@ behave differently" works on a real Runshape PR.
      package (down while there's one way down). The viewer opens there ("By module"); clicking
      a module opens its classes and what they call ("← all modules" goes back). A module no rule
      names sits where its own code's rules put most of it. Not yet: a region drawn in its own
-     style when opened, and sub-modules between a module and its classes.
+     style when opened, sub-modules between a module and its classes, and a moved package in
+     compare at module level (moves pair namespaces, not prefixes: it reads as gone + new).
 5. **Categorizer on the branch:** new or changed code that no rule covers gets a proposed
    placement, committed to the branch for approval in the diff. A function now doing another
    zone's work is called out, with renames recognised (`moves.ts`) so a rename isn't mistaken

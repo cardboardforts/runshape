@@ -67,7 +67,7 @@ describe("moduleRoots", () => {
     const graph = buildSystemGraph(run, { grouping: { collapseMiddleware: true, modules }, rules });
 
     expect(graph.nodes.filter((node) => node.label === "app.services").map((node) => `${node.zone} [${node.zoneSource}] ${node.zoneReason}`)).toEqual([
-      "outbound-adapter [rule] declared in runshape.json (app.services.*): say so",
+      "outbound-adapter [rule] declared in runshape.json (app.services.*): most of its code: say so",
     ]);
   });
 });

@@ -153,7 +153,7 @@ describe("suggest, then accept", () => {
       It goes first in runshape.json; the other 0 rule(s) are kept.",
       ]
     `);
-    expect(accepted).toEqual({ type: "rulesChanged", count: 1, style: "hexagonal" });
+    expect(accepted).toEqual({ type: "rulesChanged", count: 1, style: "hexagonal", modules: ["app.api", "app.core", "app.db", "app.main", "app.models", "app.services"] });
     expect(accepting.saved?.serialize()).toMatchInlineSnapshot(`
       "{
         "version": 2,

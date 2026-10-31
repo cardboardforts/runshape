@@ -152,6 +152,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
           if (runLoaded.current || loadFailed.current) {
             // A new recording replaced the old one: scenario ids and views may all differ.
             setSelected(null);
+            setFocus(null);
             setDetail({ component: null, fn: null });
             setReplay(null);
             setDiff(null);
@@ -178,7 +179,8 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             }
           }
           // The first load opens at the modules, when there's more than one to show.
-          if (!runLoaded.current && !loadFailed.current && response.summary.modules.length > 1) {
+          // Not when a link asked for one test's change: that opens at the test, class by class.
+          if (!runLoaded.current && !loadFailed.current && pendingOpenAt.current === null && response.summary.modules.length > 1) {
             const next = { ...viewOptions.current.grouping, modules: response.summary.modules };
             setGrouping(next);
             viewOptions.current.grouping = next;
@@ -236,6 +238,13 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
           if (viewOptions.current.style === response.style) {
             setDrawStyle(undefined);
             viewOptions.current.style = undefined;
+          }
+          setSummary((current) => (current === null ? current : { ...current, modules: response.modules }));
+          // In the module view, the boxes follow the rules: a region added is a module.
+          if (viewOptions.current.grouping.modules !== undefined) {
+            const next = { ...viewOptions.current.grouping, modules: response.modules };
+            setGrouping(next);
+            viewOptions.current.grouping = next;
           }
           // Zones changed: everything coloured by zone is stale.
           const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
