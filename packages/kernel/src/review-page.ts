@@ -21,6 +21,8 @@ export interface ReviewPage {
   cost?: ReviewPageCost;
   /** The categorizer's view of the change; absent in pages saved before it. */
   categories?: ReviewPageCategories;
+  /** What the change is for; absent from pages saved before stories were read. */
+  story?: ReviewPageStory;
 }
 
 /** What the changed code is, what the change newly breaks, and zones proposed for new code. */
@@ -41,6 +43,20 @@ export interface ReviewPageTag {
   by: "declared" | "detected" | "judged" | "confirmed";
   confidence: number;
   text: string;
+}
+
+/**
+ * What the change is for: the PR, its tickets, what couldn't be read, the docs and comments
+ * changed, and, once it's explained, the model's account. Titles are other people's text: draw
+ * them as text.
+ */
+export interface ReviewPageStory {
+  pullRequest: { number: number; title: string; url: string | null } | null;
+  tickets: { id: string; source: string; title: string; url: string | null; state: string }[];
+  unread: { id: string; source: string; reason: string }[];
+  notes: { path: string; kind: "doc" | "comments"; added: number; removed: number }[];
+  /** The model's account, labelled as one: null until the review is explained. */
+  account: { model: string; purpose: string; notInStory: { behaviour: string; evidence: string }[] } | null;
 }
 
 /** One number on each side; null on a side that doesn't have it. */

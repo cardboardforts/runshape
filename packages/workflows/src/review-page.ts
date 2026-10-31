@@ -1,7 +1,7 @@
 // The PR page's content (page.json), from a saved review: what the UI draws, worked out here so
 // the UI reads kernel types only.
 import { claimText } from "@runshape/architecture";
-import { ReviewCallout, ReviewHighlights, ReviewPage, ReviewPageCategories, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
+import { ReviewCallout, ReviewHighlights, ReviewPage, ReviewPageCategories, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageStory, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
 import {
   ChangedFunction,
   CostDiff,
@@ -20,10 +20,13 @@ import {
   workflowCostChanged,
   WorkflowSides,
 } from "@runshape/trace";
+import type { Explanation } from "@runshape/explainer";
 
 import { BundleCategories, ReviewBundle, ReviewSide, reviewHighlights, routeExternalCallText } from "./review-bundle";
+import { ReviewStory } from "./story";
 
-export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
+/** With `explanation` (current for this review), the story carries the model's account of what the change is for. */
+export function buildReviewPage(bundle: ReviewBundle, explanation: Explanation | null = null): ReviewPage {
   const onlyInBase = new Set(bundle.review.items.filter((item) => item.category === ReviewCategory.Removed).map((item) => item.scenarioId));
   const test = (id: string, name: string) => ({ id, name, inHead: !onlyInBase.has(id) });
   const sections = REVIEW_ORDER.filter((category) => category !== ReviewCategory.Unchanged).flatMap((category) => {
@@ -50,14 +53,30 @@ export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
     head: side(bundle.head),
     headline: reviewHeadline(bundle.review),
     // Worst first across the lists: a sort keeps each list's own order within a tone.
-    callouts: [...callouts(reviewHighlights(bundle)), ...findingCallouts(bundle), ...costCallouts(bundle.cost)].sort((a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone)),
+    callouts: [...callouts(reviewHighlights(bundle)), ...findingCallouts(bundle), ...costCallouts(bundle.cost), ...storyCallouts(explanation)].sort((a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone)),
     moved: bundle.review.moved,
     sections,
     threadsBasis: bundle.threads.basis,
     threads,
     ...(bundle.cost === undefined ? {} : { cost: pageCost(bundle.cost, test) }),
     ...(bundle.categories === undefined ? {} : { categories: pageCategories(bundle.categories) }),
+    ...(bundle.story === undefined ? {} : { story: pageStory(bundle.story, explanation) }),
   };
+}
+
+function pageStory(story: ReviewStory, explanation: Explanation | null): ReviewPageStory {
+  // Explanations saved before the story was read have neither field: no account to draw.
+  const account = explanation === null || explanation.purpose === undefined ? null : { model: explanation.model, purpose: explanation.purpose, notInStory: explanation.notInStory ?? [] };
+  return { ...story, account };
+}
+
+/**
+ * Behaviour the PR and tickets don't mention is the model's reading, not a measurement: worth
+ * a look, labelled whose it is, never a warning on its own.
+ */
+function storyCallouts(explanation: Explanation | null): ReviewCallout[] {
+  const n = explanation?.notInStory?.length ?? 0;
+  return n === 0 ? [] : [{ text: `${n} ${n === 1 ? "change" : "changes"} the PR and tickets don't mention (${explanation!.model}'s account)`, tone: "info" }];
 }
 
 function pageCost(cost: CostDiff, test: (id: string, name: string) => ReviewPageTest): ReviewPageCost {

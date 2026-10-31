@@ -339,10 +339,12 @@ export class Recordings {
     });
     const reviews = this.library.reviews;
     const name = reviewName(base.plan.id, head.plan.id);
-    await reviews.saveReview(name, bundle, reviewBundleMarkdown(bundle), buildReviewPage(bundle));
-    // An explanation of an older review mustn't sit beside this one looking current.
+    // An explanation of an older review mustn't sit beside this one looking current; one of
+    // this review stays, and the page carries its account.
     const explained = (await reviews.explanation(name)) as Explanation | null;
-    if (explained !== null && explained.basedOn.review !== this.dependencies.hashing.sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
+    const current = explained === null || explained.basedOn.review === this.dependencies.hashing.sha256(reviewBundleMarkdown(bundle));
+    await reviews.saveReview(name, bundle, reviewBundleMarkdown(bundle), buildReviewPage(bundle, current ? explained : null));
+    if (!current) await reviews.dropExplanation(name);
     return { bundle, name, markdown: reviews.shownReview(name), story: context };
   }
 
@@ -402,6 +404,7 @@ export class Recordings {
       }
       const explanation = await explainChange(model, reviewMarkdown, context, this.dependencies.now().toISOString(), sha256);
       await this.library.reviews.saveExplanation(review.name, explanation, explanationMarkdown(explanation));
+      await this.library.reviews.savePage(review.name, buildReviewPage(review.bundle, explanation));
       this.dependencies.print(`explanation: ${where} (by ${explanation.model})`);
     } catch (error) {
       if (error instanceof GitError) throw error;

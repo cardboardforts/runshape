@@ -7,7 +7,9 @@ import { describe, expect, test } from "vitest";
 
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle } from "../src/review-bundle";
+import type { Explanation } from "@runshape/explainer";
 import { buildReviewPage } from "../src/review-page";
+import { NoteKind, ReviewStory } from "../src/story";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 const side = (asked: string, recording: string) => ({ asked, recording, commit: "0123456789abcdef0123456789abcdef01234567", subject: `the ${asked} commit`, dirty: false, forkOf: null });
@@ -228,5 +230,48 @@ describe("buildReviewPage", () => {
     const removed = buildReviewPage(bundle).sections.find((section) => section.heading === "Removed tests");
 
     expect(removed?.rows.flatMap((row) => row.tests)).toEqual([{ id: dropped.nodeid, name: dropped.name, inHead: false }]);
+  });
+
+  test("the story: the PR and its tickets as the bundle has them, and once explained, the model's account of what it's for and what the tickets don't mention, labelled whose it is", async () => {
+    // The page opens with what we're even doing here. The account is the model's reading of
+    // the PR, tickets and docs: shown as its, and its "not in the tickets" list is a callout
+    // to look at, never a warning (nothing measured it).
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const story: ReviewStory = {
+      pullRequest: { number: 41, title: "Friendly error for duplicate slugs", url: "https://github.com/acme/blog/pull/41" },
+      tickets: [{ id: "#40", source: "GitHub Issues", title: "Second article with the same title crashes", url: "https://github.com/acme/blog/issues/40", state: "open" }],
+      unread: [],
+      notes: [{ path: "docs/articles.md", kind: NoteKind.Doc, added: 1, removed: 0 }],
+    };
+    const bundle = buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "a"), headSide: side("head", "b"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: "2026-10-16T09:00:00Z", story });
+    const explanation: Explanation = {
+      format: "runshape-explanation",
+      version: 1,
+      createdAt: "2026-10-16T09:05:00Z",
+      model: "claude-cli",
+      basedOn: { review: "r", commits: [], prompt: 2, story: "s", sources: ["pull request", "#40"] },
+      summary: "Slugs are checked before saving.",
+      purpose: "Authors publishing a second article with the same title got a 500.",
+      reasons: [],
+      unexplained: [],
+      notInStory: [{ behaviour: "Titles are normalised first.", evidence: "now calls `_normalize_title`" }],
+      questions: [],
+    };
+
+    const before = buildReviewPage(bundle);
+    const after = buildReviewPage(bundle, explanation);
+    const unstoried = buildReviewPage(buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "a"), headSide: side("head", "b"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: "x" }));
+
+    expect({
+      before: before.story,
+      account: after.story?.account,
+      callout: after.callouts.filter((callout) => callout.text.includes("don't mention")),
+      unstoried: unstoried.story,
+    }).toEqual({
+      before: { ...story, account: null },
+      account: { model: "claude-cli", purpose: "Authors publishing a second article with the same title got a 500.", notInStory: [{ behaviour: "Titles are normalised first.", evidence: "now calls `_normalize_title`" }] },
+      callout: [{ text: "1 change the PR and tickets don't mention (claude-cli's account)", tone: "info" }],
+      unstoried: undefined,
+    });
   });
 });

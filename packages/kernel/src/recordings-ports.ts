@@ -152,6 +152,8 @@ export interface KeptRecordings {
 export interface KeptReviews {
   /** The bundle (review.json), its Markdown (review.md), and the PR page's content (page.json). */
   saveReview(name: string, bundle: unknown, markdown: string, page: ReviewPage): Promise<void>;
+  /** The PR page again, alone: once the review is explained, it carries the model's account. */
+  savePage(name: string, page: ReviewPage): Promise<void>;
   /** The saved explanation; null when there's none or it can't be read. */
   explanation(name: string): Promise<unknown>;
   saveExplanation(name: string, explanation: unknown, markdown: string): Promise<void>;

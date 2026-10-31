@@ -43,6 +43,10 @@ export class ReviewStore implements KeptReviews {
     await this.files.writeText(`${name}/${REVIEW_JSON}`, asJson(bundle));
   }
 
+  async savePage(name: string, page: unknown): Promise<void> {
+    await this.files.writeText(`${name}/${REVIEW_PAGE}`, asJson(page));
+  }
+
   /** The saved explanation; null when there's none, or it can't be read (it's asked again). */
   async explanation(name: string): Promise<unknown> {
     return this.files.readText(`${name}/${EXPLANATION_JSON}`).then((text) => JSON.parse(text) as unknown, () => null);

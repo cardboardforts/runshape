@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { ReviewPage, ReviewPageCost, ReviewPageCount, ReviewPageFunction, ReviewPageMs, ReviewPageTest, ReviewPageThread, ReviewPageTime } from "@runshape/kernel";
+import type { ReviewPage, ReviewPageCost, ReviewPageCount, ReviewPageFunction, ReviewPageMs, ReviewPageStory, ReviewPageTest, ReviewPageThread, ReviewPageTime } from "@runshape/kernel";
 
 type State = { kind: "loading" } | { kind: "failed"; message: string } | { kind: "missing" } | { kind: "ready"; page: ReviewPage; explained: boolean };
 
@@ -82,6 +82,7 @@ function Page({ page, explained, file }: { page: ReviewPage; explained: boolean;
           </>
         )}
       </p>
+      {page.story !== undefined && <Story story={page.story} />}
       <p>{page.headline}</p>
       {quiet ? (
         <p>Behaves as before, architecture unchanged.</p>
@@ -139,6 +140,70 @@ function Page({ page, explained, file }: { page: ReviewPage; explained: boolean;
         </section>
       )}
     </>
+  );
+}
+
+/**
+ * What the change is for: the PR and its tickets (titles are other people's text, drawn as
+ * text; a link only when the workflow kept one, which is https), what couldn't be read, the
+ * docs and comments changed, and the model's account once it's explained, labelled as its.
+ */
+function Story({ story }: { story: ReviewPageStory }) {
+  const empty = story.pullRequest === null && story.tickets.length === 0 && story.unread.length === 0 && story.notes.length === 0;
+  const linked = (text: string, url: string | null) => (url === null ? text : <a href={url}>{text}</a>);
+  return (
+    <section aria-labelledby="story-heading">
+      <h2 id="story-heading">The story</h2>
+      {empty && <p className="muted">No pull request, ticket, doc or comment says what this change is for: its commit messages are all there is.</p>}
+      {story.account !== null && story.account.purpose !== "" && (
+        <p>
+          <strong>What it's for</strong> <span className="muted">({story.account.model}'s account)</span>: {story.account.purpose}
+        </p>
+      )}
+      {story.pullRequest !== null && (
+        <p>
+          Pull request {linked(`#${story.pullRequest.number}`, story.pullRequest.url)}: {story.pullRequest.title}
+        </p>
+      )}
+      {story.tickets.length > 0 && (
+        <ul aria-label="Tickets">
+          {story.tickets.map((ticket) => (
+            <li key={`${ticket.source} ${ticket.id}`}>
+              {linked(ticket.id, ticket.url)} {ticket.title} <span className="muted">({ticket.source}, {ticket.state})</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {story.unread.length > 0 && (
+        <p className="muted">
+          Mentioned, not read: {story.unread.map((unread) => `${unread.id} (${unread.reason})`).join("; ")}
+        </p>
+      )}
+      {story.account !== null && story.account.notInStory.length > 0 && (
+        <>
+          <h3>Not in the pull request or tickets ({story.account.model}'s account)</h3>
+          <ul>
+            {story.account.notInStory.map((item) => (
+              <li key={item.behaviour}>
+                {item.behaviour} <span className="muted">(evidence: {item.evidence})</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {story.notes.length > 0 && (
+        <details>
+          <summary>Docs and comments changed ({story.notes.length})</summary>
+          <ul>
+            {story.notes.map((note) => (
+              <li key={note.path}>
+                <code>{note.path}</code>: {note.kind === "doc" ? "doc" : "comments"}, {[note.added > 0 ? `+${note.added}` : "", note.removed > 0 ? `−${note.removed}` : ""].filter(Boolean).join(" ")} lines
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
   );
 }
 

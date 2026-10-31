@@ -878,6 +878,8 @@ describe("runshape compare --explain", () => {
       askedAbout: first.model.prompts[0]?.includes("Feature work"),
       saved: JSON.parse(readFileSync(join(directory, "explanation.json"), "utf8")).summary,
       markdown: readFileSync(join(directory, "explanation.md"), "utf8").split("\n")[0],
+      // The PR page carries the account once explained, labelled with the model that gave it.
+      pageAccount: JSON.parse(readFileSync(join(directory, "page.json"), "utf8")).story.account,
       again: again.lines.at(-1),
       askedAgain: again.model.prompts.length,
       unasked: [unasked.chosen, unasked.model.prompts.length],
@@ -887,6 +889,7 @@ describe("runshape compare --explain", () => {
       askedAbout: true,
       saved: "Second, explained.",
       markdown: "## Why it changed (model's account)",
+      pageAccount: { model: "fake-model", purpose: "", notInStory: [] },
       again: `explanation: ${join(".runshape", "reviews", reviewName, "explanation.md")} (current: same review, commits and model)`,
       askedAgain: 0,
       unasked: [[], 0],

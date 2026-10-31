@@ -18,7 +18,7 @@ Checked against the code on `runshape-zones` (7ce69c5). 286 vitest tests and the
 | UI lag on big diagrams | **Gap**: the webview gets full graphs | No pre-visualization step that reduces what's drawn. |
 | Performance impact up front | **Partial**: review.md, review.json and the PR page carry a cost diff (time, calls, external calls by route) | One recording each side; overhead not subtracted; no loop callout. |
 | Complexity | **Partial**: distinct paths that ran, per changed function | Not per route. |
-| The ticket story | **Partial**: commit messages only | No PR body, linked issues, docs or Jira. |
+| The ticket story | **Mostly there** (Phase 5): the PR, its linked issues and mentioned GitHub issues, changed docs and comments; `--explain` says what it's for and what the tickets don't mention | No Jira or Confluence adapter; no meeting notes. |
 | Categorizer: places new code, spots renames, and "now does another zone's job" | **Partial**: zone advice on click, `moves.ts` renames, architecture diff "moved with behaviour" | Not automatic for new or changed code in a branch. No callout for a function drifting into another zone. |
 | Review module: comments, partial approval, approve, comments go somewhere | **Gap** | Nothing. |
 | AI sees what the reviewer will see | **Partial**: `review.json` | No agent contract, gate or loop. |
@@ -521,6 +521,30 @@ that pays. A no-op change has no time callout.
    lives with `workflows`.
 3. Changed code comments and docs as context. The explainer says what the change is *for*,
    and flags behaviour the ticket doesn't mention.
+
+- **Done (2026-10-31), first cut.** The workflow gathers the story (packages/workflows/src/story.ts)
+  for every review: for a PR, its title, body and the issues it closes (`gh pr view`); every
+  ticket the PR's text and the commit messages mention, from each `TicketSource` (the kernel's
+  port, beside the workflow's other ports in recordings-ports.ts, since adapters see only the
+  kernel); and the docs (Markdown, rST, AsciiDoc) and comment lines the diff changed
+  (`Repository.changedLines`, `git diff -U0`). GitHub Issues through gh (`GhIssues`: `#N`,
+  `owner/repo#N`) is the adapter written; Jira is a port away, shown by a fake Jira in
+  story.test.ts. review.json keeps `story` (titles, https links, counts: never bodies, ticket
+  text or changed lines, since a bundle may be posted or stored centrally), review.md has a
+  "The story" section after the comparison line (every title escaped to one line of plain
+  text), and the PR page draws it. The explainer takes the story as a value (prompt v2): the
+  PR body, tickets (each cut at 4,000 characters) and doc and comment lines (20 files, 40 lines
+  a side) under their own headings below the data line; it answers `purpose` and `notInStory`,
+  a reason may cite the PR, a ticket or doc it was given, and the page shows the account
+  labelled as the model's, with an info callout for what the tickets don't mention. A ticket
+  or PR gh can't read is listed with gh's reason and logged (`story.unread`, ids and reasons,
+  never text), never fatal; at most 8 tickets are read. Threat model: three rows new or widened
+  (mentions → gh, story → review.md/page, story → model).
+  Not yet: a Jira (or Confluence) adapter, which needs credentials and a decision on which
+  project keys count as mentions ("UTF-8" isn't a ticket); `compare` outside a PR doesn't look
+  up the branch's PR (only `review-requests` knows the number); comment detection is by line
+  prefix (`//`, `#`, `/*`, `*`, docstring quotes), so a comment after code on the same line,
+  or a docstring's middle lines, aren't read; the second-model review of this phase.
 
 ### Phase 6: The review module (4–5 PRs)
 
