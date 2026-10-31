@@ -1254,6 +1254,41 @@ describe("runshape view", () => {
     `);
   });
 
+  /**
+   * Agents parse this: a field renamed or dropped breaks them silently, so the shape is pinned
+   * here (every key, at every depth), apart from the values the other tests read.
+   */
+  test("the --json shape agents rely on", async () => {
+    const { root } = repository();
+    await run(root, ["record", "main"]);
+
+    const { lines } = await run(root, ["view", "--json"]);
+
+    const view = JSON.parse(lines.join("\n"));
+    const level = view.levels[0];
+    expect({
+      view: Object.keys(view),
+      level: Object.keys(level),
+      box: Object.keys(level.boxes[0]),
+      line: Object.keys(level.lines[0]),
+      hidden: Object.keys(level.hidden),
+    }).toEqual({
+      view: ["recording", "commit", "subject", "modules", "levels"],
+      level: ["level", "style", "zones", "direction", "boxes", "lines", "hidden"],
+      box: ["name", "label", "kind", "zone", "zoneSource", "zoneReason", "calls", "tests", "opens", "change", "at", "arranged"],
+      line: ["from", "to", "calls", "tests", "violation", "change"],
+      hidden: ["nodes", "edges", "calls", "violations", "changes"],
+    });
+  });
+
+  test("--module belongs to view: given to another command it's refused, and the word after it stays that command's", async () => {
+    const { root } = repository();
+
+    const recorded = await run(root, ["record", "--module", "main"]);
+
+    expect({ code: recorded.code, said: recorded.lines[0], recorded: recorded.recorder.recorded }).toEqual({ code: 1, said: "runshape: --json and --module only apply to view", recorded: [] });
+  });
+
   test("a box a person moved in the viewer is where they put it, and says so", async () => {
     const { root } = repository();
     await run(root, ["record", "main"]);

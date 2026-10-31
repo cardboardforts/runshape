@@ -38,11 +38,14 @@ export async function runRecordings(argv: string[], dependencies: CommandDepende
 }
 
 async function runCommand(given: string[], dependencies: CommandDependencies): Promise<number> {
-  // "--module app.db" reads as "--module=app.db", the way every other flag takes its value.
+  // For view only, "--module app.db" reads as "--module=app.db", the way every other flag takes
+  // its value. Any other command keeps its arguments as given: there, --module is refused below,
+  // and the word after it stays the ref or id it was.
+  const isView = given.find((arg) => !arg.startsWith("--")) === "view";
   const argv: string[] = [];
   for (let i = 0; i < given.length; i += 1) {
     const next = given[i + 1];
-    if (given[i] === "--module" && next !== undefined && !next.startsWith("--")) {
+    if (isView && given[i] === "--module" && next !== undefined && !next.startsWith("--")) {
       argv.push(`--module=${next}`);
       i += 1;
     } else argv.push(given[i]!);
