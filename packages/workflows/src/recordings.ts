@@ -1,11 +1,13 @@
 // The recordings workflow (runshape list | record | compare | review-requests | readmes |
 // forget): the CLI parses the command line and wires the adapters; this decides and records.
-import { ArchitectureSummary, byCodeUnit, CommitSummary, GitError, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, Logger, ModelChoice, Outcome, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, Run, SANDBOX_SUFFIX, TraceDirectory, VERSION_DIGITS, WORKING_TREE_ID, ZoneSource } from "@runshape/kernel";
+import { ArchitectureSummary, byCodeUnit, CommitSummary, GitError, Grouping, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, Logger, ModelChoice, Outcome, Phase, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, Run, SANDBOX_SUFFIX, TraceDirectory, VERSION_DIGITS, WORKING_TREE_ID, ZoneSource } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, describeFolder, describeReadme, FolderGuide, folderGuideMarkdown, mergeIntoReadme, needsDescription, openingComment, RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
+import { AgentLevel, layoutForAgents } from "@runshape/visualizer";
 
 import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown, reviewHighlights } from "./review-bundle";
 import { buildReviewPage } from "./review-page";
+import { ViewerSession } from "./session";
 import { stackOrder } from "./stacks";
 
 /** What the recordings workflow is given: its ports, and how to talk to the person. */
@@ -33,6 +35,17 @@ export interface RecordingsDependencies {
 }
 
 const FAILING = new Set<string>([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
+
+/** `runshape view`: a kept recording as the viewer draws it, level by level. */
+export interface RecordingView {
+  recording: string;
+  commit: string;
+  subject: string;
+  /** The module view's modules: what `--module` takes. */
+  modules: string[];
+  /** The level the viewer opens at, then the module asked for, opened. */
+  levels: AgentLevel[];
+}
 
 /** A recording or comparison couldn't be made: said to the person as it is. */
 export class RecordingError extends Error {}
@@ -486,6 +499,32 @@ export class Recordings {
       hash.update(file).update("\0").update((await this.dependencies.project.readBytes(file)) ?? new Uint8Array(0)).update("\0");
     }
     return hash.hex().slice(0, VERSION_DIGITS);
+  }
+
+  /**
+   * What a person sees of a kept recording (the newest, when none is named), for an agent: the
+   * level the viewer opens at (its modules, when it has more than one), and with `module` that
+   * module opened, as clicking it would. Drawn the way the viewer draws it first: the tests'
+   * own calls, middleware as one box, the recording's own runshape.json.
+   */
+  async view(id: string | null, module: string | null): Promise<RecordingView> {
+    const chosen = id ?? (await this.library.overview()).recordings[0]?.id;
+    if (chosen === undefined) throw new RecordingError("nothing is recorded yet: npm run runshape -- record working");
+    const recording = await this.library.store.recording(chosen);
+    if (recording === undefined) throw new RecordingError(`there's no recording ${chosen} (npm run runshape -- list shows what's kept)`);
+    const session = new ViewerSession(await this.runOf(chosen), { sources: { readLines: async () => null }, rules: (await this.rulesOf(chosen)) ?? undefined });
+    const modules = session.modules();
+    const grouping: Grouping = modules.length > 1 ? { collapseMiddleware: true, modules } : { collapseMiddleware: true };
+    if (module !== null && !modules.includes(module)) {
+      throw new RecordingError(`${module} isn't one of recording ${chosen}'s modules: ${modules.length > 1 ? modules.join(", ") : "it has only one, so it opens at its classes"}`);
+    }
+    const levels: AgentLevel[] = [];
+    for (const opened of module === null ? [undefined] : [undefined, module]) {
+      const response = await session.handle({ type: "graph", phases: [Phase.Call], grouping, opened });
+      if (response?.type !== "graph") throw new RecordingError(`recording ${chosen} can't be drawn: ${response?.type === "error" ? response.message : "no layout"}`);
+      levels.push(layoutForAgents(response.layout));
+    }
+    return { recording: chosen, commit: recording.commit, subject: recording.subject, modules, levels };
   }
 
   async forget(id: string): Promise<void> {

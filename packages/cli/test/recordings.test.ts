@@ -7,6 +7,8 @@
  *                               fetches the branch from origin and records origin's tip
  *   compare <base> [<head>]     record whatever of the two isn't yet (head: the working
  *                               tree), and print the demo link that compares them
+ *   view [<id>] [--module=<m>]  what the viewer draws of a recording, level by level (--json
+ *                               for agents)
  *   forget <id>                 delete a recording
  *
  * A real git repository per test; the recorder is the one thing faked: it writes a real
@@ -1174,5 +1176,119 @@ describe("runshape list", () => {
       left: ["working"],
       reviews: [],
     });
+  });
+});
+
+/**
+ * `runshape view`: what a person would see of a recording, for an agent. The level the viewer
+ * opens at (its modules), then with --module that module opened, as clicking it would: by name,
+ * in reading order, with each box's place on the canvas.
+ */
+describe("runshape view", () => {
+  test("the newest recording at its modules, then one module opened, as JSON", async () => {
+    const { root, commits } = repository();
+    const id = commits.second!.slice(0, 12);
+    await run(root, ["record", "main"]);
+
+    const modules = await run(root, ["view", "--json"]);
+    const view = JSON.parse(modules.lines.join("\n"));
+    // orders: its own types, drawn one by one.
+    const opened = await run(root, ["view", id, "--module", view.modules[1], "--json"]);
+    const both = JSON.parse(opened.lines.join("\n"));
+
+    const read = (level: { level: unknown; boxes: { name: string; zone: string; tests: number; opens: string | null; at: { x: number } }[]; lines: { from: string; to: string; calls: number }[] }) => [
+      JSON.stringify(level.level),
+      ...level.boxes.map((box) => `  ${box.name} [${box.zone}] ${box.tests} tests${box.opens ? ` opens ${box.opens}` : ""}`),
+      ...level.lines.map((line) => `  ${line.from} -> ${line.to} (${line.calls})`),
+    ];
+    expect({ code: modules.code, recording: view.recording, modules: view.modules }).toMatchInlineSnapshot(`
+      {
+        "code": 0,
+        "modules": [
+          "example\\.com.shop.internal.app",
+          "example\\.com.shop.internal.orders",
+          "example\\.com.shop.internal.storage",
+          "example\\.com.shop.internal.web",
+        ],
+        "recording": "44271d30c124",
+      }
+    `);
+    expect(view.levels.map(read)).toMatchInlineSnapshot(`
+      [
+        [
+          "{"kind":"modules"}",
+          "  client [edge] 5 tests",
+          "  example\\.com.shop.internal.web [inbound-adapter] 4 tests opens example\\.com.shop.internal.web",
+          "  example\\.com.shop.internal.app [core] 4 tests opens example\\.com.shop.internal.app",
+          "  example\\.com.shop.internal.orders [core] 5 tests opens example\\.com.shop.internal.orders",
+          "  example\\.com.shop.internal.storage [core] 4 tests opens example\\.com.shop.internal.storage",
+          "  client -> example\\.com.shop.internal.app (4)",
+          "  client -> example\\.com.shop.internal.orders (1)",
+          "  client -> example\\.com.shop.internal.web (5)",
+          "  example\\.com.shop.internal.app -> example\\.com.shop.internal.orders (4)",
+          "  example\\.com.shop.internal.app -> example\\.com.shop.internal.storage (4)",
+          "  example\\.com.shop.internal.app -> example\\.com.shop.internal.web (4)",
+          "  example\\.com.shop.internal.orders -> example\\.com.shop.internal.storage (3)",
+          "  example\\.com.shop.internal.web -> example\\.com.shop.internal.orders (5)",
+        ],
+      ]
+    `);
+    expect(both.levels[0]).toEqual(view.levels[0]);
+    expect(read(both.levels[1])).toMatchInlineSnapshot(`
+      [
+        "{"kind":"module","module":"example\\\\.com.shop.internal.orders"}",
+        "  client [edge] 5 tests",
+        "  example\\.com.shop.internal.app [core] 4 tests opens example\\.com.shop.internal.app",
+        "  example\\.com.shop.internal.orders [core] 4 tests",
+        "  example\\.com.shop.internal.web [inbound-adapter] 4 tests opens example\\.com.shop.internal.web",
+        "  example\\.com.shop.internal.orders.Service [core] 3 tests",
+        "  example\\.com.shop.internal.storage [core] 4 tests opens example\\.com.shop.internal.storage",
+        "  example\\.com.shop.internal.orders.Order [core] 3 tests",
+        "  example\\.com.shop.internal.orders.Service -> example\\.com.shop.internal.orders.Order (2)",
+        "  example\\.com.shop.internal.orders.Service -> example\\.com.shop.internal.storage (3)",
+        "  client -> example\\.com.shop.internal.orders.Order (1)",
+        "  example\\.com.shop.internal.app -> example\\.com.shop.internal.orders (4)",
+        "  example\\.com.shop.internal.web -> example\\.com.shop.internal.orders.Order (1)",
+        "  example\\.com.shop.internal.web -> example\\.com.shop.internal.orders.Service (4)",
+      ]
+    `);
+  });
+
+  test("the same as text; a module that isn't one, a recording that isn't kept, and --json elsewhere are refused", async () => {
+    const { root } = repository();
+    await run(root, ["record", "main"]);
+
+    const text = await run(root, ["view"]);
+    const notAModule = await run(root, ["view", "--module=nowhere"]);
+    const notKept = await run(root, ["view", "abcdef123456"]);
+    const elsewhere = await run(root, ["list", "--json"]);
+
+    expect(text.lines).toMatchInlineSnapshot(`
+      [
+        "recording 44271d30c124 (44271d30c124 Second)",
+        "",
+        "modules, drawn hexagonal: 5 boxes, 8 calls",
+        "  Client (tests) [edge] 5 calls, 5 tests",
+        "  internal.web [inbound-adapter] 24 calls, 4 tests (--module=example\\.com.shop.internal.web)",
+        "  internal.app [core] 4 calls, 4 tests (--module=example\\.com.shop.internal.app)",
+        "  internal.orders [core] 12 calls, 5 tests (--module=example\\.com.shop.internal.orders)",
+        "  internal.storage [core] 7 calls, 4 tests (--module=example\\.com.shop.internal.storage)",
+        "  Client (tests) -> internal.app: 4",
+        "  Client (tests) -> internal.orders: 1",
+        "  Client (tests) -> internal.web: 5",
+        "  internal.app -> internal.orders: 4",
+        "  internal.app -> internal.storage: 4",
+        "  internal.app -> internal.web: 4  ✗ calls back into a request handler: the dependency points outward",
+        "  internal.orders -> internal.storage: 3",
+        "  internal.web -> internal.orders: 5",
+      ]
+    `);
+    expect([notAModule, notKept, elsewhere].map(({ code, lines }) => `${code} ${lines[0]}`)).toMatchInlineSnapshot(`
+      [
+        "1 runshape: nowhere isn't one of recording 44271d30c124's modules: example\\.com.shop.internal.app, example\\.com.shop.internal.orders, example\\.com.shop.internal.storage, example\\.com.shop.internal.web",
+        "1 runshape: there's no recording abcdef123456 (npm run runshape -- list shows what's kept)",
+        "1 runshape: --json and --module only apply to view",
+      ]
+    `);
   });
 });

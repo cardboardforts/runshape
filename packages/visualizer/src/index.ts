@@ -8,3 +8,4 @@ export * from "./function-view";
 export * from "./object-graph";
 export * from "./timeline";
 export * from "./layout";
+export * from "./layout-for-agents";

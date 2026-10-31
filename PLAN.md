@@ -437,6 +437,12 @@ changed module is marked, and clicking down reaches a function's diff.
      and the replay pacing the webview calls): the review module (Phase 6) reshapes those into a
      kernel DTO, as the PR page did, rather than moving today's shapes only to change them.
 2. **The same model for agents:** `runshape view --json`, what a human would see at each level.
+   - **Done (2026-10-31).** `runshape view [<recording>] [--module=<module>] [--json]`: the newest
+     kept recording unless one is named, drawn as the viewer first draws it (its modules, the
+     tests' own calls, its commit's runshape.json), then with `--module` that module opened.
+     The visualizer's `layoutForAgents` gives each box by name in reading order (zone and why,
+     calls, how many tests, what `--module` opens it, its canvas spot, whether a person placed
+     it) and each call by name with its violation. Without `--json`, the same as text.
 3. **Saved arrangements:** moving a module in 2D or 3D is saved, keyed by region and module
    names so it survives between diffs. New things get a computed spot near their neighbours.
 

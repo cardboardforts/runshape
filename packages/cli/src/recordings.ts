@@ -1,8 +1,8 @@
-// npm run runshape -- list | record | compare | review-requests | readmes | schedule | forget:
+// npm run runshape -- list | record | compare | review-requests | readmes | view | schedule | forget:
 // the command line. Each command is a call on the workflows' Recordings (packages/workflows).
 import { RULES_FILE } from "@runshape/architecture";
 import { ArchitectureSummary, GitError, LibraryOverview, ModelChoice, WORKING_TREE_ID } from "@runshape/kernel";
-import { RecordingError, Recordings, RecordingsDependencies } from "@runshape/workflows";
+import { RecordingError, Recordings, RecordingsDependencies, RecordingView } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -37,7 +37,16 @@ export async function runRecordings(argv: string[], dependencies: CommandDepende
   }
 }
 
-async function runCommand(argv: string[], dependencies: CommandDependencies): Promise<number> {
+async function runCommand(given: string[], dependencies: CommandDependencies): Promise<number> {
+  // "--module app.db" reads as "--module=app.db", the way every other flag takes its value.
+  const argv: string[] = [];
+  for (let i = 0; i < given.length; i += 1) {
+    const next = given[i + 1];
+    if (given[i] === "--module" && next !== undefined && !next.startsWith("--")) {
+      argv.push(`--module=${next}`);
+      i += 1;
+    } else argv.push(given[i]!);
+  }
   // "--explain=api": a flag's name, and its value if it has one.
   const flagValues = new Map(argv.filter((arg) => arg.startsWith("--")).map((arg) => [arg.split("=")[0]!, arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : null]));
   const flags = new Set(flagValues.keys());
@@ -62,6 +71,7 @@ async function runCommand(argv: string[], dependencies: CommandDependencies): Pr
     if (explain !== null && !MODEL_CHOICES.has(explain)) throw new UsageError("--explain takes claude or api (or nothing: claude -p if it runs, else the API)");
     const describe = flags.has("--describe") ? (flagValues.get("--describe") ?? "auto") : null;
     if (describe !== null && command !== "readmes") throw new UsageError("--describe only applies to readmes");
+    if ((flags.has("--json") || flags.has("--module")) && command !== "view") throw new UsageError("--json and --module only apply to view");
     if (describe !== null && !MODEL_CHOICES.has(describe)) throw new UsageError("--describe takes claude or api (or nothing: claude -p if it runs, else the API)");
     switch (command) {
       case "list":
@@ -110,6 +120,15 @@ async function runCommand(argv: string[], dependencies: CommandDependencies): Pr
         });
         return failed > 0 ? 1 : 0;
       }
+      case "view": {
+        if (names.length > 1) throw new UsageError(`view [<recording>] [--module=<module>] [--json]\n${USAGE}`);
+        const module = flagValues.get("--module") ?? null;
+        if (flags.has("--module") && module === null) throw new UsageError("--module takes a module, as `view` lists them");
+        const view = await recordings.view(names[0] ?? null, module);
+        if (flags.has("--json")) dependencies.print(JSON.stringify(view, null, 2));
+        else for (const line of viewText(view)) dependencies.print(line);
+        return 0;
+      }
       case "schedule": {
         const at = flagValues.get("--at") ?? DEFAULT_SCHEDULE_TIME;
         dependencies.print(launchdJob({ root: dependencies.root, at, path: process.env.PATH ?? "/usr/bin:/bin" }).trimEnd());
@@ -133,14 +152,27 @@ async function runCommand(argv: string[], dependencies: CommandDependencies): Pr
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module"]);
 /** Before anyone's at work, after most of a day's pushes. */
 const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
-  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | schedule [--at=HH:MM] | forget <id>";
+  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | schedule [--at=HH:MM] | forget <id>";
+
+/** The view command's text: each level's boxes in reading order, then its calls. --json has everything. */
+function viewText(view: RecordingView): string[] {
+  const lines = [`recording ${view.recording} (${view.commit.slice(0, 12)} ${truncate(view.subject)})`];
+  for (const level of view.levels) {
+    const where = level.level.kind === "module" ? `${level.level.module}, opened` : level.level.kind;
+    lines.push("", `${where}, drawn ${level.style}: ${level.boxes.length} boxes, ${level.lines.length} calls${level.hidden.nodes > 0 ? ` (${level.hidden.nodes} quieter boxes left out)` : ""}`);
+    for (const box of level.boxes) lines.push(`  ${box.label} [${box.zone}] ${box.calls} calls, ${box.tests} tests${box.opens ? ` (--module=${box.opens})` : ""}`);
+    const label = new Map(level.boxes.map((box) => [box.name, box.label]));
+    for (const line of level.lines) lines.push(`  ${label.get(line.from)} -> ${label.get(line.to)}: ${line.calls}${line.violation ? `  ✗ ${line.violation}` : ""}`);
+  }
+  return lines;
+}
 
 /** The list command's text: the working tree, what's recorded, what could be. */
 function listing(overview: LibraryOverview): string[] {
