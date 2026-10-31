@@ -59,9 +59,18 @@ export class Reviewing {
       this.logger.log("info", "review.previewed", { ...fields, where: preview.where });
       return { preview, sink: sink.name };
     }
-    const delivered = await sink.deliver(finished.review);
-    this.logger.log("info", "review.sent", { ...fields, where: delivered.where });
-    return { delivered, sink: sink.name };
+    try {
+      const delivered = await sink.deliver(finished.review);
+      this.logger.log("info", "review.sent", { ...fields, where: delivered.where });
+      return { delivered, sink: sink.name };
+    } catch (error) {
+      // A sink refuses (the PR moved on since the review) or fails (gh, the network): the
+      // person is told why rather than shown a stack. A timeout may still have posted, so
+      // "refused or failed", not "not sent"; the sink says "nothing posted" when it knows.
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.log("warn", "review.not_sent", { ...fields, error: reason });
+      return { errors: [`${sink.name} refused or failed: ${reason}`] };
+    }
   }
 
   private async load(name: string): Promise<{ page: ReviewPage; draft: ReviewDraft; items: Reviewable[] }> {

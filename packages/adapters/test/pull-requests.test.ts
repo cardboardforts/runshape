@@ -3,31 +3,11 @@
  * story (title, body, the issues it closes), and issues as tickets. Read only. What's asked of
  * gh and how its answer is read, against a stand-in script.
  */
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { GhIssues } from "../src/github/issues";
 import { GhPullRequests } from "../src/github/pull-requests";
-
-const made: string[] = [];
-afterEach(() => {
-  for (const directory of made.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
-
-/** A stand-in gh: records each call's arguments, one per line, and answers with what `answer` (shell) prints. */
-function fakeGh(answer: string): { directory: string; command: string; asked: () => string[][] } {
-  const directory = mkdtempSync(join(tmpdir(), "runshape-gh-"));
-  made.push(directory);
-  const seen = join(directory, "seen.txt");
-  const command = join(directory, "gh");
-  writeFileSync(command, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${seen}"\necho >> "${seen}"\n${answer}\n`);
-  chmodSync(command, 0o755);
-  const asked = () => readFileSync(seen, "utf8").trim().split("\n\n").map((call) => call.split("\n"));
-  return { directory, command, asked };
-}
+import { fakeGh } from "./fake-gh";
 
 test("asks gh for the open PRs requesting my review, as JSON, and reads each author's login", async () => {
   const listed = [{ number: 7, title: "Teach orders to refuse", url: "u", author: { login: "teammate" }, baseRefName: "main", headRefName: "pr-7", headRefOid: "abc", isCrossRepository: true, updatedAt: "t" }];

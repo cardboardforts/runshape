@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { KeptReviews, RequestedReviews } from "@runshape/kernel";
+import { KeptReviewDrafts, KeptReviews, RequestedReviews, ReviewDraft, ReviewPage } from "@runshape/kernel";
 import { NodeFiles } from "@runshape/infra";
 
 export const REQUESTED_REVIEWS_FILE = "requested.json";
@@ -9,13 +9,14 @@ const REVIEW_MARKDOWN = "review.md";
 const REVIEW_PAGE = "page.json";
 const EXPLANATION_JSON = "explanation.json";
 const EXPLANATION_MARKDOWN = "explanation.md";
+const REVIEW_DRAFT = "review-draft.json";
 
 /**
  * The reviews kept beside the recordings (.runshape/reviews): a folder per comparison, holding
  * its review and the model's explanation of it, and the index of pull requests asking for one.
  * It knows where they go and that they're JSON; what's in them is core's.
  */
-export class ReviewStore implements KeptReviews {
+export class ReviewStore implements KeptReviews, KeptReviewDrafts {
   constructor(
     private readonly files: NodeFiles,
     /** How a person finds the store from the project's root (".runshape/reviews"), for messages. */
@@ -45,6 +46,22 @@ export class ReviewStore implements KeptReviews {
 
   async savePage(name: string, page: unknown): Promise<void> {
     await this.files.writeText(`${name}/${REVIEW_PAGE}`, asJson(page));
+  }
+
+  /** The PR page; null when there's no such review. */
+  async page(name: string): Promise<ReviewPage | null> {
+    const text = await this.files.readText(`${name}/${REVIEW_PAGE}`).catch(() => null);
+    return text === null ? null : (JSON.parse(text) as ReviewPage);
+  }
+
+  /** What's checked and the comments so far; null before the first. */
+  async draft(name: string): Promise<ReviewDraft | null> {
+    const text = await this.files.readText(`${name}/${REVIEW_DRAFT}`).catch(() => null);
+    return text === null ? null : (JSON.parse(text) as ReviewDraft);
+  }
+
+  async saveDraft(name: string, draft: ReviewDraft): Promise<void> {
+    await this.files.writeText(`${name}/${REVIEW_DRAFT}`, asJson(draft));
   }
 
   /** The saved explanation; null when there's none, or it can't be read (it's asked again). */

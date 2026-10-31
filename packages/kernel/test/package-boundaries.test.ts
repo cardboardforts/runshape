@@ -69,8 +69,8 @@ const NOT_YET: Record<string, string[]> = {};
 const ALLOWED: Record<string, string[]> = Object.fromEntries(
   Object.entries(ROLES).map(([pkg, role]) => [pkg, [...PERMITTED[role].filter((name) => `packages/${name}` !== pkg), ...(NOT_YET[pkg] ?? [])]]),
 );
-/** Test helpers other packages' tests may share: a real git repository, and recordings kept in it. */
-const SHARED_TEST_HELPERS = new Set(["@runshape/adapters/test/repository"]);
+/** Test helpers other packages' tests may share: a real git repository, recordings kept in it, and a stand-in gh. */
+const SHARED_TEST_HELPERS = new Set(["@runshape/adapters/test/repository", "@runshape/adapters/test/fake-gh"]);
 /** The only packages that touch the disk themselves: infra, and the hosts that compose everything. */
 const DISK = new Set(["packages/infra", "packages/adapters", "packages/cli", "packages/extension", "recorder-ts"]);
 /** Packages whose source must run anywhere: in the webview, the extension host, or a CLI. */

@@ -1,8 +1,8 @@
-// npm run runshape -- list | record | compare | review-requests | readmes | view | schedule | forget:
+// npm run runshape -- list | record | compare | review | review-requests | readmes | view | schedule | forget:
 // the command line. Each command is a call on the workflows' Recordings (packages/workflows).
 import { RULES_FILE } from "@runshape/architecture";
-import { ArchitectureSummary, GitError, LibraryOverview, ModelChoice, TestConfigError, WORKING_TREE_ID } from "@runshape/kernel";
-import { RecordingError, Recordings, RecordingsDependencies, RecordingView } from "@runshape/workflows";
+import { ArchitectureSummary, CommentSink, GitError, KeptReviewDrafts, LibraryOverview, ModelChoice, ReviewVerdict, TestConfigError, WORKING_TREE_ID } from "@runshape/kernel";
+import { OpenedReview, RecordingError, Recordings, RecordingsDependencies, RecordingView, ReviewNotFound, Reviewing } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -10,6 +10,10 @@ import { launchdJob, scheduleInstructions } from "./schedule";
 export interface CommandDependencies extends Omit<RecordingsDependencies, "comparisonLink"> {
   /** The project's root: its git repository. */
   root: string;
+  /** The reviews' pages and the drafts beside them (`review`). */
+  reviewDrafts: KeptReviewDrafts;
+  /** Where `review <name> send` sends: a pull request on GitHub, or a revision request for a local agent. */
+  commentSinks: { github: (pullRequest: number) => CommentSink; agent: CommentSink };
 }
 
 /** Where the demo's dev server serves the recordings page (npm run dev -w packages/webview). */
@@ -166,6 +170,8 @@ async function runCommand(given: string[], dependencies: CommandDependencies): P
         for (const line of scheduleInstructions(dependencies.root)) dependencies.print(line);
         return 0;
       }
+      case "review":
+        return await review(names, flags, flagValues, dependencies);
       case "forget":
         if (names.length !== 1) throw new UsageError(`forget <id>\n${USAGE}`);
         await recordings.exclusively(() => recordings.forget(names[0]!));
@@ -174,7 +180,7 @@ async function runCommand(given: string[], dependencies: CommandDependencies): P
         throw new UsageError(`unknown command ${command}\n${USAGE}`);
     }
   } catch (error) {
-    if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError || error instanceof TestConfigError) {
+    if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError || error instanceof TestConfigError || error instanceof ReviewNotFound) {
       dependencies.print(`runshape: ${error.message}`);
       dependencies.logger.log("warn", "command.refused", { command, error: error.message });
       return 1;
@@ -183,14 +189,107 @@ async function runCommand(given: string[], dependencies: CommandDependencies): P
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module", "--pr", "--approve", "--request-changes", "--post"]);
+const REVIEW_FLAGS = new Set(["--pr", "--approve", "--request-changes", "--post"]);
 /** Before anyone's at work, after most of a day's pushes. */
 const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
+const REVIEW_USAGE = "review <base>..<head> [check <n>... | comment <n|change> <text> | send github|agent [--approve|--request-changes] [--pr=N] [--post]]";
 const USAGE =
-  "usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | schedule [--at=HH:MM] | forget <id>";
+  `usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | ${REVIEW_USAGE} | schedule [--at=HH:MM] | forget <id>`;
+
+/**
+ * `review <name>`: what there is to check off and the comments so far; `check` and `comment`
+ * add to the draft; `send` sends the finished review. To GitHub it only shows what it would
+ * post, unless --post says to post it: posting can't be taken back. A revision request for a
+ * local agent is a file here, written straight away.
+ */
+async function review(names: string[], flags: Set<string>, flagValues: Map<string, string | null>, dependencies: CommandDependencies): Promise<number> {
+  const [name, action, ...rest] = names;
+  if (name === undefined) throw new UsageError(`${REVIEW_USAGE}: the names are the folders in .runshape/reviews`);
+  const misplaced = [...flags].filter((flag) => REVIEW_FLAGS.has(flag) && action !== "send");
+  if (misplaced.length > 0) throw new UsageError(`${misplaced.join(", ")} only ${misplaced.length === 1 ? "applies" : "apply"} to review <name> send`);
+  const reviewing = new Reviewing(dependencies.reviewDrafts, dependencies.logger, dependencies.now);
+  const print = dependencies.print;
+  const refused = (errors: string[]) => {
+    for (const error of errors) print(`runshape: ${error}`);
+    return errors.length > 0 ? 1 : 0;
+  };
+  switch (action) {
+    case undefined:
+      for (const line of reviewText(name, await reviewing.open(name))) print(line);
+      return 0;
+    case "check":
+      if (rest.length === 0) throw new UsageError(`check what? ${REVIEW_USAGE}`);
+      return refused((await reviewing.check(name, rest)).errors);
+    case "comment": {
+      const [on, ...words] = rest;
+      if (on === undefined || words.length === 0) throw new UsageError(`comment <n|change> <text>: ${REVIEW_USAGE}`);
+      return refused((await reviewing.comment(name, on, words.join(" "))).errors);
+    }
+    case "send": {
+      const [to] = rest;
+      if (flags.has("--approve") && flags.has("--request-changes")) throw new UsageError("--approve or --request-changes, not both");
+      const verdict = flags.has("--approve") ? ReviewVerdict.Approve : flags.has("--request-changes") ? ReviewVerdict.RequestChanges : ReviewVerdict.Comment;
+      let sink: CommentSink;
+      if (to === "agent") {
+        if (flags.has("--post") || flags.has("--pr")) throw new UsageError("--post and --pr are for send github: a revision request stays on this machine");
+        sink = dependencies.commentSinks.agent;
+      } else if (to === "github") {
+        sink = dependencies.commentSinks.github(await pullRequestOf(name, flagValues.get("--pr") ?? null, flags.has("--pr"), reviewing));
+      } else throw new UsageError(`send it where? github or agent: ${REVIEW_USAGE}`);
+      // Only GitHub is outward: a revision request is this machine's, replaced by the next.
+      const confirmed = to === "agent" || flags.has("--post");
+      const sent = await reviewing.send(name, sink, verdict, { confirmed });
+      if ("errors" in sent) return refused(sent.errors);
+      if ("preview" in sent) {
+        print(`Would send to ${sent.preview.where} (${verdict}):`);
+        print("");
+        for (const line of sent.preview.text.trimEnd().split("\n")) print(`  ${line}`);
+        print("");
+        print("Nothing posted. Run it again with --post to post this.");
+        return 0;
+      }
+      print(`Sent ${sent.delivered.comments} comment${sent.delivered.comments === 1 ? "" : "s"} (${verdict}) to ${sent.delivered.where}.`);
+      return 0;
+    }
+    default:
+      throw new UsageError(`unknown review action ${action}: ${REVIEW_USAGE}`);
+  }
+}
+
+/** --pr=N, else the pull request the review is of. */
+async function pullRequestOf(name: string, given: string | null, flagged: boolean, reviewing: Reviewing): Promise<number> {
+  if (flagged && (given === null || !/^[1-9]\d*$/.test(given))) throw new UsageError("--pr takes a pull request's number");
+  if (given !== null) return Number(given);
+  const reviewed = (await reviewing.open(name)).draft.change.pullRequest?.number ?? null;
+  if (reviewed === null) throw new UsageError("which pull request? This review isn't of one: name it with --pr=N");
+  return reviewed;
+}
+
+const STATE_MARK = { "to-review": "[ ]", checked: "[x]", "changed-since-checked": "[~]" } as const;
+
+/** The review command's text: each thing to check off, numbered, with its comments. */
+function reviewText(name: string, opened: OpenedReview): string[] {
+  const { page, progress, unpinned } = opened;
+  const done = progress.filter((entry) => entry.state === "checked").length;
+  const lines = [`review ${name}: ${truncate(page.head.subject)} (${page.head.commit.slice(0, 12)}) against ${page.base.commit.slice(0, 12)}`, page.headline, ""];
+  if (progress.length === 0) lines.push("Nothing to check off: the tests behave as before.");
+  else lines.push(`To check off (${done} of ${progress.length} done; [~] changed since you checked it):`);
+  progress.forEach((entry, index) => {
+    const beams = entry.item.beams.map((beam) => `${beam.tests.length} ${beam.kind}`).join(", ");
+    lines.push(`  ${STATE_MARK[entry.state]} ${String(index + 1).padStart(3)}. ${entry.item.kind} ${entry.item.label}${beams ? `: tests ${beams}` : ""}`);
+    for (const comment of entry.comments) lines.push(`          > ${comment.body}`);
+  });
+  if (unpinned.length > 0) {
+    lines.push("", "Comments on the change, or on what this comparison no longer shows:");
+    for (const comment of unpinned) lines.push(`  ${comment.key}: ${comment.body}`);
+  }
+  lines.push("", `Next: review ${name} check <n>... | comment <n|change> <text> | send github|agent`);
+  return lines;
+}
 
 /** The view command's text: each level's boxes in reading order, then its calls. --json has everything. */
 function viewText(view: RecordingView): string[] {

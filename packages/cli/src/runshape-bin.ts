@@ -5,9 +5,9 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ArrangementFile, assertPlainRecording, GhIssues, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, projectRecorders, projectTestConfig, UnchosenRecorder } from "@runshape/adapters";
+import { ArrangementFile, assertPlainRecording, GhIssues, GhPullRequestReview, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, projectRecorders, projectTestConfig, RevisionRequestFile, UnchosenRecorder } from "@runshape/adapters";
 import { TestConfigError } from "@runshape/kernel";
-import { LogfmtLogger, nodeHashing } from "@runshape/infra";
+import { LogfmtLogger, NodeFiles, nodeHashing } from "@runshape/infra";
 
 import { chooseModel } from "./choose-model";
 import { projectChoice, runRecordings, usageProblem } from "./recordings";
@@ -57,10 +57,15 @@ try {
   recorders = { host: unchosen, sandbox: async () => unchosen };
 }
 
+const library = projectLibrary(root, repository);
+const REVISIONS = join(".runshape", "revisions");
 process.exitCode = await runRecordings(choice.argv, {
   root,
   repository,
-  library: projectLibrary(root, repository),
+  library,
+  reviewDrafts: library.reviews,
+  // Posting to a PR is wired here and asked for by the command (--post): never by default.
+  commentSinks: { github: (pullRequest) => new GhPullRequestReview(root, pullRequest), agent: new RevisionRequestFile(new NodeFiles(join(root, REVISIONS)), REVISIONS) },
   arrangements: new ArrangementFile(root),
   project: new NodeProjectFiles(root),
   hashing: nodeHashing,

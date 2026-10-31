@@ -23,10 +23,11 @@ import { describe, expect, test } from "vitest";
 import { TestConfigError } from "@runshape/kernel";
 import type { LanguageModel, PullRequestStory, PullRequestSummary, Recorder, RecordTarget, TestConfig, TicketSource } from "@runshape/kernel";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
-import { ArrangementFile, assertPlainRecording, NodeProjectFiles, sandboxVersion, typescriptSandbox, UnchosenRecorder } from "@runshape/adapters";
-import { LogfmtLogger, nodeHashing } from "@runshape/infra";
+import { ArrangementFile, assertPlainRecording, GhPullRequestReview, NodeProjectFiles, RevisionRequestFile, sandboxVersion, typescriptSandbox, UnchosenRecorder } from "@runshape/adapters";
+import { LogfmtLogger, NodeFiles, nodeHashing } from "@runshape/infra";
 import { projectChoice, runRecordings, usageProblem } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/adapters/test/repository";
+import { fakeGh } from "@runshape/adapters/test/fake-gh";
 
 const FIXTURE = join(import.meta.dirname, "..", "..", "kernel", "test", "fixtures", "go-shop");
 const NOW = new Date("2026-10-14T12:00:00Z");
@@ -80,6 +81,8 @@ async function run(
   /** What gh says a PR is for, by number: a description that mentions nothing, by default. */
   story: (number: number) => PullRequestStory = (number) => ({ number, title: `PR ${number}`, body: "", url: `https://github.com/example/shop/pull/${number}`, linkedIssues: [] }),
   tickets: TicketSource[] = [],
+  /** The gh that posting a review runs: a stand-in, or one that isn't there. */
+  gh = "gh-is-not-installed-here",
 ) {
   const lines: string[] = [];
   const logs: string[] = [];
@@ -95,7 +98,7 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin", story: async (number: number) => story(number) };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing, typescriptSandbox(RUNSHAPE_CONFIG))), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets });
+  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing, typescriptSandbox(RUNSHAPE_CONFIG))), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets, reviewDrafts: library.reviews, commentSinks: { github: (pr) => new GhPullRequestReview(root, pr, gh), agent: new RevisionRequestFile(new NodeFiles(join(root, ".runshape", "revisions")), join(".runshape", "revisions")) } });
   return { code, lines, logs, recorder, model, chosen, sandbox, sandboxVersions };
 }
 
@@ -1442,6 +1445,138 @@ describe("runshape view", () => {
         "1 runshape: nowhere isn't one of recording 44271d30c124's modules: example\\.com.shop.internal.app, example\\.com.shop.internal.orders, example\\.com.shop.internal.storage, example\\.com.shop.internal.web",
         "1 runshape: there's no recording abcdef123456 (npm run runshape -- list shows what's kept)",
         "1 runshape: --json and --module only apply to view",
+      ]
+    `);
+  });
+});
+
+describe("runshape review: check off, comment, then send to a PR or a local agent", () => {
+  // The slug refactor's page, as compare saves one (the review module's fixture).
+  const PAGE = readFileSync(join(import.meta.dirname, "..", "..", "review", "test", "fixtures", "fastapi-slug-refactor.page.json"), "utf8");
+  const NAME = "aaaaaaaaaaaa..bbbbbbbbbbbb";
+  const HEAD = "2222222222222222222222222222222222222222";
+  const withReview = () => {
+    const { root } = repository();
+    mkdirSync(join(root, ".runshape", "reviews", NAME), { recursive: true });
+    writeFileSync(join(root, ".runshape", "reviews", NAME, "page.json"), PAGE);
+    return root;
+  };
+  const review = (root: string, args: string[], gh?: string) => run(root, ["review", NAME, ...args], undefined, undefined, undefined, [], null, undefined, [], gh);
+
+  test("the list, the draft growing, a revision request written, and GitHub previewed until --post", async () => {
+    const root = withReview();
+    const gh = fakeGh(`case "$2" in view) echo '{"headRefOid":"${HEAD}"}';; review) ;; esac`);
+
+    const steps = [
+      await review(root, ["check", "1", "2", "3"]),
+      await review(root, ["comment", "4", "Does", "the", "route", "still", "return", "422?"]),
+      await review(root, ["comment", "change", "Small and clear."]),
+      await review(root, []),
+      await review(root, ["send", "agent", "--request-changes"]),
+      await review(root, ["send", "github", "--pr=7"], gh.command),
+    ];
+    const askedBeforePost = gh.asked();
+    const posted = await review(root, ["send", "github", "--pr=7", "--approve", "--post"], gh.command);
+
+    expect(steps.map((step) => [step.code, ...step.lines].join("\n"))).toMatchInlineSnapshot(`
+      [
+        "0",
+        "0",
+        "0",
+        "0
+      review aaaaaaaaaaaa..bbbbbbbbbbbb: the slugs commit (222222222222) against 111111111111
+      4 tests ran on both the base and this branch.
+
+      To check off (3 of 8 done; [~] changed since you checked it):
+        [x]   1. thread through app.services.articles._normalize_title, app.services.articles.ensure_slug_available: tests 2 new
+        [x]   2. function app.services.articles._normalize_title (added): tests 2 new
+        [x]   3. function app.services.articles.ensure_slug_available (added): tests 2 new
+        [ ]   4. thread through app.api.routes.articles.articles_resource.create_new_article, app.services.articles.get_slug_for_article: tests 2 different
+                > Does the route still return 422?
+        [ ]   5. function app.api.routes.articles.articles_resource.create_new_article (edited): tests 2 different
+        [ ]   6. function app.services.articles.get_slug_for_article (edited): tests 2 different
+        [ ]   7. test test_user_can_not_create_article_with_duplicated_slug (still passing, but now run differently)
+        [ ]   8. test test_user_can_create_article (still passing, but now run differently)
+
+      Comments on the change, or on what this comparison no longer shows:
+        change: Small and clear.
+
+      Next: review aaaaaaaaaaaa..bbbbbbbbbbbb check <n>... | comment <n|change> <text> | send github|agent",
+        "0
+      Sent 2 comments (request-changes) to .runshape/revisions/aaaaaaaaaaaa..bbbbbbbbbbbb.json.",
+        "0
+      Would send to pull request #7 (comment):
+
+        ### Runshape review: comments
+        
+        Reviewed by behaviour: the slugs commit (222222222222) against 111111111111.
+        
+        **On the thread through app.api.routes.articles.articles\\_resource.create\\_new\\_article, app.services.articles.get\\_slug\\_for\\_article**
+        
+        Does the route still return 422?
+        
+        **On the change**
+        
+        Small and clear.
+
+      Nothing posted. Run it again with --post to post this.",
+      ]
+    `);
+    expect({
+      askedBeforePost,
+      posted: posted.lines,
+      asked: gh.asked().map((call) => call.slice(0, 4).join(" ")),
+      revision: JSON.parse(readFileSync(join(root, ".runshape", "revisions", `${NAME}.json`), "utf8")).requests.map((request: { comment: string }) => request.comment),
+      logged: [...steps, posted].flatMap((step) => step.logs.filter((line) => line.includes("review."))),
+    }).toMatchInlineSnapshot(`
+      {
+        "asked": [
+          "pr view 7 --json",
+          "pr review 7 --approve",
+        ],
+        "askedBeforePost": [],
+        "logged": [
+          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.sent review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="revision request for a local agent" verdict=request-changes comments=2 where=.runshape/revisions/aaaaaaaaaaaa..bbbbbbbbbbbb.json",
+          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.previewed review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="GitHub pull request #7" verdict=comment comments=2 where="pull request #7"",
+          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.sent review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="GitHub pull request #7" verdict=approve comments=2 where="pull request #7"",
+        ],
+        "posted": [
+          "Sent 2 comments (approve) to pull request #7.",
+        ],
+        "revision": [
+          "Does the route still return 422?",
+          "Small and clear.",
+        ],
+      }
+    `);
+  });
+
+  test("refused with the reason: a review that isn't there, flags out of place, no PR to post to, nothing to send", async () => {
+    const root = withReview();
+
+    const refusals = [
+      await run(root, ["review", "cccccccccccc..working"]),
+      await review(root, ["check", "1", "--post"]),
+      await review(root, ["send", "agent", "--post"]),
+      await review(root, ["send", "github"]),
+      await review(root, ["send", "github", "--pr=7", "--approve", "--request-changes"]),
+      await review(root, ["send", "github", "--pr=7", "--post"]),
+    ];
+    await review(root, ["comment", "change", "Small and clear."]);
+    // Pushed to since the review: posting it would comment on code nobody reviewed.
+    const movedOn = fakeGh(`case "$2" in view) echo '{"headRefOid":"3333333333333333333333333333333333333333"}';; esac`);
+    refusals.push(await review(root, ["send", "github", "--pr=7", "--post"], movedOn.command));
+    expect(movedOn.asked().map((call) => call.slice(0, 2).join(" "))).toEqual(["pr view"]);
+
+    expect(refusals.map((step) => `${step.code} ${step.lines.join(" / ")}`)).toMatchInlineSnapshot(`
+      [
+        "1 runshape: no review cccccccccccc..working: \`compare\` makes one",
+        "1 runshape: --post only applies to review <name> send",
+        "1 runshape: --post and --pr are for send github: a revision request stays on this machine",
+        "1 runshape: which pull request? This review isn't of one: name it with --pr=N",
+        "1 runshape: --approve or --request-changes, not both",
+        "1 runshape: no comments to send: leave one with \`review <name> comment <what> <text>\`",
+        "1 runshape: GitHub pull request #7 refused or failed: pull request #7 is at 333333333333, but this review is of 222222222222: compare it again; nothing posted",
       ]
     `);
   });
