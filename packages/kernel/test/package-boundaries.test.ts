@@ -5,7 +5,7 @@
  *
  *   apps (cli, extension) ──> modules, workflows, infra, kernel
  *   workflows ──> modules, kernel          ui (webview) ──> kernel
- *   modules (architecture, trace, visualizer, explainer) ──> kernel, never each other
+ *   modules (architecture, trace, visualizer, explainer, review) ──> kernel, never each other
  *   adapters (one folder per external system) ──> kernel, and infra's Node toolkit
  *   infra (the generic Node toolkit) ──> nothing: it fits the kernel's ports by shape
  *   kernel ──> nothing
@@ -31,6 +31,7 @@ const ROLES: Record<string, Role> = {
   "packages/architecture": "module",
   "packages/trace": "module",
   "packages/explainer": "module",
+  "packages/review": "module",
   "packages/visualizer": "module",
   "packages/workflows": "workflows",
   "packages/infra": "toolkit",

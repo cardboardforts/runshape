@@ -13,6 +13,7 @@ export * from "./trace/model/language-model";
 export * from "./logger";
 export * from "./markdown-text";
 export * from "./review-page";
+export * from "./review-comments";
 export * from "./trace/data/wire";
 export * from "./trace/data/parse";
 export * from "./trace/data/trace-directory";

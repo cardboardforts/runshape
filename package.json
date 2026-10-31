@@ -9,6 +9,7 @@
     "packages/visualizer",
     "packages/kernel",
     "packages/explainer",
+    "packages/review",
     "packages/workflows",
     "packages/webview",
     "packages/extension",

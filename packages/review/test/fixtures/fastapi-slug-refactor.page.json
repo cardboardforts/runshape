@@ -1,0 +1,446 @@
+{
+  "format": "runshape-review-page",
+  "version": 1,
+  "base": {
+    "asked": "main",
+    "recording": "aaaaaaaaaaaa",
+    "commit": "1111111111111111111111111111111111111111",
+    "subject": "the main commit"
+  },
+  "head": {
+    "asked": "slugs",
+    "recording": "bbbbbbbbbbbb",
+    "commit": "2222222222222222222222222222222222222222",
+    "subject": "the slugs commit"
+  },
+  "headline": "4 tests ran on both the base and this branch.",
+  "callouts": [
+    {
+      "text": "2 still passing, run differently",
+      "tone": "warn"
+    },
+    {
+      "text": "1 route takes a new way",
+      "tone": "info"
+    },
+    {
+      "text": "1 workflow slower past the noise bands (one recording each side)",
+      "tone": "info"
+    }
+  ],
+  "moved": [],
+  "sections": [
+    {
+      "heading": "Still passing, but now run differently",
+      "rows": [
+        {
+          "tests": [
+            {
+              "id": "tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug",
+              "name": "test_user_can_not_create_article_with_duplicated_slug",
+              "inHead": true
+            },
+            {
+              "id": "tests/test_api/test_routes/test_articles.py::test_user_can_create_article",
+              "name": "test_user_can_create_article",
+              "inHead": true
+            }
+          ],
+          "cause": [
+            {
+              "name": "_normalize_title",
+              "namespace": "app.services.articles",
+              "change": "added"
+            },
+            {
+              "name": "create_new_article",
+              "namespace": "app.api.routes.articles.articles_resource",
+              "change": "edited"
+            },
+            {
+              "name": "ensure_slug_available",
+              "namespace": "app.services.articles",
+              "change": "added"
+            },
+            {
+              "name": "get_slug_for_article",
+              "namespace": "app.services.articles",
+              "change": "edited"
+            }
+          ],
+          "changes": [
+            "now calls `ensure_slug_available`, `_normalize_title`; 17 calls moved under a new caller; different lines run in `create_new_article`, `get_slug_for_article`",
+            "now calls `ensure_slug_available`, `_normalize_title`; 4 calls moved under a new caller; different lines run in `create_new_article`, `get_slug_for_article`"
+          ]
+        }
+      ]
+    }
+  ],
+  "threadsBasis": "source",
+  "threads": [
+    {
+      "functions": [
+        {
+          "name": "_normalize_title",
+          "namespace": "app.services.articles",
+          "change": "added"
+        },
+        {
+          "name": "ensure_slug_available",
+          "namespace": "app.services.articles",
+          "change": "added"
+        }
+      ],
+      "workflows": [
+        {
+          "kind": "new",
+          "tests": [
+            {
+              "id": "tests/test_api/test_routes/test_articles.py::test_user_can_create_article",
+              "name": "test_user_can_create_article",
+              "inHead": true
+            },
+            {
+              "id": "tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug",
+              "name": "test_user_can_not_create_article_with_duplicated_slug",
+              "inHead": true
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "label": "POST /api/articles",
+          "on": "head"
+        }
+      ]
+    },
+    {
+      "functions": [
+        {
+          "name": "create_new_article",
+          "namespace": "app.api.routes.articles.articles_resource",
+          "change": "edited"
+        },
+        {
+          "name": "get_slug_for_article",
+          "namespace": "app.services.articles",
+          "change": "edited"
+        }
+      ],
+      "workflows": [
+        {
+          "kind": "different",
+          "tests": [
+            {
+              "id": "tests/test_api/test_routes/test_articles.py::test_user_can_create_article",
+              "name": "test_user_can_create_article",
+              "inHead": true
+            },
+            {
+              "id": "tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug",
+              "name": "test_user_can_not_create_article_with_duplicated_slug",
+              "inHead": true
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "label": "POST /api/articles",
+          "on": "both"
+        }
+      ]
+    }
+  ],
+  "cost": {
+    "caveats": [
+      "Each side was recorded once, so a time difference may be noise: one is called out only past both 10 ms and 50%, and even then a second recording is what confirms it.",
+      "Times include the recorder's own overhead (settrace), which isn't subtracted: code that makes many calls looks slower than it runs untraced. Call counts don't depend on timing.",
+      "The recordings don't say which machine made them: if the two sides were recorded on different machines, their times differ for that reason alone."
+    ],
+    "routes": [],
+    "workflows": [
+      {
+        "test": {
+          "id": "tests/test_api/test_routes/test_articles.py::test_user_can_create_article",
+          "name": "test_user_can_create_article",
+          "inHead": true
+        },
+        "time": {
+          "beforeMs": 10.629,
+          "afterMs": 25.329,
+          "verdict": "slower"
+        },
+        "calls": {
+          "before": 52,
+          "after": 54
+        },
+        "externalCalls": {
+          "before": 10,
+          "after": 10
+        }
+      },
+      {
+        "test": {
+          "id": "tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug",
+          "name": "test_user_can_not_create_article_with_duplicated_slug",
+          "inHead": true
+        },
+        "time": {
+          "beforeMs": 20.772,
+          "afterMs": 19.975,
+          "verdict": "within-noise"
+        },
+        "calls": {
+          "before": 38,
+          "after": 40
+        },
+        "externalCalls": {
+          "before": 5,
+          "after": 5
+        }
+      }
+    ],
+    "newWorkflows": [],
+    "goneWorkflows": [],
+    "unchanged": 2,
+    "functions": [
+      {
+        "function": {
+          "name": "_normalize_title",
+          "namespace": "app.services.articles",
+          "change": "added"
+        },
+        "calls": {
+          "before": 0,
+          "after": 2
+        },
+        "paths": {
+          "before": 0,
+          "after": 1
+        },
+        "externalCalls": {
+          "before": 0,
+          "after": 0
+        },
+        "timePerCall": {
+          "beforeMs": null,
+          "afterMs": 0.0015,
+          "verdict": "one-side"
+        },
+        "selfTimePerCall": {
+          "beforeMs": null,
+          "afterMs": 0.0015
+        }
+      },
+      {
+        "function": {
+          "name": "create_new_article",
+          "namespace": "app.api.routes.articles.articles_resource",
+          "change": "edited"
+        },
+        "calls": {
+          "before": 2,
+          "after": 2
+        },
+        "paths": {
+          "before": 2,
+          "after": 2
+        },
+        "externalCalls": {
+          "before": 13,
+          "after": 13
+        },
+        "timePerCall": {
+          "beforeMs": 3.6245,
+          "afterMs": 10.9705,
+          "verdict": "within-noise"
+        },
+        "selfTimePerCall": {
+          "beforeMs": 0.692,
+          "afterMs": 0.234
+        }
+      },
+      {
+        "function": {
+          "name": "ensure_slug_available",
+          "namespace": "app.services.articles",
+          "change": "added"
+        },
+        "calls": {
+          "before": 0,
+          "after": 2
+        },
+        "paths": {
+          "before": 0,
+          "after": 2
+        },
+        "externalCalls": {
+          "before": 0,
+          "after": 5
+        },
+        "timePerCall": {
+          "beforeMs": null,
+          "afterMs": 1.187,
+          "verdict": "one-side"
+        },
+        "selfTimePerCall": {
+          "beforeMs": null,
+          "afterMs": 0.097
+        }
+      },
+      {
+        "function": {
+          "name": "get_slug_for_article",
+          "namespace": "app.services.articles",
+          "change": "edited"
+        },
+        "calls": {
+          "before": 2,
+          "after": 2
+        },
+        "paths": {
+          "before": 1,
+          "after": 1
+        },
+        "externalCalls": {
+          "before": 0,
+          "after": 0
+        },
+        "timePerCall": {
+          "beforeMs": 0.05,
+          "afterMs": 0.098,
+          "verdict": "within-noise"
+        },
+        "selfTimePerCall": {
+          "beforeMs": 0.05,
+          "afterMs": 0.0965
+        }
+      }
+    ]
+  },
+  "categories": {
+    "items": [
+      {
+        "name": "app.api.routes.articles.articles_resource.create_new_article",
+        "kind": "callable",
+        "zone": "inbound-adapter",
+        "tags": [
+          {
+            "lens": "ports-and-adapters",
+            "id": "primary-adapter",
+            "by": "detected",
+            "confidence": 0.85,
+            "text": "primary-adapter"
+          },
+          {
+            "lens": "effect",
+            "id": "reads-state",
+            "by": "detected",
+            "confidence": 0.95,
+            "text": "reads-state"
+          },
+          {
+            "lens": "effect",
+            "id": "writes-state",
+            "by": "detected",
+            "confidence": 0.95,
+            "text": "writes-state"
+          },
+          {
+            "lens": "cqs",
+            "id": "both",
+            "by": "detected",
+            "confidence": 0.7,
+            "text": "both"
+          },
+          {
+            "lens": "failure",
+            "id": "can-fail",
+            "by": "detected",
+            "confidence": 0.85,
+            "text": "can-fail"
+          }
+        ]
+      },
+      {
+        "name": "app.services.articles._normalize_title",
+        "kind": "callable",
+        "zone": "core",
+        "tags": [
+          {
+            "lens": "effect",
+            "id": "pure",
+            "by": "detected",
+            "confidence": 0.4,
+            "text": "no recorded effect"
+          },
+          {
+            "lens": "cqs",
+            "id": "query",
+            "by": "detected",
+            "confidence": 0.7,
+            "text": "query"
+          }
+        ]
+      },
+      {
+        "name": "app.services.articles.ensure_slug_available",
+        "kind": "callable",
+        "zone": "core",
+        "tags": [
+          {
+            "lens": "effect",
+            "id": "reads-state",
+            "by": "detected",
+            "confidence": 0.95,
+            "text": "reads-state"
+          },
+          {
+            "lens": "cqs",
+            "id": "query",
+            "by": "detected",
+            "confidence": 0.7,
+            "text": "query"
+          },
+          {
+            "lens": "failure",
+            "id": "can-fail",
+            "by": "detected",
+            "confidence": 0.85,
+            "text": "can-fail"
+          }
+        ]
+      },
+      {
+        "name": "app.services.articles.get_slug_for_article",
+        "kind": "callable",
+        "zone": "core",
+        "tags": [
+          {
+            "lens": "effect",
+            "id": "pure",
+            "by": "detected",
+            "confidence": 0.4,
+            "text": "no recorded effect"
+          },
+          {
+            "lens": "cqs",
+            "id": "query",
+            "by": "detected",
+            "confidence": 0.7,
+            "text": "query"
+          }
+        ]
+      }
+    ],
+    "findings": [],
+    "proposals": [],
+    "omitted": {
+      "items": 0,
+      "findings": 0,
+      "proposals": 0
+    }
+  }
+}

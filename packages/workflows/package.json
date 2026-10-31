@@ -11,6 +11,7 @@
     "@runshape/architecture": "0.1.0",
     "@runshape/explainer": "0.1.0",
     "@runshape/kernel": "0.1.0",
+    "@runshape/review": "0.1.0",
     "@runshape/trace": "0.1.0",
     "@runshape/visualizer": "0.1.0"
   }
