@@ -74,7 +74,7 @@ is named in the winner's evidence ("also looked like …").
 |---|---|
 | `effect` | `reads-state` (SELECT), `writes-state` (INSERT, UPDATE, DELETE, …, or an executed line assigning `self.x`, `this.x` or a Go receiver's field outside a constructor), `external-io` (a boundary call with no statement). Its own calls and everything under it. A callable can hold several of these, or `pure` if nothing was recorded. |
 | `io` | `direct-io`: a boundary call on its own span |
-| `cqs` | `query`, `command` or `both`, from an executed `return` with a value plus `writes-state`. Needs source. |
+| `cqs` | `query`, `command` or `both`, from an executed `return` with a value plus a write. A write here is the callable's own (a field, a boundary call) or stored state changed below it. A callee's in-memory field doesn't count: a memoizing getter would make every caller `both`. Needs source. |
 | `failure` | `can-fail`: `raise`, `throw`, `panic(`, `errors.New`, `fmt.Errorf` in its own lines, ran or not. Needs source. |
 
 Transaction bookkeeping (SAVEPOINT, RELEASE, BEGIN, …) isn't an effect.
@@ -114,11 +114,22 @@ Definitions and rules are overridden by id. When two lenses share an id, as `com
 `on`. A new rule needs `flag` and `message`. Severities are `error`, `warn`, `info` and `off`.
 `off_in` names regions.
 
+Configuration that would silently do nothing is refused:
+
+- a new rule with neither `match` nor `styles`,
+- a new definition in a lens that isn't one of the built-in lenses,
+- a declared role that's only for containers (`composition-root` is a zone rule's `role`).
+
+Adopting a style in the viewer rewrites the zones but keeps the taxonomy. A rule's `off_in` that
+names a region being discarded loses that name, and the confirmation says so.
+
 ## The model is optional
 
 `leftovers(categorization)` returns the types that have no role in any lens their style uses.
 `roleAdvicePrompt` gives a model the project's definitions (`Taxonomy.blurb`), along with what
-the detector found and the source. `parseRoleAdvice` validates the answer against those
+the detector found and the source. The type's name, the evidence and the source are framed as
+data, never instructions, and the source's fence is longer than any run of backticks in it.
+`parseRoleAdvice` validates the answer against those
 definitions, allowing one role per lens and reporting every problem. It returns `judged` claims
 and `taxonomy.roles` entries with `"by": "llm"`. A host writes those with `ZoneRules.withRoles`,
 and a person approves them in the diff. Nothing calls a model unless a host asks, and no host
@@ -136,7 +147,16 @@ asks yet.
 
 review.md shows all of this under "What the changed code is", with the proposals as JSON to
 paste into runshape.json. They're never applied. page.json gets `categories` and a "new
-architecture findings" callout, which turns red when any of them is an error.
+architecture findings" callout, which turns red when any of them is an error. Each page tag
+carries `by` and `confidence`.
+
+Both review.md and page.json show tags as people should read them:
+
+- `pure` is shown as "no recorded effect".
+- A claim below `LOW_CONFIDENCE` (0.5) is marked "low confidence".
+- A claim that didn't come from the detector says who made it.
+
+Long lists are capped, and the cap says how many more review.json holds.
 
 ## Not yet
 

@@ -1,6 +1,6 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { ArchitectureDiff, Change, Grouping, Phase, Placement, PlacementChange, QualifiedName, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
-import { buildPlacements, CategorizedItem, categorize, checkTagRules, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
+import { ArchitectureSnapshot, buildPlacements, CategorizedItem, categorize, checkTagRules, claimText, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
 import {
   buildReview,
   buildThreads,
@@ -120,7 +120,8 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
   const baseRules = input.baseRules ?? rules;
   const moves = detectMoves(base, head);
   const graphs = comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules });
-  const architecture = diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves);
+  const placed = { base: buildPlacements(base, baseRules, rules.profile), head: buildPlacements(head, rules) };
+  const architecture = diffArchitecture(placed.base, placed.head, moves);
   const threads = buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves });
   return {
     format: REVIEW_FORMAT,
@@ -136,14 +137,16 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),
     threads,
     cost: diffCost(base, head, threads, { phases: BUNDLE_OPTIONS.phases, moves }),
-    categories: bundleCategories(input, baseRules, architecture, threads, moves),
+    categories: bundleCategories(input, baseRules, architecture, threads, moves, placed),
   };
 }
 
-function bundleCategories(input: BundleInput, baseRules: ZoneRules, architecture: ArchitectureDiff, threads: Threads, moves: Moves): BundleCategories {
+function bundleCategories(input: BundleInput, baseRules: ZoneRules, architecture: ArchitectureDiff, threads: Threads, moves: Moves, placed: { base: ArchitectureSnapshot; head: ArchitectureSnapshot }): BundleCategories {
   const { base, head, rules } = input;
-  const after = categorize(head, rules);
-  const fresh = newFindings(checkTagRules(categorize(base, baseRules), baseRules.taxonomy), checkTagRules(after, rules.taxonomy), {
+  const after = categorize(head, rules, placed.head);
+  // The base was placed in head's style for the diff: reusable only when it is its own.
+  const before = categorize(base, baseRules, baseRules.profile.style === rules.profile.style ? placed.base : undefined);
+  const fresh = newFindings(checkTagRules(before, baseRules.taxonomy), checkTagRules(after, rules.taxonomy), {
     module: moves.module,
     type: moves.type,
     functionKey: moves.headKey,
@@ -234,7 +237,7 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
 /** "primary-adapter; effect: reads-state, writes-state; cqs: both": roles by id, traits by lens. */
 function tagsText(item: CategorizedItem): string {
   const byLens = new Map<string, string[]>();
-  for (const tag of item.tags) byLens.set(tag.lens, [...(byLens.get(tag.lens) ?? []), tag.id + (tag.by === "detected" ? "" : ` (${tag.by})`)]);
+  for (const tag of item.tags) byLens.set(tag.lens, [...(byLens.get(tag.lens) ?? []), claimText(tag)]);
   const parts = [...byLens].map(([lens, ids]) => (ROLE_LENSES.includes(lens) ? ids.join(", ") : `${lens}: ${ids.join(", ")}`));
   return parts.length > 0 ? parts.join("; ") : "no tags";
 }
@@ -249,17 +252,27 @@ function categoriesMarkdown(categories: BundleCategories | undefined): string[] 
   for (const item of categories.items.slice(0, SHOWN_FUNCTIONS)) out.push(`- ${code(item.name)} (${item.kind}, ${item.zone ?? "not placed"}): ${tagsText(item)}`);
   if (categories.items.length > SHOWN_FUNCTIONS) out.push(`- and ${categories.items.length - SHOWN_FUNCTIONS} more (review.json lists every claim with its evidence)`);
   if (categories.items.length > 0) out.push("");
-  if (categories.newFindings.length > 0) {
-    out.push(`New findings (${categories.newFindings.length}):`, "");
-    for (const finding of categories.newFindings) out.push(`- **${finding.severity}** ${code(finding.rule)}: ${code(finding.item)} ${finding.message}${finding.evidence.length > 0 ? ` (${finding.evidence[0]})` : ""}`);
+  const findings = categories.newFindings;
+  if (findings.length > 0) {
+    out.push(`New findings (${findings.length}):`, "");
+    for (const finding of findings.slice(0, SHOWN_FINDINGS)) out.push(`- **${finding.severity}** ${code(finding.rule)}: ${code(finding.item)} ${finding.message}${finding.evidence.length > 0 ? ` (${finding.evidence[0]})` : ""}`);
+    if (findings.length > SHOWN_FINDINGS) out.push(`- and ${findings.length - SHOWN_FINDINGS} more (review.json lists them all)`);
     out.push("");
   }
-  if (categories.proposals.length > 0) {
+  const proposals = categories.proposals;
+  if (proposals.length > 0) {
+    const shown = proposals.slice(0, SHOWN_PROPOSALS);
     out.push("Proposed zones for new code: add them to runshape.json to approve them in this diff (nothing is applied):", "", "```json");
-    out.push(...categories.proposals.map((rule, i) => `${JSON.stringify(rule)}${i < categories.proposals.length - 1 ? "," : ""}`), "```", "");
+    out.push(...shown.map((rule, i) => `${JSON.stringify(rule)}${i < shown.length - 1 ? "," : ""}`), "```");
+    if (proposals.length > SHOWN_PROPOSALS) out.push(`and ${proposals.length - SHOWN_PROPOSALS} more (review.json lists them all)`);
+    out.push("");
   }
   return out;
 }
+
+/** Past these, a PR comment becomes a list to open: review.json keeps every one. */
+const SHOWN_FINDINGS = 15;
+const SHOWN_PROPOSALS = 10;
 
 function sideText(side: ReviewSide): string {
   if (side.recording === "working") return `the working tree (on ${code(side.commit.slice(0, 7))}${side.dirty ? ", with uncommitted changes" : ""})`;

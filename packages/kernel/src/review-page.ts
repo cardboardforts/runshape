@@ -25,11 +25,22 @@ export interface ReviewPage {
 
 /** What the changed code is, what the change newly breaks, and zones proposed for new code. */
 export interface ReviewPageCategories {
-  /** One per changed callable, its type, and new code: tags as "lens: id". */
-  items: { name: string; kind: string; zone: string | null; tags: string[] }[];
+  /** One per changed callable, its type, and new code. */
+  items: { name: string; kind: string; zone: string | null; tags: ReviewPageTag[] }[];
   findings: { severity: "error" | "warn" | "info"; rule: string; item: string; message: string; evidence: string[] }[];
   /** For runshape.json, for a person to approve: never applied by Runshape. */
   proposals: { match: string; zone: string; reason: string }[];
+  /** How many of each list the page leaves out; review.json has them all. */
+  omitted: { items: number; findings: number; proposals: number };
+}
+
+/** A claim as the page shows it: `text` already says "no recorded effect" or "low confidence" where it should. */
+export interface ReviewPageTag {
+  lens: string;
+  id: string;
+  by: "declared" | "detected" | "judged" | "confirmed";
+  confidence: number;
+  text: string;
 }
 
 /** One number on each side; null on a side that doesn't have it. */

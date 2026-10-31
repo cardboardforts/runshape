@@ -20,7 +20,7 @@ const PROJECT = {
     rules: [
       // The example from docs/taxonomy.md: CQS mixing in a CQRS container, relaxed for handlers.
       { id: "cqrs-no-mixed-callable", match: "app.**", severity: "error", off_in: ["legacy"] },
-      { id: "no-io-in-dtos", message: "a DTO doing I/O", when: ["role=dto"], flag: ["effect=reads-state|writes-state|external-io"], severity: "info" },
+      { id: "no-io-in-dtos", message: "a DTO doing I/O", styles: ["layered"], when: ["role=dto"], flag: ["effect=reads-state|writes-state|external-io"], severity: "info" },
     ],
   },
 };
@@ -44,7 +44,7 @@ describe("the taxonomy in runshape.json", () => {
         "role-outside-expected-zone: warn; styles 5",
         "io-outside-allowed-zones: warn; styles 5",
         "cqrs-no-mixed-callable: error in app.**, off in legacy; styles 0",
-        "no-io-in-dtos: info; styles 0",
+        "no-io-in-dtos: info; styles 1",
       ],
       cqrs: {
         id: "cqrs-no-mixed-callable",
@@ -69,8 +69,8 @@ describe("the taxonomy in runshape.json", () => {
       regions: [{ ...PROJECT.regions[0], taxonomy: {} }],
       zones: [{ match: "app.api.**", zone: "nowhere", reason: "routes" }],
       taxonomy: {
-        definitions: [{ id: "dto", expected_in: ["edge-of-the-world"] }, { id: "saga", definition: "a long-running process" }, { id: "command", names: ["*Cmd"] }],
-        roles: [{ match: "app.x", role: "aggregate", reason: "" }],
+        definitions: [{ id: "dto", expected_in: ["edge-of-the-world"] }, { id: "saga", definition: "a long-running process" }, { id: "command", names: ["*Cmd"] }, { id: "widget", lens: "frontend", on: ["type"], definition: "a UI piece" }],
+        roles: [{ match: "app.x", role: "aggregate", reason: "" }, { match: "app.main", role: "composition-root", reason: "wires", by: "user" }],
         rules: [
           { id: "cqrs-no-mixed-callable", severity: "fatal", off_in: ["legacy", "lagacy"], unless: ["role=comand-handler"] },
           { id: "mine", when: ["colour=red", "kind callable"] },
@@ -93,13 +93,19 @@ describe("the taxonomy in runshape.json", () => {
       'taxonomy.definitions[1]: saga is not built in, so it needs a "lens"',
       'taxonomy.definitions[1]: saga is not built in, so it needs "on" (the kinds that carry it)',
       'taxonomy.definitions[2]: command is in lenses cqrs and cqs: say which with "lens"',
+      // Inert config is refused, not silently ignored (second-model review): no style uses a new lens,
+      "taxonomy.definitions[3].lens frontend is not a lens: ports-and-adapters, tactical-ddd, cqrs, application, boundary, mvc-family, container, effect, io, cqs, failure, intent",
       "taxonomy.roles[0].reason must say why",
       "taxonomy.roles[0].role aggregate is not a role: define it in taxonomy.definitions first",
+      // …a declared role is read for types and callables only,
+      'taxonomy.roles[1].role composition-root is for container, which a declared role never reaches: give the zone rule "role": "composition-root"',
       "taxonomy.rules[0].severity must be one of error, warn, info, off",
       "taxonomy.rules[0].off_in: there is no region named lagacy",
       'taxonomy.rules[0].unless[0] "role=comand-handler": comand-handler is not role values (primary-port, secondary-port, primary-adapter, secondary-adapter, aggregate-root, entity, value-object, domain-service, factory, repository, domain-event, policy, command, command-handler, query-model, use-case, orchestrator, dto, mapper, config, controller, view, view-model, presenter, composition-root)',
       'taxonomy.rules[1]: mine is not built in, so it needs "flag" (the conditions that make a finding)',
       'taxonomy.rules[1]: mine is not built in, so it needs a "message"',
+      // …and a new rule with neither match nor styles would never run.
+      'taxonomy.rules[1]: mine applies nowhere: give it "match" (a glob) or "styles"',
       'taxonomy.rules[1].when[0] "colour=red": colour is not an axis: kind, style, zone, role, zone-expected, zone-io, ports-and-adapters, tactical-ddd, cqrs, application, boundary, mvc-family, container, effect, io, cqs, failure, intent',
       'taxonomy.rules[1].when[1] "kind callable": write it "axis=value", "axis=a|b" or "axis!=value"',
     ]);

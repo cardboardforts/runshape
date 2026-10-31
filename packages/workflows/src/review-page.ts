@@ -1,5 +1,6 @@
 // The PR page's content (page.json), from a saved review: what the UI draws, worked out here so
 // the UI reads kernel types only.
+import { claimText } from "@runshape/architecture";
 import { ReviewCallout, ReviewHighlights, ReviewPage, ReviewPageCategories, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
 import {
   ChangedFunction,
@@ -113,11 +114,27 @@ function costCallouts(cost: CostDiff | undefined): ReviewCallout[] {
 
 const TONE_ORDER: ReviewCallout["tone"][] = ["failed", "warn", "info"];
 
+/** Past these the page is a list to scroll, not to read: review.json keeps every one. */
+const PAGE_ITEMS = 40;
+const PAGE_FINDINGS = 25;
+const PAGE_PROPOSALS = 25;
+
 function pageCategories(categories: BundleCategories): ReviewPageCategories {
+  const { items, newFindings, proposals } = categories;
   return {
-    items: categories.items.map((item) => ({ name: item.name, kind: item.kind, zone: item.zone, tags: item.tags.map((tag) => `${tag.lens}: ${tag.id}`) })),
-    findings: categories.newFindings.map(({ severity, rule, item, message, evidence }) => ({ severity, rule, item, message, evidence })),
-    proposals: categories.proposals.map(({ match, zone, reason }) => ({ match, zone, reason })),
+    items: items.slice(0, PAGE_ITEMS).map((item) => ({
+      name: item.name,
+      kind: item.kind,
+      zone: item.zone,
+      tags: item.tags.map((tag) => ({ lens: tag.lens, id: tag.id, by: tag.by, confidence: tag.confidence, text: claimText(tag) })),
+    })),
+    findings: newFindings.slice(0, PAGE_FINDINGS).map(({ severity, rule, item, message, evidence }) => ({ severity, rule, item, message, evidence })),
+    proposals: proposals.slice(0, PAGE_PROPOSALS).map(({ match, zone, reason }) => ({ match, zone, reason })),
+    omitted: {
+      items: Math.max(0, items.length - PAGE_ITEMS),
+      findings: Math.max(0, newFindings.length - PAGE_FINDINGS),
+      proposals: Math.max(0, proposals.length - PAGE_PROPOSALS),
+    },
   };
 }
 

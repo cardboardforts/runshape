@@ -32,7 +32,9 @@ describe("buildReviewPage", () => {
     // The cost is its own test below.
     const { cost, ...rest } = page;
     expect(cost).toBeDefined();
-    expect({ ...rest, sections: rest.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({ ...row, changes: row.changes.length })) })) }).toEqual({
+    // Each tag as "lens: text (by confidence)": the text says "no recorded effect", not "pure", at 0.4.
+    const categories = rest.categories && { ...rest.categories, items: rest.categories.items.map((item) => ({ ...item, tags: item.tags.map((tag) => `${tag.lens}: ${tag.text} (${tag.by} ${tag.confidence})`) })) };
+    expect({ ...rest, categories, sections: rest.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({ ...row, changes: row.changes.length })) })) }).toEqual({
       format: "runshape-review-page",
       version: 1,
       base: { asked: "main", recording: "aaaaaaaaaaaa", commit: "0123456789abcdef0123456789abcdef01234567", subject: "the main commit" },
@@ -92,14 +94,15 @@ describe("buildReviewPage", () => {
             name: "app.api.routes.articles.articles_resource.create_new_article",
             kind: "callable",
             zone: "inbound-adapter",
-            tags: ["ports-and-adapters: primary-adapter", "effect: reads-state", "effect: writes-state", "cqs: both", "failure: can-fail"],
+            tags: ["ports-and-adapters: primary-adapter (detected 0.85)", "effect: reads-state (detected 0.95)", "effect: writes-state (detected 0.95)", "cqs: both (detected 0.7)", "failure: can-fail (detected 0.85)"],
           },
-          { name: "app.services.articles._normalize_title", kind: "callable", zone: "core", tags: ["effect: pure", "cqs: query"] },
-          { name: "app.services.articles.ensure_slug_available", kind: "callable", zone: "core", tags: ["effect: reads-state", "cqs: query", "failure: can-fail"] },
-          { name: "app.services.articles.get_slug_for_article", kind: "callable", zone: "core", tags: ["effect: pure", "cqs: query"] },
+          { name: "app.services.articles._normalize_title", kind: "callable", zone: "core", tags: ["effect: no recorded effect (detected 0.4)", "cqs: query (detected 0.7)"] },
+          { name: "app.services.articles.ensure_slug_available", kind: "callable", zone: "core", tags: ["effect: reads-state (detected 0.95)", "cqs: query (detected 0.7)", "failure: can-fail (detected 0.85)"] },
+          { name: "app.services.articles.get_slug_for_article", kind: "callable", zone: "core", tags: ["effect: no recorded effect (detected 0.4)", "cqs: query (detected 0.7)"] },
         ],
         findings: [],
         proposals: [],
+        omitted: { items: 0, findings: 0, proposals: 0 },
       },
     });
   });

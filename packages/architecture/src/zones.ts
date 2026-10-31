@@ -165,6 +165,11 @@ export class ZoneRules {
     return this.withRuleIn(qualifiedName, zone, reason, by, null);
   }
 
+  /** The same zones with another taxonomy: adopting a style rewrites the zones, not the project's vocabulary. */
+  withTaxonomy(taxonomy: Taxonomy): ZoneRules {
+    return new ZoneRules(this.rules, this.profile, this.regions, taxonomy);
+  }
+
   /** Roles proposed for approval (a model's "by": "llm"), added to the taxonomy section the host saves. */
   withRoles(declarations: RoleDeclaration[]): ZoneRules {
     return new ZoneRules(this.rules, this.profile, this.regions, this.taxonomy.withRoles(declarations));

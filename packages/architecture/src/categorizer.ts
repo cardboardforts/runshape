@@ -2,7 +2,7 @@
 // its kind (a parser fact), the roles its region's style gives it, and what it does when it
 // runs. Every role and trait is a claim with evidence; nothing here asks a model.
 import { BoundaryCall, byCodeUnit, CodeSymbol, ComponentKind, Placement, QualifiedName, Role, Run, Span, SymbolKind, ZoneRule, ZoneSource } from "@runshape/kernel";
-import { buildPlacements } from "./placements";
+import { ArchitectureSnapshot, buildPlacements } from "./placements";
 import { profileFor } from "./profiles";
 import { Claim, ClaimSource, Definition, Kind, Lens, matchingName, RoleDeclaration, ROLE_LENSES, STYLE_LENSES, Taxonomy } from "./taxonomy";
 import { ZoneRules } from "./zones";
@@ -123,18 +123,23 @@ function effectOf(call: BoundaryCall): { effect: string; label: string } | null 
 /** Per language: what a line that changes a field, returns a value, or fails looks like. */
 interface SourceDialect {
   fieldWrite(firstLine: string): RegExp | null;
+  /** Matched against the line with its strings and comment removed: "throw" in a message isn't a throw. */
   failure: RegExp;
+  lineComment: string;
   /** Return values that aren't values: "return None", Go's "return nil, err". */
   noValue: RegExp;
 }
 const PYTHON: SourceDialect = {
   fieldWrite: () => /^\s*self\.([A-Za-z_]\w*)(?:\[[^\]]*\])?\s*(?:[-+*/%|&^@]|\/\/|\*\*|<<|>>)?=(?!=)/,
   failure: /^\s*(raise)\b/,
+  lineComment: "#",
   noValue: /^(None|self\.\w+)?$/,
 };
 const TYPESCRIPT: SourceDialect = {
   fieldWrite: () => /^\s*this\.([A-Za-z_$][\w$]*)(?:\[[^\]]*\])?\s*(?:(?:[-+*/%|&^]|\*\*|<<|>>|\?\?|\|\||&&)?=(?!=)|\+\+|--)/,
-  failure: /\b(throw)\b/,
+  // A statement, not a property or an identifier: "x.throw" and "throwIfMissing" aren't throws.
+  failure: /(?:^|[;{}:)]|\belse)\s*(throw)\b/,
+  lineComment: "//",
   noValue: /^(null|undefined)?$/,
 };
 const GO: SourceDialect = {
@@ -144,9 +149,37 @@ const GO: SourceDialect = {
     return receiver === undefined ? null : new RegExp(`^\\s*(?:${receiver}\\.([A-Za-z_]\\w*)(?:\\[[^\\]]*\\])?\\s*(?:(?:[-+*/%|^]|&\\^?|<<|>>)?=(?!=)|\\+\\+|--)|delete\\(\\s*${receiver}\\.([A-Za-z_]\\w*))`);
   },
   failure: /\b(panic|errors\.New|fmt\.Errorf)\(/,
+  lineComment: "//",
   noValue: /^(nil|err|errors\.New\(.*|fmt\.Errorf\(.*)?$/,
 };
 const DIALECTS: Record<string, SourceDialect> = { python: PYTHON, typescript: TYPESCRIPT, javascript: TYPESCRIPT, go: GO };
+
+/** One line's code only: string literals emptied, the line comment cut. A line, not a parser: a string spanning lines isn't seen. */
+export function codeOnly(text: string, lineComment: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i]!;
+    if (quote !== null) {
+      if (char === "\\") i += 1;
+      else if (char === quote) {
+        out += char;
+        quote = null;
+      }
+      continue;
+    }
+    if (text.startsWith(lineComment, i)) break;
+    if (char === '"' || char === "'" || char === "`") quote = char;
+    out += char;
+  }
+  return out;
+}
+
+/** The keyword that makes this line fail ("raise", "throw", "panic", …), or null; for the tests and SourceReading. */
+export function failureOn(language: string, line: string): string | null {
+  const dialect = DIALECTS[language];
+  return dialect === undefined ? null : (dialect.failure.exec(codeOnly(line, dialect.lineComment))?.[1] ?? null);
+}
 
 /** "a, f(b, c)" → ["a", "f(b, c)"]: commas at the top level only. */
 function topLevelParts(expression: string): string[] {
@@ -166,10 +199,14 @@ function topLevelParts(expression: string): string[] {
 }
 
 /** Categorizes every piece of code the recording knows, with the rules' zones and taxonomy. */
-export function categorize(run: Run, rules: ZoneRules): Categorization {
+export function categorize(run: Run, rules: ZoneRules, placed: ArchitectureSnapshot = buildPlacements(run, rules)): Categorization {
   const taxonomy = rules.taxonomy;
-  const placements = new Map(buildPlacements(run, rules).placements.map((placement) => [`${placement.kind} ${placement.component}`, placement]));
+  const placements = new Map(placed.placements.map((placement) => [`${placement.kind} ${placement.component}`, placement]));
   const facts = functionFacts(run);
+  // Indexed once: asked per type, a scan of every function made categorizing quadratic.
+  const methodsOf = new Map<string, FunctionFacts[]>();
+  for (const fact of facts.values()) methodsOf.set(fact.symbol.owner.key, [...(methodsOf.get(fact.symbol.owner.key) ?? []), fact]);
+  const boundaryLabels = ownBoundaryLabels(facts);
   const routes = routedHandlers(run);
   const dialect = DIALECTS[run.language] ?? null;
   const source = new SourceReading(run, dialect);
@@ -207,14 +244,14 @@ export function categorize(run: Run, rules: ZoneRules): Categorization {
       items.push({ name: placement.component, kind: Kind.Container, subkind: run.language === "go" ? "package" : "module", key: null, ...at.place, tags });
       continue;
     }
-    const methods = [...facts.values()].filter((fact) => fact.symbol.owner.equals(name));
+    const methods = methodsOf.get(name.key) ?? [];
     const roles: Claim[] = [];
     const zoneRole = at.place.zone === null ? undefined : ZONE_ROLES[at.place.zone];
     if (zoneRole !== undefined && lenses.includes(zoneRole[0])) roles.push(claim(zoneRole[1], zoneRole[0], at.confidence, [at.evidence]));
     // Django's class-based views register the class itself; Go's mux registers a method.
     const routedHere = [...(routes.get(name.key) ?? []), ...methods.flatMap((method) => routes.get(method.symbol.path.key) ?? [])];
     if (routedHere.length > 0) roles.push(...routedClaims(routedHere, lenses));
-    const itself = ownBoundaryLabels(run, name, facts);
+    const itself = boundaryLabels.get(name.key) ?? [];
     if (itself.length > 0 && lenses.includes(Lens.PortsAndAdapters)) roles.push(claim("secondary-adapter", Lens.PortsAndAdapters, CALLS_EXTERNAL_ITSELF, [`calls ${listed(itself)} itself`]));
     const handedTo = wires.get(name.key) ?? [];
     if (handedTo.length > 0 && roles.some((role) => role.id === "secondary-adapter")) roles.push(claim("secondary-adapter", Lens.PortsAndAdapters, NAMED_LIKE, [`handed to ${listed(handedTo)}`]));
@@ -338,6 +375,17 @@ class SourceReading {
 
   /** Fields an executed line assigns, outside constructors (building an object isn't changing state). */
   fieldWrites(fact: FunctionFacts): string[] {
+    const known = this.writes.get(fact.symbol.key);
+    if (known !== undefined) return known;
+    const found = this.findFieldWrites(fact);
+    this.writes.set(fact.symbol.key, found);
+    return found;
+  }
+
+  /** Asked once per function for itself and once for every caller above it: read once. */
+  private readonly writes = new Map<string, string[]>();
+
+  private findFieldWrites(fact: FunctionFacts): string[] {
     if (fact.symbol.kind === SymbolKind.Constructor) return [];
     const lines = this.ownLines(fact);
     const pattern = this.dialect?.fieldWrite(lines[0]?.text ?? "") ?? null;
@@ -364,7 +412,7 @@ class SourceReading {
   /** Lines that raise, throw, panic or make an error, and whether the tests ran them. */
   failures(fact: FunctionFacts): { evidence: string; ran: boolean }[] {
     return this.ownLines(fact).flatMap(({ line, text }) => {
-      const keyword = this.dialect!.failure.exec(text)?.[1];
+      const keyword = this.dialect!.failure.exec(codeOnly(text, this.dialect!.lineComment))?.[1];
       if (keyword === undefined) return [];
       const ran = fact.executed.has(line);
       return [{ evidence: `${keyword} at line ${line}${ran ? ", ran in the tests" : ", not run by the tests"}`, ran }];
@@ -389,7 +437,7 @@ function transitiveEffects(facts: Map<string, FunctionFacts>, source: SourceRead
       }
       if ((ownWrites.get(belowKey) ?? []).length > 0) {
         const list = through.get("writes-state") ?? [];
-        list.push(`writes a field through ${name}`);
+        list.push(`${FIELD_WRITE_THROUGH} ${name}`);
         through.set("writes-state", list);
       }
     }
@@ -399,6 +447,8 @@ function transitiveEffects(facts: Map<string, FunctionFacts>, source: SourceRead
 }
 
 const EFFECTS = ["reads-state", "writes-state", "external-io"];
+/** How evidence names a callee's in-memory field write; CQS leaves these out. */
+const FIELD_WRITE_THROUGH = "writes a field through";
 
 function callableTraits(fact: FunctionFacts, transitive: Map<string, Map<string, string[]>>, source: SourceReading): Claim[] {
   const tags: Claim[] = [];
@@ -411,9 +461,18 @@ function callableTraits(fact: FunctionFacts, transitive: Map<string, Map<string,
     const below = through.get(effect) ?? [];
     const evidence = [...own, ...fields, ...below];
     if (evidence.length === 0) continue;
-    const confidence = own.length > 0 || below.some((line) => !line.startsWith("writes a field")) ? RECORDED_BOUNDARY_CALL : EXECUTED_LINE;
+    const confidence = own.length > 0 || below.some((line) => !line.startsWith(FIELD_WRITE_THROUGH)) ? RECORDED_BOUNDARY_CALL : EXECUTED_LINE;
     tags.push(claim(effect, Lens.Effect, confidence, cap(evidence)));
   }
+  // What CQS counts as a write: its own (a field, a boundary call) and stored state changed
+  // below it. A callee's in-memory field isn't: a memoizing getter (QualifiedName.text) would
+  // make every caller that returns a value "both" (second-model review).
+  const cqsWrites = [
+    ...[...(fact.own.get("writes-state") ?? new Map<string, number>())].map(([label, count]) => `${label} ×${count} itself`),
+    ...fieldWrites,
+    ...(through.get("writes-state") ?? []).filter((line) => !line.startsWith(FIELD_WRITE_THROUGH)),
+  ];
+  const memoryBelowOnly = cqsWrites.length === 0 && tags.some((tag) => tag.id === "writes-state");
   if (tags.length === 0) {
     const unseen = source.available ? "" : "; this recording keeps no source, so field writes aren't seen";
     tags.push(claim("pure", Lens.Effect, NO_RECORDED_EFFECT, [`no boundary call or field write in ${calls} recorded call${calls === 1 ? "" : "s"}${unseen}`]));
@@ -424,10 +483,11 @@ function callableTraits(fact: FunctionFacts, transitive: Map<string, Map<string,
   }
   if (source.available) {
     const returns = source.returnedValue(fact);
-    const writes = tags.find((tag) => tag.id === "writes-state");
-    if (returns !== null && writes !== undefined) tags.push(claim("both", Lens.Cqs, CQS_FROM_SOURCE, [returns, writes.evidence[0]!]));
-    else if (writes !== undefined) tags.push(claim("command", Lens.Cqs, CQS_FROM_SOURCE, ["no executed return with a value", writes.evidence[0]!]));
-    else if (returns !== null) tags.push(claim("query", Lens.Cqs, CQS_FROM_SOURCE, [returns, "no recorded write"]));
+    const write = cqsWrites[0];
+    const noWrite = memoryBelowOnly ? "no write of its own or to stored state (callees' in-memory fields don't count)" : "no recorded write";
+    if (returns !== null && write !== undefined) tags.push(claim("both", Lens.Cqs, CQS_FROM_SOURCE, [returns, write]));
+    else if (write !== undefined) tags.push(claim("command", Lens.Cqs, CQS_FROM_SOURCE, ["no executed return with a value: the return lines that ran hand back nothing", write]));
+    else if (returns !== null) tags.push(claim("query", Lens.Cqs, CQS_FROM_SOURCE, [returns, noWrite]));
     const failures = source.failures(fact);
     if (failures.length > 0) tags.push(claim("can-fail", Lens.Failure, failures.some((failure) => failure.ran) ? EXECUTED_LINE : UNEXECUTED_LINE, cap(failures.map((failure) => failure.evidence))));
   }
@@ -496,21 +556,26 @@ function resolveRoles(claims: Claim[]): Claim[] {
   return resolved;
 }
 
-/** Boundary calls made by the type's own code (its methods, or code that ran on its objects). */
-function ownBoundaryLabels(run: Run, name: QualifiedName, facts: Map<string, FunctionFacts>): string[] {
-  const labels = new Set<string>();
+/** By type key, the boundary calls its own code made (its methods, or code that ran on its objects); one pass. */
+function ownBoundaryLabels(facts: Map<string, FunctionFacts>): Map<string, string[]> {
+  const byType = new Map<string, Set<string>>();
   for (const fact of facts.values()) {
     for (const span of fact.spans) {
+      if (span.boundaryCalls.length === 0 || span.fn.role !== Role.Source) continue;
       const on = span.obj?.type ?? (span.fn.symbol.ownerType === null ? null : span.fn.symbol.owner);
-      if (on === null || !on.equals(name) || span.fn.role !== Role.Source) continue;
+      if (on === null) continue;
       for (const call of span.boundaryCalls) {
         const effect = effectOf(call);
-        if (effect !== null) labels.add(effect.label);
+        if (effect === null) continue;
+        const labels = byType.get(on.key) ?? new Set<string>();
+        labels.add(effect.label);
+        byType.set(on.key, labels);
       }
     }
   }
-  return [...labels].sort(byCodeUnit);
+  return new Map([...byType].map(([key, labels]) => [key, [...labels].sort(byCodeUnit)]));
 }
+
 
 /** Who holds a reference to each type: "ArticlesRepository as _profiles_repo". */
 function wiresByTarget(run: Run): Map<string, string[]> {

@@ -126,6 +126,43 @@ describe("drawing in another style", () => {
 });
 
 describe("detect and adopt", () => {
+  test("adopting a style rewrites the zones but keeps the taxonomy, and says which region switches it had to drop (second-model review)", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const rules = ZoneRules.parse(
+      JSON.stringify({
+        version: 3,
+        style: "hexagonal",
+        zones: [],
+        regions: [{ name: "services", match: "app.services.**", in: "core", style: "hexagonal", reason: "its own rules", by: "user", zones: [] }],
+        taxonomy: {
+          roles: [{ match: "app.db.repositories.users.UsersRepository", role: "repository", reason: "named so", by: "user" }],
+          rules: [{ id: "cqrs-no-mixed-callable", match: "app.**", off_in: ["services"] }],
+        },
+      }),
+    );
+    const asked: string[] = [];
+    let saved: string | null = null;
+    const store: ZoneRuleStore = {
+      save: async (next, change) => {
+        asked.push(change.detail);
+        saved = next.serialize();
+        return true;
+      },
+    };
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rules });
+
+    await session.handle({ type: "adoptArchitecture", style: "layered", from: "detected" });
+
+    expect(asked[0]!.split("\n\n").at(-1)).toBe(
+      "The taxonomy section is kept (0 definition(s), 1 role(s), 1 rule(s)), except region switches for regions this discards: cqrs-no-mixed-callable: off_in services.",
+    );
+    // It still loads: a switch naming a region that's gone would be refused.
+    expect(ZoneRules.parse(saved!).taxonomy.file).toEqual({
+      roles: [{ match: "app.db.repositories.users.UsersRepository", role: "repository", reason: "named so", by: "user" }],
+      rules: [{ id: "cqrs-no-mixed-callable", match: "app.**", off_in: [] }],
+    });
+  });
+
   test("the viewer ranks the styles, and adopting one rewrites runshape.json only once the person confirms", async () => {
     const run = await loadFixtureRun("fastapi");
     const asked: string[] = [];

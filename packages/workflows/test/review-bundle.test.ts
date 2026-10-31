@@ -9,6 +9,7 @@ import { describe, expect, test } from "vitest";
 
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle, reviewBundleMarkdown } from "../src/review-bundle";
+import { buildReviewPage } from "../src/review-page";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 const CREATED = "2026-10-16T09:00:00Z";
@@ -94,9 +95,9 @@ describe("buildReviewBundle", () => {
       ### What the changed code is
 
       - \`app.api.routes.articles.articles_resource.create_new_article\` (callable, inbound-adapter): primary-adapter; effect: reads-state, writes-state; cqs: both; failure: can-fail
-      - \`app.services.articles._normalize_title\` (callable, core): effect: pure; cqs: query
+      - \`app.services.articles._normalize_title\` (callable, core): effect: no recorded effect; cqs: query
       - \`app.services.articles.ensure_slug_available\` (callable, core): effect: reads-state; cqs: query; failure: can-fail
-      - \`app.services.articles.get_slug_for_article\` (callable, core): effect: pure; cqs: query
+      - \`app.services.articles.get_slug_for_article\` (callable, core): effect: no recorded effect; cqs: query
 
       ### Routes
 
@@ -195,8 +196,8 @@ describe("buildReviewBundle", () => {
       - \`conduit.apps.articles.views.ArticlesFeedAPIView\` (type, inbound-adapter): primary-adapter
       - \`conduit.apps.articles.views.ArticlesFeedAPIView.get_queryset\` (callable, inbound-adapter): effect: reads-state; io: direct-io
       - \`conduit.apps.articles.views.ArticlesFeedAPIView.list\` (callable, inbound-adapter): effect: reads-state; io: direct-io
-      - \`conduit.apps.core.exceptions.core_exception_handler\` (callable, inbound-adapter): effect: pure
-      - \`conduit.apps.core.renderers.ConduitJSONRenderer.render\` (callable, inbound-adapter): effect: pure
+      - \`conduit.apps.core.exceptions.core_exception_handler\` (callable, inbound-adapter): effect: no recorded effect
+      - \`conduit.apps.core.renderers.ConduitJSONRenderer.render\` (callable, inbound-adapter): effect: no recorded effect
 
       New findings (2):
 
@@ -211,6 +212,25 @@ describe("buildReviewBundle", () => {
 
       "
     `);
+  });
+
+  test("a big change's findings and proposals are capped in review.md and page.json, and say how many more review.json holds (second-model review)", async () => {
+    const feed = fixtureRuns("django-feed-fix");
+    const bundle = buildReviewBundle({ base: (await feed.previous())!, head: await feed.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
+    // As if the change had touched 30 views: the same finding and proposal, many times over.
+    const many = <T,>(items: T[], n: number) => Array.from({ length: n }, (_, i) => items[i % items.length]!);
+    const big = { ...bundle, categories: { ...bundle.categories, items: many(bundle.categories.items, 50), newFindings: many(bundle.categories.newFindings, 30), proposals: many(bundle.categories.proposals, 30) } };
+
+    const markdown = reviewBundleMarkdown(big);
+    const page = buildReviewPage(big);
+
+    expect({
+      markdown: markdown.split("\n").filter((line) => /^(- and|and) \d+ more/.test(line)),
+      page: { items: page.categories!.items.length, findings: page.categories!.findings.length, proposals: page.categories!.proposals.length, omitted: page.categories!.omitted },
+    }).toEqual({
+      markdown: ["- and 35 more (review.json lists every claim with its evidence)", "- and 15 more (review.json lists them all)", "and 20 more (review.json lists them all)"],
+      page: { items: 40, findings: 25, proposals: 25, omitted: { items: 10, findings: 5, proposals: 5 } },
+    });
   });
 
   test("names only: no query text, no request as sent, and unchanged routes counted, not copied (second-model review)", async () => {

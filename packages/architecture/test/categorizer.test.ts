@@ -6,9 +6,9 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { QualifiedName } from "@runshape/kernel";
-import { CategorizedItem, Categorization, categorize, checkTagRules, Finding, newFindings, ZoneRules } from "../src";
-import { fixtureRuns } from "../../kernel/test/fixtures";
+import { QualifiedName, TraceDirectory } from "@runshape/kernel";
+import { CategorizedItem, Categorization, categorize, checkTagRules, failureOn, Finding, newFindings, ZoneRules } from "../src";
+import { fixtureFiles, fixtureRuns } from "../../kernel/test/fixtures";
 
 /** One line per item: kind/subkind name [region|style|zone] then lens=role(by confidence: evidence). */
 function lines(categorization: Categorization, keep: (item: CategorizedItem) => boolean = () => true): string[] {
@@ -78,30 +78,26 @@ describe("categorize", () => {
           cqs=query (detected 0.7: returns a value (line 35); no recorded write)",
         "callable/method example\\.com.shop.internal.storage.MemoryRepository.Save [|hexagonal|outbound-adapter]
           effect=writes-state (detected 0.85: writes field orders (line 25))
-          cqs=command (detected 0.7: no executed return with a value; writes field orders (line 25))",
+          cqs=command (detected 0.7: no executed return with a value: the return lines that ran hand back nothing; writes field orders (line 25))",
         "callable/function example\\.com.shop.internal.storage.NewMemoryRepository [|hexagonal|outbound-adapter]
           effect=pure (detected 0.4: no boundary call or field write in 12 recorded calls)
           cqs=query (detected 0.7: returns a value (line 18); no recorded write)",
         "callable/method example\\.com.shop.internal.web.Handler.ServeHTTP [|hexagonal|inbound-adapter]
-          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.orders.Service.Place; writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)
-          cqs=command (detected 0.7: no executed return with a value; writes a field through example\\.com.shop.internal.orders.Service.Place)",
+          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.orders.Service.Place; writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
         "callable/method example\\.com.shop.internal.web.Handler.getOrder [|hexagonal|inbound-adapter]
           ports-and-adapters=primary-adapter (detected 0.85: the framework routes GET /orders/{id} to it)
-          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)
-          cqs=command (detected 0.7: no executed return with a value; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
+          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
         "callable/method example\\.com.shop.internal.web.Handler.placeOrder [|hexagonal|inbound-adapter]
           ports-and-adapters=primary-adapter (detected 0.85: the framework routes POST /orders to it)
-          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.orders.Service.Place; writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)
-          cqs=command (detected 0.7: no executed return with a value; writes a field through example\\.com.shop.internal.orders.Service.Place)",
+          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.orders.Service.Place; writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
         "callable/function example\\.com.shop.internal.web.NewHandler [|hexagonal|inbound-adapter]
           effect=pure (detected 0.4: no boundary call or field write in 12 recorded calls)
           cqs=query (detected 0.7: returns a value (line 28); no recorded write)",
         "callable/method example\\.com.shop.internal.web.statusRecorder.WriteHeader [|hexagonal|inbound-adapter]
           effect=writes-state (detected 0.85: writes field status (line 83))
-          cqs=command (detected 0.7: no executed return with a value; writes field status (line 83))",
+          cqs=command (detected 0.7: no executed return with a value: the return lines that ran hand back nothing; writes field status (line 83))",
         "callable/function example\\.com.shop.internal.web.writeJSON [|hexagonal|inbound-adapter]
-          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)
-          cqs=command (detected 0.7: no executed return with a value; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
+          effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
       ]
     `);
     expect(categorization.missing).toMatchInlineSnapshot(`
@@ -143,6 +139,43 @@ describe("categorize", () => {
         "relaxedForAHandler": [],
       }
     `);
+  });
+
+  test("CQS counts a callable's own writes and stored state below it, not a callee's in-memory field: a memoizing getter doesn't make its callers 'both' (second-model review)", async () => {
+    // On Runshape's own recording, QualifiedName.text caches its text in a field: counted
+    // through callees, 62 callables read as "both". Staged on go-shop: Place keeps its returned
+    // value but loses its own write (line 35, s.nextID++), so its only write is the in-memory
+    // map MemoryRepository.Save fills below it.
+    const files = fixtureFiles("go-shop");
+    const staged = new TraceDirectory({
+      async readText(path) {
+        const text = await files.readText(path);
+        if (!path.endsWith("manifest.json")) return text;
+        const data = JSON.parse(text);
+        data.sources["internal/orders/service.go"][34] = "\tnext := s.nextID + 1";
+        return JSON.stringify(data);
+      },
+    });
+    const rules = ZoneRules.parse(JSON.stringify(GO_SHOP_RULES));
+
+    const place = categorize(await staged.latest(), rules).items.find((item) => item.name.endsWith("Service.Place"))!;
+
+    expect(place.tags.filter((tag) => tag.lens === "effect" || tag.lens === "cqs").map((tag) => `${tag.lens}=${tag.id}: ${tag.evidence.join("; ")}`)).toEqual([
+      "effect=writes-state: writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save",
+      "cqs=query: returns a value (line 33); no write of its own or to stored state (callees' in-memory fields don't count)",
+    ]);
+  });
+
+  test("can-fail reads code, not strings or comments: a 'throw' in a message isn't a throw", () => {
+    expect({
+      typescript: ['throw new Error("x");', '  if (bad) throw new RulesError(problems);', 'log("never throw here");', "// throw later", "const x = y.throw;", "throwIfMissing(x);"].map((line) => failureOn("typescript", line)),
+      python: ["    raise ValueError('x')", '    message = "raise it"', "    # raise later"].map((line) => failureOn("python", line)),
+      go: ['\treturn fmt.Errorf("saving: %w", err)', '\tlog.Print("panic(") // not a panic', "\tpanic(err)"].map((line) => failureOn("go", line)),
+    }).toEqual({
+      typescript: ["throw", "throw", null, null, null, null],
+      python: ["raise", null, null],
+      go: ["fmt.Errorf", null, "panic"],
+    });
   });
 
   test("a finding the base already had under an old name isn't new: renames are recognised, so a rename doesn't read as fresh drift", async () => {

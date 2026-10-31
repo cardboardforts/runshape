@@ -53,6 +53,10 @@ export enum Lens {
 /** Lenses whose ids are roles (what a thing is for); the rest are traits (what it does). */
 export const ROLE_LENSES: readonly string[] = [Lens.PortsAndAdapters, Lens.TacticalDdd, Lens.Cqrs, Lens.Application, Lens.Boundary, Lens.MvcFamily, Lens.Container];
 
+const KNOWN_LENSES: readonly string[] = Object.values(Lens);
+/** The kinds the categorizer reads declared roles for (categorizer.ts, declaredClaims). */
+const DECLARABLE_KINDS: readonly string[] = ["type", "callable"];
+
 /** The role lenses a region's style tags its code with. Layered has none: its layers are zones. */
 export const STYLE_LENSES: Record<string, string[]> = {
   [ArchitectureStyle.Hexagonal]: [Lens.PortsAndAdapters, Lens.TacticalDdd, Lens.Cqrs, Lens.Application, Lens.Boundary],
@@ -347,6 +351,30 @@ export class Taxonomy {
   }
 
   /**
+   * The taxonomy as runshape.json will hold it once only these regions exist: rules switched
+   * off in a region that's going away lose that name (it would no longer load). `dropped` says
+   * what went, for the confirmation a person reads before saving.
+   */
+  keptWithRegions(regionNames: readonly string[]): { taxonomy: Taxonomy; dropped: string[] } {
+    if (this.file?.rules === undefined) return { taxonomy: this, dropped: [] };
+    const dropped: string[] = [];
+    const rules = this.file.rules.map((rule) => {
+      const gone = (rule.off_in ?? []).filter((region) => !regionNames.includes(region));
+      if (gone.length === 0) return rule;
+      dropped.push(`${rule.id}: off_in ${gone.join(", ")}`);
+      return { ...rule, off_in: (rule.off_in ?? []).filter((region) => regionNames.includes(region)) };
+    });
+    if (dropped.length === 0) return { taxonomy: this, dropped };
+    const file = { ...this.file, rules };
+    return { taxonomy: Taxonomy.parse(file, regionNames), dropped };
+  }
+
+  /** How many entries the project's section holds: what a person loses if it's dropped. */
+  get size(): { definitions: number; roles: number; rules: number } {
+    return { definitions: this.file?.definitions?.length ?? 0, roles: this.file?.roles?.length ?? 0, rules: this.file?.rules?.length ?? 0 };
+  }
+
+  /**
    * What a model reads to tag code: each definition with its look-alikes, for the given
    * lenses. One blurb per project, since a project's overrides are in it.
    */
@@ -362,6 +390,19 @@ export class Taxonomy {
       })
       .join("\n\n");
   }
+}
+
+/** Below this a claim is shown as a guess, not a fact: "pure" at 0.4 means only "nothing was recorded". */
+export const LOW_CONFIDENCE = 0.5;
+
+/**
+ * A claim as a person reads it: "pure" as "no recorded effect", anything else under
+ * LOW_CONFIDENCE marked as a guess, and who said so when it wasn't the detector.
+ */
+export function claimText(claim: Claim): string {
+  const id = claim.lens === Lens.Effect && claim.id === "pure" ? "no recorded effect" : claim.id;
+  const notes = [claim.by === "detected" ? null : claim.by, claim.confidence < LOW_CONFIDENCE && id === claim.id ? `low confidence, ${claim.confidence}` : null].filter((note) => note !== null);
+  return notes.length === 0 ? id : `${id} (${notes.join("; ")})`;
 }
 
 /** True when a definition's name globs match the item's own name. */
@@ -437,6 +478,8 @@ function readDefinitions(value: unknown, problems: string[]): Definition[] {
     if (existing === undefined) {
       // A new entry: everything a model and the rules need, said once.
       if (typeof candidate.lens !== "string" || candidate.lens.trim() === "") problems.push(`${at}: ${candidate.id} is not built in, so it needs a "lens"`);
+      // A new lens would be inert: no style uses it, so nothing would ever be tagged with it.
+      else if (!KNOWN_LENSES.includes(candidate.lens)) problems.push(`${at}.lens ${candidate.lens} is not a lens: ${KNOWN_LENSES.join(", ")}`);
       if (typeof candidate.definition !== "string") problems.push(`${at}: ${candidate.id} is not built in, so it needs a "definition"`);
       if (candidate.on === undefined) problems.push(`${at}: ${candidate.id} is not built in, so it needs "on" (the kinds that carry it)`);
     }
@@ -462,6 +505,10 @@ function readRoles(value: unknown, definitions: readonly Definition[], problems:
     else {
       const found = findEntry(roleDefinitions, candidate.role, candidate.lens, at, problems);
       if (found === undefined) problems.push(`${at}.role ${candidate.role} is not a role${candidate.lens === undefined ? "" : ` in ${candidate.lens}`}: define it in taxonomy.definitions first`);
+      // Declared roles are read for types and callables; a container's role is a zone rule's "role".
+      else if (found !== null && !found.on.some((kind) => DECLARABLE_KINDS.includes(kind))) {
+        problems.push(`${at}.role ${candidate.role} is for ${found.on.join(", ")}, which a declared role never reaches: ${candidate.role === "composition-root" ? 'give the zone rule "role": "composition-root"' : `declare it on a ${DECLARABLE_KINDS.join(" or ")}`}`);
+      }
     }
     if (problems.length === before) roles.push({ ...(candidate as RoleDeclaration), by: candidate.by ?? "user" });
   });
@@ -482,6 +529,9 @@ function readRules(value: unknown, definitions: readonly Definition[], regionNam
     if (existing === undefined) {
       if (!isStringList(candidate.flag) || candidate.flag.length === 0) problems.push(`${at}: ${candidate.id} is not built in, so it needs "flag" (the conditions that make a finding)`);
       if (typeof candidate.message !== "string") problems.push(`${at}: ${candidate.id} is not built in, so it needs a "message"`);
+      // Without either it applies nowhere: a rule that silently never runs looks like a passing one.
+      const scoped = (typeof candidate.match === "string" && candidate.match.trim() !== "") || (isStringList(candidate.styles) && candidate.styles.length > 0);
+      if (!scoped) problems.push(`${at}: ${candidate.id} applies nowhere: give it "match" (a glob) or "styles"`);
     }
     if (candidate.message !== undefined && (typeof candidate.message !== "string" || candidate.message.trim() === "")) problems.push(`${at}.message must be text`);
     if (candidate.severity !== undefined && !SEVERITIES.includes(candidate.severity)) problems.push(`${at}.severity must be one of ${SEVERITIES.join(", ")}`);

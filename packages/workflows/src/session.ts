@@ -380,7 +380,15 @@ export class ViewerSession {
               .join("\n")}${this.rules.rules.length > MAX_LISTED_RULES ? `\n  …and ${this.rules.rules.length - MAX_LISTED_RULES} more` : ""}`;
     const lines = next.rules.slice(0, MAX_LISTED_RULES).map((rule) => `  ${rule.match} → ${rule.zone}`);
     if (next.rules.length > MAX_LISTED_RULES) lines.push(`  …and ${next.rules.length - MAX_LISTED_RULES} more`);
-    const change = `Style: ${next.profile.name}\n${lines.length ? lines.join("\n") : "  (no rules: every zone inferred)"}\n\n${current}`;
+    // The taxonomy is the project's vocabulary, not its zones: it's kept, minus switches for regions this discards.
+    let taxonomyNote = "";
+    if (this.rulesProblem === null && this.rules.taxonomy.file !== null) {
+      const kept = this.rules.taxonomy.keptWithRegions(next.regions.map((region) => region.name));
+      next = next.withTaxonomy(kept.taxonomy);
+      const { definitions, roles, rules } = this.rules.taxonomy.size;
+      taxonomyNote = `\n\nThe taxonomy section is kept (${definitions} definition(s), ${roles} role(s), ${rules} rule(s))${kept.dropped.length > 0 ? `, except region switches for regions this discards: ${kept.dropped.join("; ")}` : ""}.`;
+    }
+    const change = `Style: ${next.profile.name}\n${lines.length ? lines.join("\n") : "  (no rules: every zone inferred)"}\n\n${current}${taxonomyNote}`;
     const saved = await this.ruleStore.save(next, { question: `Rewrite ${RULES_FILE} as ${next.profile.name}?`, detail: change, confirm: `Rewrite ${RULES_FILE}` });
     if (!saved) return null;
     this.rules = next;
