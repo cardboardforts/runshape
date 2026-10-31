@@ -583,6 +583,35 @@ that pays. A no-op change has no time callout.
 5. `TraceDirectory`'s "no recording found" hint says `pytest --runshape` whatever the language:
    each recorder says how it's run.
 
+**Done (2026-10-31), branch `phase7-recorders`:**
+- 1: `TestConfig` is the kernel's (`test-config.ts`): the language, why it was chosen, the
+  code's folders, which tests, pytest's arguments, the Python. `chooseTestConfig` reads
+  runshape.json's `recorder` section, else the root's files, with `--recorder` over both, and
+  reports every problem at once. The `Recorder` port is unchanged: each language's recorder is
+  built from the TestConfig (in), and writes the universal trace (out). Its `source()` hashes
+  the config too, so other settings record again. `--project=<folder>` picks the project
+  (default: where the command was typed). `ZoneRules` keeps runshape.json's other sections, so
+  saving zones keeps the recorder's settings.
+- 2: `packages/adapters/src/recorders/{typescript,python,go}/`, one recorder each, chosen by
+  `projectRecorders`. Python runs `python -m runshape_recorder.run` (new: loads the plugin
+  whether or not it's installed) with recorder/src on PYTHONPATH and the project's `.venv`;
+  Go runs runshape-go. Both record commits (a worktree under .runshape) and the working tree,
+  and keep recordings, compare and review like the TypeScript one. Proven on copies of
+  examples/django-realworld and examples/go-shop as repositories of their own: `record`,
+  `compare main` (host) and `compare main feature --sandbox`, each with a review.
+- 3: the Docker sandbox takes a `SandboxRecipe` per language (same hardening, registry-only
+  install network, checks after; TypeScript's calls unchanged). Images
+  `runshape-recorder-python` (recorder/sandbox) and `runshape-recorder-go` (recorder-go/sandbox),
+  each built from HEAD when its sources change. pip: a pinned requirements.txt, wheels only,
+  PyPI only. Go: `go mod download` from the Go proxy, one toolchain. Threat model rows in
+  docs/design.md. Not yet tried for real: a Go module with dependencies (go-shop has none).
+- 4: listed as limits (docs/design.md): jest isn't recorded; plain JS only as far as vitest
+  runs it; neither tried.
+- 5: the hint names every recorder, or the one a caller passes (`HOW_TO_RECORD[language]`).
+- Left: a project in a subfolder of a repository (monorepo); poetry/uv lockfiles in the Python
+  sandbox; other Python versions in the sandbox; the extension's own "no recording" message
+  still says pytest.
+
 ### Phase 8: The agent loop (3–4 PRs)
 
 1. `runshape check [base]`: JSON findings and an exit code per severity. `check` is a

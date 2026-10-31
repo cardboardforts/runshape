@@ -48,8 +48,14 @@ export class PythonRecorder implements Recorder {
   }
 
   private async interpreter(): Promise<string> {
-    if (this.config.interpreter !== null) return join(this.root, this.config.interpreter);
-    const venv = join(this.root, PROJECT_VENV_PYTHON);
-    return (await stat(venv).then(() => true, () => false)) ? venv : SYSTEM_PYTHON;
+    const relative = this.config.interpreter ?? PROJECT_VENV_PYTHON;
+    if (this.config.interpreter === null && !(await stat(join(this.root, relative)).then(() => true, () => false))) return SYSTEM_PYTHON;
+    // A committed one is a commit's code: a pull request checked out here could ship
+    // .venv/bin/python, and recording main would run it on this machine.
+    const tracked = await run("git", ["-C", this.root, "ls-files", "--", relative], { cwd: this.root });
+    if (tracked.code !== 0 || tracked.output.trim() !== "") {
+      throw new Error(`the Python to record with (${relative}) is a file git tracks: that's the commit's code, not an environment of yours, so it isn't run here`);
+    }
+    return join(this.root, relative);
   }
 }

@@ -7,7 +7,7 @@
  * run/manifest.json, in the universal trace format, and the commit's checkout gone.
  */
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -88,6 +88,22 @@ describe("projectRecorders", () => {
       scenarios: ["passed test_place_order", "passed test_rejects_empty_order", "passed test_place_order_later", "passed test_place_order_in_worker_thread", "xfailed test_rejects_negative_items"],
       problems: [],
       log: true,
+    });
+  });
+
+  test("a project's committed .venv/bin/python is never run: a pull request checked out here could ship one, and recording main would run it", async () => {
+    const { root } = projectFrom(join(HOME, "recorder", "tests", "sample_shop"));
+    const planted = join(root, ".venv", "bin", "python");
+    mkdirSync(join(root, ".venv", "bin"), { recursive: true });
+    writeFileSync(planted, `#!/bin/sh\ntouch "${root}/ran"\n`, { mode: 0o755 });
+    gitIn(root)("add", "--force", planted);
+    const { recorders } = await recorderFor(root);
+
+    const failure = await recorders.host.record({ kind: "working" }, join(root, ".runshape", "recordings", ".incoming-planted")).catch((error: Error) => error.message);
+
+    expect({ failure, ran: existsSync(join(root, "ran")) }).toEqual({
+      failure: "the Python to record with (.venv/bin/python) is a file git tracks: that's the commit's code, not an environment of yours, so it isn't run here",
+      ran: false,
     });
   });
 
