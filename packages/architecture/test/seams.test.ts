@@ -66,4 +66,44 @@ describe("regionCalls", () => {
       "app.billing.store.Ledger->app.api.Hooks: leaves billing",
     ]);
   });
+
+  test("regions inside a region: siblings judged by the parent's style, a call entering two at once checked at each, unplaced names left alone (second-model review)", () => {
+    const nested = ZoneRules.parse(
+      JSON.stringify({
+        version: 3,
+        style: "hexagonal",
+        zones: [{ match: "app.api.**", zone: "inbound-adapter", reason: "routes" }],
+        regions: [
+          {
+            name: "shop",
+            match: "app.shop.**",
+            in: "core",
+            style: "layered",
+            reason: "the shop",
+            regions: [
+              { name: "front", match: "app.shop.front.**", in: "presentation", style: "hexagonal", reason: "its pages", zones: [{ match: "app.shop.front.http.**", zone: "inbound-adapter", reason: "r" }] },
+              { name: "stock", match: "app.shop.stock.**", in: "data", style: "layered", reason: "its tables", zones: [{ match: "app.shop.stock.tables.**", zone: "data", reason: "r" }] },
+            ],
+          },
+        ],
+      }),
+    );
+    const graph = graphOf([
+      ["app.api.Orders", "app.shop.front.http.Page"], // in through both ways in
+      ["app.api.Orders", "app.shop.stock.tables.Items"], // past the shop's front, and past stock's
+      ["app.shop.stock.tables.Items", "app.shop.front.http.Page"], // sibling to sibling, data up to presentation
+      ["app.shop.front.http.Page", "app.api.Hooks"], // out of both
+      ["app.api.Orders", "app.shop.unplaced.Thing"], // in the shop, no rule there: no claim to judge
+    ]);
+
+    const calls = regionCalls(graph, nested).map((call) => `${call.edgeId}: enters [${call.enters}] leaves [${call.leaves}]${call.violation === null ? "" : ` ! ${call.violation}`}`);
+
+    expect(calls).toEqual([
+      "app.api.Orders->app.shop.front.http.Page: enters [shop,front] leaves []",
+      "app.api.Orders->app.shop.stock.tables.Items: enters [shop,stock] leaves [] ! reaches past the shop region's way in (presentation) into its data zone; reaches past the stock region's way in (presentation) into its data zone",
+      "app.shop.stock.tables.Items->app.shop.front.http.Page: enters [front] leaves [stock] ! in the shop region: a lower layer calling up into presentation",
+      "app.shop.front.http.Page->app.api.Hooks: enters [] leaves [front,shop]",
+      "app.api.Orders->app.shop.unplaced.Thing: enters [shop] leaves []",
+    ]);
+  });
 });

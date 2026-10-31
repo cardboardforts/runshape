@@ -23,13 +23,13 @@ export interface RegionCall {
  * the call must be one that level's style allows. Leaving a region isn't judged yet.
  */
 export function regionCalls(graph: SystemGraph, rules: ZoneRules): RegionCall[] {
-  const nameOf = new Map(graph.nodes.map((node) => [node.id, node.qualifiedName]));
+  // Once per component, not per call: a component is at the end of many calls.
+  const placements = new Map<string, RegionPlacement[]>();
+  for (const node of graph.nodes) if (node.qualifiedName !== null) placements.set(node.id, rules.placementsOf(QualifiedName.parse(node.qualifiedName)));
   const calls: RegionCall[] = [];
   for (const edge of graph.edges) {
-    const [from, to] = [nameOf.get(edge.from), nameOf.get(edge.to)];
-    if (from == null || to == null) continue;
-    const caller = rules.placementsOf(QualifiedName.parse(from));
-    const callee = rules.placementsOf(QualifiedName.parse(to));
+    const [caller, callee] = [placements.get(edge.from), placements.get(edge.to)];
+    if (caller === undefined || callee === undefined) continue;
     const shared = sharedDepth(caller, callee);
     const problems: string[] = [];
     // The top level's own check is the edge's violation; below it, the shared region's style decides.
