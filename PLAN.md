@@ -394,6 +394,15 @@ behave differently" works on a real Runshape PR.
    placement, committed to the branch for approval in the diff. A function now doing another
    zone's work is called out, with renames recognised (`moves.ts`) so a rename isn't mistaken
    for a new function.
+   - **Done (2026-10-31), deterministic first** (docs/categorizer.md). The categorizer tags
+     recorded code with its kind, its roles by lens (from zones, routes, its own boundary
+     calls, name globs and declared roles) and traits (effect, direct I/O, CQS, can-fail, from
+     boundary calls through the call tree and executed source lines). Each tag is a claim with
+     evidence. Definitions and rules are data, overridable by id in runshape.json's `taxonomy`.
+     The review bundle shows the changed code's tags, findings the branch adds (renames
+     recognised) and a proposed zone for new code (`"by": "detected"`, never applied). A model
+     step for leftovers (`role-advice.ts`) is built but no host calls it yet. Not yet: ports,
+     entities and value objects (interfaces aren't recorded), state traits and metadata.
 6. **Two misreadings Runshape's own folder guides showed (Phase 0, PR 5):** a composition
    root wiring adapters is not a handler skipping the core, and calling a function you were
    handed (a callback) is not a dependency pointing outward.
