@@ -44,7 +44,7 @@ export function reviewables(page: ReviewPage): Reviewable[] {
     items.push({
       key: `${ReviewableKind.Thread}:${qualified(first)}`,
       kind: ReviewableKind.Thread,
-      label: `through ${thread.functions.map(qualified).join(", ")}`,
+      label: `through ${listed(thread.functions.map(qualified))}`,
       fingerprint: fingerprint({ functions: thread.functions, ...seen }),
       target: { kind: "thread", functions: thread.functions.map(commentFunction) },
       beams,
@@ -87,6 +87,14 @@ export function reviewables(page: ReviewPage): Reviewable[] {
 export function findReviewable(items: Reviewable[], named: string): Reviewable | null {
   if (/^[1-9]\d*$/.test(named)) return items[Number(named) - 1] ?? null;
   return items.find((item) => item.key === named) ?? null;
+}
+
+/** A thread a refactor sends every test through can hold dozens of functions: its functions are listed below it. */
+const FUNCTIONS_IN_THREAD_LABEL = 3;
+
+function listed(names: string[]): string {
+  const more = names.length - FUNCTIONS_IN_THREAD_LABEL;
+  return more > 0 ? `${names.slice(0, FUNCTIONS_IN_THREAD_LABEL).join(", ")} and ${more} more` : names.join(", ");
 }
 
 function qualified(fn: ReviewPageFunction): string {

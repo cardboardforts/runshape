@@ -571,6 +571,33 @@ that pays. A no-op change has no time callout.
    - a new ticket.
 4. **Finish:** approve, send to a local agent, or post. Voice input (whisper) later.
 
+- **Done (2026-10-31): NOT_YET is empty.** The trace module's diffs, replays (and their
+  pacing and gap wording), routes and review summary moved into the kernel as they were
+  (`comparison-views.ts`). The note said to reshape them into a DTO first; best judgement was
+  not to: the UI protocol and the webview draw them field by field, a reshape would have been a
+  UI change too, and `view-diff` shows all 2780 viewer responses identical. The trace module
+  keeps the algorithms that build them. Reshaping, if wanted, is now a kernel-only change.
+- **Done (2026-10-31): the review module, progress and comments (steps 2–4, CLI only).**
+  `@runshape/review` (a module: imports only the kernel) turns a PR page into reviewables: each
+  thread (the region a reviewer follows: changed functions with the same tests through them),
+  its functions with the tests through each, and each changed test. Checks are kept in
+  `review-draft.json` beside the review with a fingerprint of what the page showed, so
+  comparing the working tree again un-checks only what now looks different. Saved per review
+  (base..head), not yet carried from one PR push's review to the next. `Comment`
+  (`ReviewComment`), `CommentTarget`, `ReviewDraft`, `FinishedReview`, `CommentSink` and
+  `KeptReviewDrafts` are the kernel's; the `Reviewing` workflow loads, saves and logs. Sinks:
+  `GhPullRequestReview` (github adapter; `review <name> send github` previews, `--post` posts;
+  refuses another PR, an older push, a body past GitHub's limit) and `RevisionRequestFile`
+  (`.runshape/revisions/<review>.json` for Phase 8's loop). Proved on the fixtures and on a
+  real Runshape compare (4b4933a61a07..1fe496dc6399: 603 reviewables; checked, commented,
+  previewed to GitHub, written for an agent). docs/review-bundle.md, "Reviewing it".
+- **Left:** step 1 (beams: the reviewables carry the tests through each function, but they
+  aren't told apart as unit, integration and e2e, and walking one backwards with timing deltas
+  is the viewer's, with step 3's UI). The ticket sink (no ticket writer exists yet: GhIssues
+  reads). Checking off and commenting in the viewer: the webview has no review panel yet, so
+  the CLI is the only way in. Inline (line-anchored) GitHub comments: the PR page has no
+  file and line per function, so each comment goes in one review's body under what it's about.
+
 ### Phase 7: Every recorder in the pipeline (3–4 PRs)
 
 1. A shared recorder contract: `TestConfig` in, universal trace out. `TestConfig` is designed
