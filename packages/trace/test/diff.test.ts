@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf } from "./graphs";
 
-import { Change } from "../src";
+import { Change } from "@runshape/kernel";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 async function loadFeedFix() {

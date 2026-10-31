@@ -169,7 +169,7 @@ describe("suggest, then accept", () => {
       }
       "
     `);
-    const node = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.id === USERS_REPOSITORY) : undefined;
+    const node = graph?.type === "graph" ? graph.layout.nodes.find((n) => n.id === USERS_REPOSITORY) : undefined;
     expect(`${node?.zone} [${node?.zoneSource}] ${node?.zoneReason}`).toMatchInlineSnapshot(`"outbound-adapter [rule] proposed by a model, accepted in runshape.json (app.db.repositories.users.UsersRepository): Repository over the users table."`);
   });
 

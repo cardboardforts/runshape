@@ -9,8 +9,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { CodeSymbol, FunctionInfo, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind } from "@runshape/kernel";
-import { buildRouteMap, Change, Op, detectMoves, diffRouteMaps, readablePattern, RouteMap, RouteMapDiff, routeForPath, RouteVariant } from "../src";
+import { Change, CodeSymbol, FunctionInfo, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind } from "@runshape/kernel";
+import { buildRouteMap, Op, detectMoves, diffRouteMaps, readablePattern, RouteMap, RouteMapDiff, routeForPath, RouteVariant } from "../src";
 import { FixtureApp, fixtureRuns, loadFixtureRun } from "../../kernel/test/fixtures";
 
 function render(map: RouteMap): string {

@@ -2,7 +2,8 @@
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
 import { Outcome, Phase } from "./trace/model/trace";
 import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } from "@runshape/architecture";
-import type { ArchitectureStyle, SystemGraph } from "./trace/model/arch-trace";
+import type { ArchitectureStyle } from "./trace/model/arch-trace";
+import type { Layout } from "./layout";
 import type { ComponentView } from "./trace/model/component-view";
 import type { Grouping } from "./trace/model/components";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/trace";
@@ -41,14 +42,18 @@ export interface RunSummary {
 export type UiRequest =
   | { type: "ready" }
   | { type: "reload" }
-  /** `style` draws the graph in another style than runshape.json declares, without saving it. */
-  | { type: "graph"; phases: Phase[]; grouping: Grouping; style?: string }
+  /**
+   * `style` draws the graph in another style than runshape.json declares, without saving it.
+   * `opened`: a module opened from the module view (one of grouping.modules), drawn class by
+   * class while the other modules stay whole (groupingAt).
+   */
+  | { type: "graph"; phases: Phase[]; grouping: Grouping; style?: string; opened?: string }
   | { type: "component"; id: string; grouping: Grouping }
   /** `symbol` is the FunctionRef.key a view gave. */
   | { type: "function"; symbol: string }
   | { type: "replay"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "timeline"; scenarioId: string; phases: Phase[]; grouping: Grouping }
-  | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string }
+  | { type: "diff"; phases: Phase[]; grouping: Grouping; style?: string; opened?: string }
   /** Requests by route and the ways through the code they took; with `compare`, how those changed. */
   | { type: "routes"; phases: Phase[]; compare: boolean }
   /** Rank the styles against this recording. */
@@ -72,14 +77,15 @@ export type UiResponse =
   | { type: "empty"; message: string }
   | { type: "error"; message: string }
   | { type: "run"; summary: RunSummary }
-  | { type: "graph"; phases: Phase[]; graph: SystemGraph; wiring: ComponentWiring[] }
+  /** What the canvas draws, placed for 2D and 3D alike (the visualizer's layout). */
+  | { type: "graph"; phases: Phase[]; layout: Layout; wiring: ComponentWiring[] }
   | { type: "objects"; graph: ObjectGraph }
   | { type: "component"; view: ComponentView }
   | { type: "function"; view: FunctionView }
   | { type: "replay"; scenarioId: string; steps: ReplayStep[] }
   | { type: "timeline"; timeline: Timeline }
   /** `baseRulesKnown`: the base was drawn with its own commit's rules, not the current ones. */
-  | { type: "diff"; diff: RunDiff; review: ReviewSummary; architecture: ArchitectureDiff; baseRulesKnown: boolean }
+  | { type: "diff"; diff: RunDiff; layout: Layout; review: ReviewSummary; architecture: ArchitectureDiff; baseRulesKnown: boolean }
   | { type: "routes"; routes: RouteMap; diff: RouteMapDiff | null }
   /** `modules`: the module view's boxes under the new rules (a region added is a module). */
   | { type: "rulesChanged"; count: number; style: string; modules: string[] }

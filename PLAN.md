@@ -411,6 +411,23 @@ changed module is marked, and clicking down reaches a function's diff.
 1. **A visual model:** each zoom level reduced to what's drawn (aggregated edges, collapsed
    regions, capped detail), computed once and shared by 2D and 3D. Measured: render time on
    the largest fixture before and after.
+   - **Done (2026-10-31).** The kernel's `Layout` (per zoom level: classes, modules, one module
+     opened) is the visualizer's `layout(graph, view)`: each box with its 2D position (ELK) and
+     its 3D tile (the style's floor), compare marks, what a module box opens, and what the cap
+     left out (`MAX_BOXES` = 100, the quietest first; the request path and changed boxes never).
+     The session answers `graph` and `diff` with it; the webview draws it as is (no layout code
+     left in it, nor elkjs: its bundle went from 2.5 MB to 1.1 MB). An opened module is now its
+     classes with every other module still one box (`groupingAt`), so the calls leaving it land
+     on whole modules. Measured on Runshape's own recording 1fe496dc6399 (265 tests, 200 MB) and
+     the largest fixture (fastapi-slug-refactor), Node, warm: the graph plus ELK took
+     2.0 s + 0.1 s (classes, 80 boxes) and 2.0 s + 0.015 s (modules) before; the layout response
+     takes 2.0 s and 2.0 s after, so placing is not where the time goes: building the system
+     graph from the 200 MB recording is (Phase 4). Fixture: 2 ms + 30 ms before, 35 ms after. In
+     headless Chromium (demo, same recording): first canvas 5.0 s before and after; opening a
+     module 0.75 s before, 1.0 s after (it now regroups in the session instead of filtering in
+     the browser); back to every class 1.2 s before, 0.9 s after. The response is still 2.2 MB
+     at class level, nearly all of it every box's and call's test ids: sending them once, by
+     index, is the next saving. Not yet: the `LanguageModel` parameter (nothing to ask it yet).
 2. **The same model for agents:** `runshape view --json`, what a human would see at each level.
 3. **Saved arrangements:** moving a module in 2D or 3D is saved, keyed by region and module
    names so it survives between diffs. New things get a computed spot near their neighbours.

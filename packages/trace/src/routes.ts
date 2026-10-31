@@ -1,7 +1,6 @@
-import { BoundaryCall, functionRef, FunctionRef, Outcome, Phase, Role, Route, Run, Span, SymbolKind } from "@runshape/kernel";
+import { BoundaryCall, Change, FunctionRef, functionRef, Outcome, Phase, Role, Route, Run, Span, SymbolKind } from "@runshape/kernel";
 import { align, Op } from "./align";
 import { Moves } from "./moves";
-import { Change } from "./run-diff";
 
 /**
  * A run's requests by the route that served them, and each route's requests by the path they

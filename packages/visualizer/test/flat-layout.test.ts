@@ -13,7 +13,7 @@ import { describe, expect, test } from "vitest";
 import { buildSystemGraph, profileFor, PROFILES } from "@runshape/architecture";
 import { ArchitectureStyle, FixedZone, GraphNode, SystemGraph, TraceDirectory } from "@runshape/kernel";
 
-import { layoutGraph } from "../src/layout";
+import { layoutGraph } from "../src/flat-layout";
 
 async function fixtureRun(app: string) {
   const directory = join(import.meta.dirname, "..", "..", "kernel", "test", "fixtures", app);

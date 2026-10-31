@@ -1,6 +1,4 @@
-import { FixedZone, SystemGraph, ZoneId } from "@runshape/kernel";
-
-import type { FloorLayout } from "./floor";
+import { FixedZone, FloorTile, Layout, ZoneId } from "@runshape/kernel";
 
 /**
  * How calls travel through the 3D scene. A call between two zones doesn't fly straight from
@@ -34,15 +32,16 @@ const TRUNK_HEIGHT_PER_UNIT = 0.08;
 /** Hubs sit this far from their zone's centroid towards the floor's centre. */
 const HUB_PULL = 0.25;
 
-export function routeEdges(graph: SystemGraph, layout: FloorLayout): { routes: Route[]; trunks: Trunk[] } {
-  const zoneOf = new Map(graph.nodes.map((node) => [node.id, node.zone]));
-  const hubs = zoneHubs(graph, layout);
+export function routeEdges(layout: Layout): { routes: Route[]; trunks: Trunk[] } {
+  const zoneOf = new Map(layout.nodes.map((node) => [node.id, node.zone]));
+  const tiles = new Map(layout.nodes.map((node) => [node.id, node.floor]));
+  const hubs = zoneHubs(layout, tiles);
   const routes: Route[] = [];
   const trunks = new Map<string, Trunk>();
 
-  for (const edge of graph.edges) {
-    const from = layout.tiles.get(edge.from);
-    const to = layout.tiles.get(edge.to);
+  for (const edge of layout.edges) {
+    const from = tiles.get(edge.from);
+    const to = tiles.get(edge.to);
     const fromZone = zoneOf.get(edge.from);
     const toZone = zoneOf.get(edge.to);
     if (!from || !to || fromZone === undefined || toZone === undefined) continue;
@@ -75,10 +74,10 @@ export function routeEdges(graph: SystemGraph, layout: FloorLayout): { routes: R
 }
 
 /** Each zone's hub: the centroid of its tiles, pulled a little towards the floor's centre. */
-function zoneHubs(graph: SystemGraph, layout: FloorLayout): Map<ZoneId, Point> {
+function zoneHubs(layout: Layout, tiles: Map<string, FloorTile>): Map<ZoneId, Point> {
   const sums = new Map<ZoneId, { x: number; y: number; z: number; count: number }>();
-  for (const node of graph.nodes) {
-    const tile = layout.tiles.get(node.id);
+  for (const node of layout.nodes) {
+    const tile = tiles.get(node.id);
     if (!tile) continue;
     const sum = sums.get(node.zone) ?? { x: 0, y: 0, z: 0, count: 0 };
     sum.x += tile.x;

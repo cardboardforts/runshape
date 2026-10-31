@@ -7,13 +7,13 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
 import { HEXAGONAL } from "@runshape/architecture";
-import { ArchitectureProfile, GraphNode, SystemGraph } from "@runshape/kernel";
-import { Change, Op, StepKind } from "@runshape/trace";
+import { ArchitectureProfile, Change, FloorPiece, FloorTile, GraphNode, Layout, LayoutNode } from "@runshape/kernel";
+import { Op, StepKind } from "@runshape/trace";
 import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 
 import { zoneColor } from "../zone-style";
 
-import { FloorLayout, FloorPiece, OBJECT_SIDE, objectSlots, Tile } from "./floor";
+import { OBJECT_SIDE, objectSlots } from "./object-slots";
 import { advanceClock, ClockedObject, popPose } from "./object-clock";
 import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./labels";
 import { Point, routeEdges } from "./routes";
@@ -44,11 +44,11 @@ const LABEL_CULL_EVERY_FRAMES = 6;
 export type Emphasis = "normal" | "highlighted" | "dimmed";
 
 interface TileParts {
-  node: GraphNode;
+  node: LayoutNode;
   body: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
   outline: THREE.LineSegments<THREE.EdgesGeometry, THREE.LineBasicMaterial>;
   label: CSS2DObject;
-  layout: Tile;
+  layout: FloorTile;
   tier: LabelTier;
   /** Measured once the label has been laid out; until then it is always shown. */
   labelSize: { width: number; height: number } | null;
@@ -123,7 +123,7 @@ export class HexScene {
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly onPick: (node: GraphNode) => void,
+    private readonly onPick: (node: LayoutNode) => void,
     background: string,
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -162,16 +162,13 @@ export class HexScene {
     this.frame = requestAnimationFrame(this.animate);
   }
 
-  setGraph(graph: SystemGraph, layout: FloorLayout): void {
-    this.profile = graph.profile;
+  setLayout(layout: Layout): void {
+    this.profile = layout.profile;
     this.clearWorld();
-    this.addFloor(layout);
-    for (const node of graph.nodes) {
-      const tile = layout.tiles.get(node.id);
-      if (tile) this.addTile(node, tile);
-    }
-    const { routes, trunks } = routeEdges(graph, layout);
-    const edges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+    this.addFloor(layout.floor);
+    for (const node of layout.nodes) this.addTile(node, node.floor);
+    const { routes, trunks } = routeEdges(layout);
+    const edges = new Map(layout.edges.map((edge) => [edge.id, edge]));
     for (const route of routes) {
       const edge = edges.get(route.edgeId)!;
       const curve = new THREE.CatmullRomCurve3(route.points.map(toVector), false, "centripetal");
@@ -389,11 +386,11 @@ export class HexScene {
     this.labels.domElement.remove();
   }
 
-  private addFloor(layout: FloorLayout): void {
-    const grid = new THREE.PolarGridHelper(layout.radius * 2.6, 6, 8, 64, 0x2a3240, 0x1d232c);
+  private addFloor(floor: Layout["floor"]): void {
+    const grid = new THREE.PolarGridHelper(floor.radius * 2.6, 6, 8, 64, 0x2a3240, 0x1d232c);
     grid.position.y = -0.05;
     this.world.add(grid);
-    for (const piece of layout.floor) this.addFloorPiece(piece);
+    for (const piece of floor.pieces) this.addFloorPiece(piece);
   }
 
   /** A flat polygon at its elevation; a raised one (a terrace) gets a face down to the ground. */
@@ -418,7 +415,7 @@ export class HexScene {
     }
   }
 
-  private addTile(node: GraphNode, tile: Tile): void {
+  private addTile(node: LayoutNode, tile: FloorTile): void {
     const { x, y, z, size } = tile;
     const color = zoneColor(this.profile, node.zone);
     const body = new THREE.Mesh(

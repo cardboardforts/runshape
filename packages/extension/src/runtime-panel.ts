@@ -93,7 +93,7 @@ export class RuntimePanel {
     let qualifiedName: string | null = null;
     if (target === undefined) {
       const graph = await session.handle({ type: "graph", phases: [Phase.Call], grouping });
-      const placeable = graph?.type === "graph" ? graph.graph.nodes.filter((n) => n.qualifiedName !== null && n.zoneSource !== ZoneSource.Fixed) : [];
+      const placeable = graph?.type === "graph" ? graph.layout.nodes.filter((n) => n.qualifiedName !== null && n.zoneSource !== ZoneSource.Fixed) : [];
       const picked = await vscode.window.showQuickPick(
         placeable.map((node) => ({ label: node.label, description: `${node.zone} (${node.zoneSource})`, detail: node.qualifiedName ?? "", node })),
         { placeHolder: "Which component should the model place?" },

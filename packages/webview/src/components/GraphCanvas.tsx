@@ -1,9 +1,8 @@
 import { Background, Controls, ReactFlow } from "@xyflow/react";
 
-import { GraphNode, SystemGraph } from "@runshape/kernel";
-import { Change, Op, ReplayStep } from "@runshape/trace";
+import { Change, Layout, LayoutNode } from "@runshape/kernel";
+import { Op, ReplayStep } from "@runshape/trace";
 
-import { flowsDown, Positioned } from "../layout";
 import { ComponentFlowNode, ComponentNode, Emphasis } from "./ComponentNode";
 import { PulseEdge, PulseFlowEdge } from "./PulseEdge";
 
@@ -12,8 +11,8 @@ const nodeTypes = { component: ComponentNode };
 const edgeTypes = { pulse: PulseEdge };
 
 interface Props {
-  graph: SystemGraph;
-  positions: Map<string, Positioned>;
+  /** Placed by the session: each box's flat position is drawn as given. */
+  layout: Layout;
   /** Compare mode only: how each node and edge differs from the previous recording. */
   nodeChanges: Map<string, Change> | null;
   edgeChanges: Map<string, Change> | null;
@@ -23,12 +22,11 @@ interface Props {
   stepIndex: number;
   /** How long this step plays; its pulse takes as long to cross the edge. */
   stepMs: number;
-  onOpenComponent: (node: GraphNode) => void;
+  onOpenComponent: (node: LayoutNode) => void;
 }
 
 export function GraphCanvas({
-  graph,
-  positions,
+  layout,
   nodeChanges,
   edgeChanges,
   selectedScenario,
@@ -43,14 +41,14 @@ export function GraphCanvas({
     return scenarioIds.includes(selectedScenario) ? "highlighted" : "dimmed";
   };
 
-  const nodes: ComponentFlowNode[] = graph.nodes.map((node) => ({
+  const nodes: ComponentFlowNode[] = layout.nodes.map((node) => ({
     id: node.id,
     type: "component",
-    position: positions.get(node.id) ?? { x: 0, y: 0 },
+    position: node.flat,
     data: {
       node,
-      profile: graph.profile,
-      vertical: flowsDown(graph),
+      profile: layout.profile,
+      vertical: layout.direction === "down",
       emphasis: emphasisOf(node.scenarioIds),
       active: step !== null && (step.from === node.id || step.to === node.id),
       change: nodeChanges?.get(node.id) ?? null,
@@ -60,7 +58,7 @@ export function GraphCanvas({
     connectable: false,
   }));
 
-  const edges: PulseFlowEdge[] = graph.edges.map((edge) => ({
+  const edges: PulseFlowEdge[] = layout.edges.map((edge) => ({
     id: edge.id,
     source: edge.from,
     target: edge.to,

@@ -6,8 +6,7 @@ import { describe, expect, test } from "vitest";
 
 import { reviewOf } from "./graphs";
 
-import { Outcome } from "@runshape/kernel";
-import { Change } from "../src";
+import { Change, Outcome } from "@runshape/kernel";
 import { ReviewCategory, reviewCategoryOf, reviewMarkdown } from "../src";
 import { FixtureApp, fixtureRuns } from "../../kernel/test/fixtures";
 

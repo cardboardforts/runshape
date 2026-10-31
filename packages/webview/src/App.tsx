@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ArchitectureCandidate, ArchitectureDiff, PROFILES } from "@runshape/architecture";
-import { ArchitectureProfile, ArchitectureStyle, ComponentView, FunctionRef, GraphNode, Grouping, Phase, RunSummary, SystemGraph, UiResponse } from "@runshape/kernel";
-import { CallStep, Change, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/trace";
+import { ArchitectureProfile, ArchitectureStyle, Change, ComponentView, FunctionRef, GraphNode, Grouping, groupingAt, Layout, LayoutNode, Phase, RunSummary, UiResponse } from "@runshape/kernel";
+import { CallStep, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/trace";
 import { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
 
 import { ComponentPanel } from "./components/ComponentPanel";
@@ -18,7 +18,6 @@ import { ScenarioList } from "./components/ScenarioList";
 import { RoutesPanel } from "./components/RoutesPanel";
 import { ArchitectureChangesPanel } from "./components/ArchitectureChangesPanel";
 import type { Host } from "./host";
-import { layoutGraph, Positioned } from "./layout";
 import { zoneClass, zoneColor } from "./zone-style";
 import { Scene3D } from "./three/Scene3D";
 
@@ -62,16 +61,13 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
   const [grouping, setGrouping] = useState<Grouping>(INITIAL_GROUPING);
   /** The module opened from the module view (a dotted prefix): its classes, and what they call. */
   const [focus, setFocus] = useState<string | null>(null);
-  const [graph, setGraph] = useState<SystemGraph | null>(null);
-  const [positions, setPositions] = useState<Map<string, Positioned> | null>(null);
-  // Bumped per layout: the canvas remounts and fits the new layout instead of keeping a
-  // viewport chosen for the previous one.
-  const [layoutVersion, setLayoutVersion] = useState(0);
+  /** What the canvas draws, placed by the session: the recording alone, and (comparing) both at once. */
+  const [graphLayout, setGraphLayout] = useState<Layout | null>(null);
+  const [diffLayout, setDiffLayout] = useState<Layout | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail>({ component: null, fn: null });
   const [replay, setReplay] = useState<Replay | null>(null);
   const [pace, setPace] = useState(ReplayPace.Even);
-  const [layoutFailure, setLayoutFailure] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
   const [threeD, setThreeD] = useState(false);
   const [wiring, setWiring] = useState<ComponentWiring[]>([]);
@@ -102,21 +98,18 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
   const [routeMap, setRouteMap] = useState<{ routes: RouteMap; diff: RouteMapDiff | null } | { failed: string } | null>(null);
   /** Responses carry no request id: an error while routes are awaited is the routes' answer. */
   const awaitingRoutes = useRef(false);
-  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; compare: boolean; style: string | undefined; listing: Listing }>({
+  const viewOptions = useRef<{ phases: Phase[]; grouping: Grouping; opened: string | null; compare: boolean; style: string | undefined; listing: Listing }>({
     phases: TEST_BODY_ONLY,
     grouping: INITIAL_GROUPING,
+    opened: null,
     compare: false,
     style: undefined,
     listing: "tests",
   });
-  viewOptions.current = { phases: includeSetup ? WITH_SETUP : TEST_BODY_ONLY, grouping, compare, style: drawStyle, listing };
+  viewOptions.current = { phases: includeSetup ? WITH_SETUP : TEST_BODY_ONLY, grouping, opened: focus, compare, style: drawStyle, listing };
 
-  // In compare mode the canvas shows the union of both recordings. Memoised only so the
-  // layout effect below sees a stable object, not a new one every render.
-  const displayed = useMemo<SystemGraph | null>(() => {
-    const whole = compare && diff !== null ? { nodes: diff.nodes, edges: diff.edges, profile: diff.profile } : graph;
-    return whole === null || focus === null ? whole : focused(whole, focus);
-  }, [compare, diff, graph, focus]);
+  // In compare mode the canvas shows the union of both recordings.
+  const displayed = compare && diffLayout !== null ? diffLayout : graphLayout;
 
   // The host is the outside world: subscribe once, ask for the run and its graph.
   useEffect(() => {
@@ -161,6 +154,8 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             setExecutionFn(null);
             setObjectGraph(null);
             setRouteMap(null);
+            setDiffLayout(null);
+            viewOptions.current.opened = null;
             const { phases, grouping: currentGrouping, compare: comparing, style, listing: currentListing } = viewOptions.current;
             host.post({ type: "graph", phases, grouping: currentGrouping, style });
             const canCompare = comparing && response.summary.baselineCreatedAt !== null;
@@ -208,7 +203,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
           setStatus(response.summary.scenarios.length === 0 ? { kind: "empty", message: "This recording has no scenarios." } : { kind: "ready" });
           break;
         case "graph":
-          setGraph(response.graph);
+          setGraphLayout(response.layout);
           setWiring(response.wiring);
           break;
         case "objects":
@@ -223,6 +218,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
           break;
         case "diff":
           setDiff(response.diff);
+          setDiffLayout(response.layout);
           setReview(response.review);
           awaitingDiff.current = false;
           setArchitecture({ diff: response.architecture, baseRulesKnown: response.baseRulesKnown });
@@ -245,16 +241,22 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             const next = { ...viewOptions.current.grouping, modules: response.modules };
             setGrouping(next);
             viewOptions.current.grouping = next;
+            // An opened module the new rules don't have any more: back to all of them.
+            if (viewOptions.current.opened !== null && !response.modules.includes(viewOptions.current.opened)) {
+              setFocus(null);
+              viewOptions.current.opened = null;
+            }
           }
           // Zones changed: everything coloured by zone is stale.
-          const { phases, grouping: currentGrouping, compare: comparing, style } = viewOptions.current;
+          const { phases, grouping: currentGrouping, opened, compare: comparing, style } = viewOptions.current;
+          const asOpened = opened ?? undefined;
           setAdvice({ componentId: "", state: { kind: "idle" } });
-          host.post({ type: "graph", phases, grouping: currentGrouping, style });
+          host.post({ type: "graph", phases, grouping: currentGrouping, style, opened: asOpened });
           if (comparing) {
             awaitingDiff.current = true;
-            host.post({ type: "diff", phases, grouping: currentGrouping, style });
+            host.post({ type: "diff", phases, grouping: currentGrouping, style, opened: asOpened });
           }
-          if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: currentGrouping });
+          if (openComponentId.current !== null) host.post({ type: "component", id: openComponentId.current, grouping: groupingAt(currentGrouping, opened) });
           break;
         }
         case "timeline":
@@ -292,27 +294,6 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
     return unsubscribe;
   }, [host]);
 
-  // ELK is an external layout engine: run it whenever the displayed graph changes.
-  useEffect(() => {
-    if (displayed === null) return;
-    let cancelled = false;
-    setPositions(null);
-    setLayoutFailure(null);
-    layoutGraph(displayed)
-      .then((laidOut) => {
-        if (cancelled) return;
-        setPositions(laidOut);
-        setLayoutVersion((version) => version + 1);
-      })
-      .catch((error: unknown) => {
-        // Otherwise the canvas would say "Laying out…" for ever.
-        if (!cancelled) setLayoutFailure(error instanceof Error ? error.message : String(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [displayed]);
-
   // Replay clock: each step lasts its own duration. A change replay interleaves two
   // recordings whose clocks don't compare, so it always plays evenly.
   const playing = replay?.playing ?? false;
@@ -335,8 +316,8 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
 
   // Memoised so the 3D scene's emphasis effect, which depends on them, doesn't rerun on every
   // render (each replay tick). Hooks, so above the early return.
-  const nodeChanges = useMemo(() => (compare && diff ? new Map(diff.nodes.map((node) => [node.id, node.change])) : null), [compare, diff]);
-  const edgeChanges = useMemo(() => (compare && diff ? new Map(diff.edges.map((edge) => [edge.id, edge.change])) : null), [compare, diff]);
+  const nodeChanges = useMemo(() => changesOf(displayed?.nodes ?? []), [displayed]);
+  const edgeChanges = useMemo(() => changesOf(displayed?.edges ?? []), [displayed]);
 
   if (status.kind !== "ready" || summary === null) {
     return <StatusScreen status={status} onRetry={() => host.post({ type: "reload" })} />;
@@ -347,21 +328,24 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
   const replayName = replay ? (summary.scenarios.find((s) => s.id === replay.scenarioId)?.name ?? replay.scenarioId) : "";
 
   const phases = includeSetup ? WITH_SETUP : TEST_BODY_ONLY;
+  // The boxes the canvas is cut into: replays, timelines and panels must be cut the same way.
+  const drawnGrouping = groupingAt(grouping, focus);
   // The graph and the replay must be cut into the same boxes, so changing either view
   // option drops a running replay rather than letting it pulse along edges that are gone.
-  const requestViews = (nextPhases: Phase[], nextGrouping: Grouping, comparing: boolean, style = drawStyle) => {
+  const requestViews = (nextPhases: Phase[], nextGrouping: Grouping, comparing: boolean, style = drawStyle, opened = focus) => {
     setReplay(null);
-    host.post({ type: "graph", phases: nextPhases, grouping: nextGrouping, style });
+    host.post({ type: "graph", phases: nextPhases, grouping: nextGrouping, style, opened: opened ?? undefined });
     if (listing === "routes") requestRoutes(nextPhases, comparing);
     if (comparing) {
       // Every compare view depends on the options; none may outlive them.
       setDiff(null);
+      setDiffLayout(null);
       setArchitecture(null);
       setExecution(null);
       setExecutionFn(null);
       awaitingDiff.current = true;
-      host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping, style });
-      if (selected !== null) host.post({ type: "executionDiff", scenarioId: selected, phases: nextPhases, grouping: nextGrouping });
+      host.post({ type: "diff", phases: nextPhases, grouping: nextGrouping, style, opened: opened ?? undefined });
+      if (selected !== null) host.post({ type: "executionDiff", scenarioId: selected, phases: nextPhases, grouping: groupingAt(nextGrouping, opened) });
     }
   };
   const toggleSetup = () => {
@@ -378,18 +362,15 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
     const next: Grouping = on ? { ...grouping, modules: summary.modules } : { collapseMiddleware: grouping.collapseMiddleware };
     setGrouping(next);
     setFocus(null);
-    requestViews(phases, next, compare);
+    requestViews(phases, next, compare, drawStyle, null);
   };
-  /** From the module view, into one module: its classes, drawn as before, and what they call. */
+  /** From the module view, into one module: its classes, and the other modules it calls or is called by. */
   const openModule = (module: string) => {
-    const next: Grouping = { collapseMiddleware: grouping.collapseMiddleware };
-    setGrouping(next);
     setFocus(module);
-    requestViews(phases, next, compare);
+    requestViews(phases, grouping, compare, drawStyle, module);
   };
   // A module box opens the module; any other box opens its panel.
-  const openNode = (node: GraphNode) =>
-    grouping.modules !== undefined && node.qualifiedName !== null && summary.modules.includes(node.qualifiedName) ? openModule(node.qualifiedName) : openComponent(node);
+  const openNode = (node: LayoutNode) => (node.opens !== null ? openModule(node.opens) : openComponent(node));
   const changeStyle = (style: string) => {
     const next = style === summary.style ? undefined : style;
     setDrawStyle(next);
@@ -412,16 +393,17 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
     if (listing === "routes") requestRoutes(phases, next);
     if (next) {
       setDiff(null); // never show a diff computed for other view options
+      setDiffLayout(null);
       setArchitecture(null);
       awaitingDiff.current = true;
-      host.post({ type: "diff", phases, grouping, style: drawStyle });
+      host.post({ type: "diff", phases, grouping, style: drawStyle, opened: focus ?? undefined });
       if (selected !== null) requestExecution(selected);
     }
   };
   const requestExecution = (scenarioId: string) => {
     setExecution(null);
     setExecutionFn(null);
-    host.post({ type: "executionDiff", scenarioId, phases, grouping });
+    host.post({ type: "executionDiff", scenarioId, phases, grouping: drawnGrouping });
   };
   const selectScenario = (scenarioId: string | null) => {
     setSelected(scenarioId);
@@ -450,13 +432,13 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
   const reviewCategories = compare && review ? new Map(review.items.map((item) => [item.scenarioId, item.category])) : null;
   const componentNode = detail.component ? (displayed?.nodes.find((node) => node.id === detail.component?.id) ?? null) : null;
   const selectedDiff = compare && diff ? (diff.scenarios.find((scenario) => scenario.id === selected) ?? null) : null;
-  const openComponent = (node: GraphNode) => host.post({ type: "component", id: node.id, grouping });
+  const openComponent = (node: GraphNode) => host.post({ type: "component", id: node.id, grouping: drawnGrouping });
   const openFunction = (fn: { symbol: FunctionRef }) => host.post({ type: "function", symbol: fn.symbol.key });
   const openSource = (file: string, line: number) => host.post({ type: "openSource", file, line });
-  const startReplay = (scenarioId: string) => host.post({ type: "replay", scenarioId, phases, grouping });
+  const startReplay = (scenarioId: string) => host.post({ type: "replay", scenarioId, phases, grouping: drawnGrouping });
   const openTimeline = (scenarioId: string) => {
     setDetail({ component: null, fn: null });
-    host.post({ type: "timeline", scenarioId, phases, grouping });
+    host.post({ type: "timeline", scenarioId, phases, grouping: drawnGrouping });
   };
   // Shown only for the selected scenario: another selection leaves it behind.
   const shownTimeline = timeline !== null && timeline.scenarioId === selected ? timeline : null;
@@ -613,6 +595,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
       </aside>
 
       <main className="canvas">
+        {displayed !== null && <LayoutNotes layout={displayed} />}
         {notice && (
           <div className="notice" role="alert">
             {notice}
@@ -623,7 +606,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
         )}
         {displayed !== null && displayed.nodes.length > 0 && threeD ? (
           <Scene3D
-            graph={displayed}
+            layout={displayed}
             wiring={wiring}
             objects={objectGraph?.scenarioId === selected ? objectGraph : null}
             nodeChanges={nodeChanges}
@@ -639,17 +622,16 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             focusObject={replayClock ? (step!.objectId ?? null) : null}
             onOpenComponent={openNode}
           />
-        ) : displayed === null || positions === null ? (
-          <p className={layoutFailure ? "centered" : "muted centered"} role={layoutFailure ? "alert" : "status"}>
-            {layoutFailure ? `Couldn't lay this graph out in 2D (${layoutFailure}). The 3D view doesn't need this layout.` : "Laying out the system…"}
+        ) : displayed === null ? (
+          <p className="muted centered" role="status">
+            Laying out the system…
           </p>
         ) : displayed.nodes.length === 0 ? (
           <p className="muted centered">Nothing ran in the selected phases.</p>
         ) : (
           <GraphCanvas
-            key={layoutVersion}
-            graph={displayed}
-            positions={positions}
+            key={layoutKey(displayed)}
+            layout={displayed}
             nodeChanges={nodeChanges}
             edgeChanges={edgeChanges}
             selectedScenario={selected}
@@ -734,7 +716,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
                     }
                     onAskAdvice={() => {
                       setAdvice({ componentId: componentNode.id, state: { kind: "asking" } });
-                      host.post({ type: "adviseZone", componentId: componentNode.id, grouping });
+                      host.post({ type: "adviseZone", componentId: componentNode.id, grouping: drawnGrouping });
                     }}
                     onDismissAdvice={() => setAdvice({ componentId: "", state: { kind: "idle" } })}
                   />
@@ -787,7 +769,7 @@ function StatusScreen({ status, onRetry }: { status: Status; onRetry: () => void
 }
 
 /** What this component's objects hold, and what holds them: the runtime wiring, by attribute. */
-function Holdings({ componentId, wiring, graph }: { componentId: string; wiring: ComponentWiring[]; graph: SystemGraph | null }) {
+function Holdings({ componentId, wiring, graph }: { componentId: string; wiring: ComponentWiring[]; graph: Layout | null }) {
   const label = (id: string) => graph?.nodes.find((node) => node.id === id)?.label ?? id.replace(/^class:/, "");
   const holds = wiring.filter((w) => w.from === componentId);
   const heldBy = wiring.filter((w) => w.to === componentId);
@@ -860,10 +842,32 @@ function Legend({ ruleCount, profile }: { ruleCount: number; profile: Architectu
   );
 }
 
-/** A module's own boxes, and the ones they call or are called by: the rest of the graph is another module's. */
-function focused(graph: SystemGraph, module: string): SystemGraph {
-  const inside = new Set(graph.nodes.filter((node) => node.qualifiedName !== null && (node.qualifiedName === module || node.qualifiedName.startsWith(`${module}.`))).map((node) => node.id));
-  const edges = graph.edges.filter((edge) => inside.has(edge.from) || inside.has(edge.to));
-  const shown = new Set([...inside, ...edges.flatMap((edge) => [edge.from, edge.to])]);
-  return { ...graph, nodes: graph.nodes.filter((node) => shown.has(node.id)), edges };
+/** Compare mode's marks, by id: null when the layout isn't a comparison. */
+function changesOf<T extends { id: string; change: Layout["nodes"][number]["change"] }>(items: T[]): Map<string, NonNullable<T["change"]>> | null {
+  if (items.length === 0 || items[0]!.change === null) return null;
+  return new Map(items.map((item) => [item.id, item.change!]));
+}
+
+/** A key per layout received: the canvas remounts and fits each new one, not the viewport chosen for the last. */
+const layoutKeys = new WeakMap<Layout, number>();
+let nextLayoutKey = 0;
+function layoutKey(layout: Layout): number {
+  let key = layoutKeys.get(layout);
+  if (key === undefined) {
+    key = nextLayoutKey += 1;
+    layoutKeys.set(layout, key);
+  }
+  return key;
+}
+
+/** What the layout couldn't draw as asked: boxes left out to keep the level readable, or a plain 2D fallback. */
+function LayoutNotes({ layout }: { layout: Layout }) {
+  if (layout.hidden.nodes === 0 && layout.flatProblem === null) return null;
+  return (
+    <p className="layout-notes" role="status">
+      {layout.hidden.nodes > 0 &&
+        `${layout.hidden.nodes} quieter box${layout.hidden.nodes === 1 ? "" : "es"} not drawn (${layout.hidden.calls} calls)${layout.level.kind === "modules" ? "" : ": open a module to see fewer at once"}. `}
+      {layout.flatProblem !== null && `The 2D layout fell back to a plain grid (${layout.flatProblem}).`}
+    </p>
+  );
 }

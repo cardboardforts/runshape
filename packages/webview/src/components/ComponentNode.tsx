@@ -1,7 +1,6 @@
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 
-import { ArchitectureProfile, GraphNode } from "@runshape/kernel";
-import { Change } from "@runshape/trace";
+import { ArchitectureProfile, Change, LayoutNode } from "@runshape/kernel";
 
 import { zoneClass, zoneLabel } from "../zone-style";
 
@@ -10,14 +9,14 @@ import { smellText } from "./ZoneControls";
 export type Emphasis = "normal" | "highlighted" | "dimmed";
 
 export type ComponentNodeData = {
-  node: GraphNode;
+  node: LayoutNode;
   profile: ArchitectureProfile;
   /** Edges enter at the top and leave at the bottom, for styles drawn top to bottom. */
   vertical: boolean;
   emphasis: Emphasis;
   active: boolean;
   change: Change | null;
-  onOpen: (node: GraphNode) => void;
+  onOpen: (node: LayoutNode) => void;
 };
 
 export type ComponentFlowNode = Node<ComponentNodeData, "component">;

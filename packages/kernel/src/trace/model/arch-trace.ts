@@ -52,6 +52,12 @@ export interface ArchitectureProfile {
   behaviour: { handlesRequests: string; callsExternal: string; otherwise: string };
 }
 
+/** Where a zone comes in the style's drawing order (0 faces the requests); null for a fixed zone. */
+export function zonePosition(profile: ArchitectureProfile, zone: string): number | null {
+  const index = profile.zones.findIndex((candidate) => candidate.id === zone);
+  return index === -1 ? null : index;
+}
+
 /**
  * Where a component sits, in the active profile's zones (see profiles.ts): a FixedZone for
  * framework, test-double and external code, otherwise one of the style's own zones. A rule in

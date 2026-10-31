@@ -1,5 +1,4 @@
-import { zonePosition } from "@runshape/architecture";
-import { ArchitectureProfile, FixedZone } from "@runshape/kernel";
+import { ArchitectureProfile, FixedZone, zonePosition } from "@runshape/kernel";
 
 // A style's own zones are coloured by where they sit in its drawing order — the side facing
 // the requests, the middle, the side facing the outside world — so the hexagon keeps its

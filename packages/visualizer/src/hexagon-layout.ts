@@ -1,10 +1,6 @@
-import { zonePosition } from "@runshape/architecture";
-import { ComponentKind, FixedZone, GraphNode, SystemGraph } from "@runshape/kernel";
+import { ComponentKind, FixedZone, GraphNode, SystemGraph, zonePosition } from "@runshape/kernel";
 
 import { byLabel, FloorLayout, MAX_TILE, Tile, TILE_SPACING, tileSize } from "./floor";
-
-export { tileSize, TILE_GAP } from "./floor";
-export type { Tile } from "./floor";
 
 const MIN_RADIUS = 40;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));

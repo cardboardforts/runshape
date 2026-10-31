@@ -114,8 +114,8 @@ describe("drawing in another style", () => {
     const usersRepository = async (style?: string) => {
       const response = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING, style });
       if (response?.type !== "graph") return response;
-      const node = response.graph.nodes.find((n) => n.label === "UsersRepository")!;
-      return `${response.graph.profile.style}: ${node.zone} (${node.zoneSource})`;
+      const node = response.layout.nodes.find((n) => n.label === "UsersRepository")!;
+      return `${response.layout.profile.style}: ${node.zone} (${node.zoneSource})`;
     };
 
     expect(session.summary().style).toBe("hexagonal");
@@ -170,7 +170,7 @@ describe("detect and adopt", () => {
     expect(adopted).toEqual({ type: "rulesChanged", count: 5, style: "layered", modules: ["app.api", "app.core", "app.db", "app.main", "app.models", "app.services"] });
     expect(JSON.parse(saved!).style).toBe("layered");
     expect(session.summary().style).toBe("layered");
-    const userInDb = graph?.type === "graph" ? graph.graph.nodes.find((n) => n.label === "UserInDB") : undefined;
+    const userInDb = graph?.type === "graph" ? graph.layout.nodes.find((n) => n.label === "UserInDB") : undefined;
     expect(`${userInDb?.zone} (${userInDb?.zoneSource}: ${userInDb?.zoneReason})`).toMatchInlineSnapshot(`"business (rule: declared in runshape.json (app.models.domain.**): business: the package is named "domain")"`);
   });
 });

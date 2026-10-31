@@ -1,7 +1,7 @@
-import { ArchitectureProfile, CodeSymbol, ComponentKind, Grouping, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse } from "@runshape/kernel";
+import { ArchitectureProfile, CodeSymbol, ComponentKind, Grouping, groupingAt, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse, zoomLevelOf } from "@runshape/kernel";
 import { ArchitectureAdvice, ArchitectureAdviceError, moduleRoots, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 import { buildReplay, buildReview, buildRouteMap, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves } from "@runshape/trace";
-import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, UnknownFunctionError } from "@runshape/visualizer";
+import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, layout, UnknownFunctionError } from "@runshape/visualizer";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */
 export interface SourceReader {
@@ -126,10 +126,14 @@ export class ViewerSession {
       case "graph": {
         const profile = this.drawingStyle(request.style);
         if (profile === null) return { type: "error", message: unknownStyle(request.style) };
+        const opened = request.opened ?? null;
+        if (!isOpenable(opened, request.grouping)) return { type: "error", message: notAModule(opened) };
+        const grouping = groupingAt(request.grouping, opened);
+        const graph = buildSystemGraph(this.run, { phases: request.phases, grouping, rules: this.rules, profile });
         return {
           type: "graph",
           phases: request.phases,
-          graph: buildSystemGraph(this.run, { phases: request.phases, grouping: request.grouping, rules: this.rules, profile }),
+          layout: await layout(graph, { level: zoomLevelOf(request.grouping, opened), grouping }),
           wiring: aggregateWiring(this.run),
         };
       }
@@ -170,15 +174,23 @@ export class ViewerSession {
         if (this.baseline === null) return { type: "error", message: "There is no earlier recording to compare with yet." };
         const profile = this.drawingStyle(request.style);
         if (profile === null) return { type: "error", message: unknownStyle(request.style) };
+        const opened = request.opened ?? null;
+        if (!isOpenable(opened, request.grouping)) return { type: "error", message: notAModule(opened) };
         // A head runshape.json that can't be read has no rules to compare: not "every rule removed".
         const baseRulesKnown = this.baselineRules !== null && this.rulesProblem === null;
         const baseRules = baseRulesKnown ? this.baselineRules! : this.rules;
-        const sides = { phases: request.phases, grouping: request.grouping };
+        const grouping = groupingAt(request.grouping, opened);
+        const sides = { phases: request.phases, grouping };
         const drawing = { ...sides, moves: this.moves() };
         const zones = { ...sides, rules: this.rules, baseRules };
+        const compared = diffRuns(this.baseline, this.run, comparedGraphs(this.baseline, this.run, { ...zones, profile }), drawing);
+        // The canvas draws both recordings at once: every box and call either side has, marked by how it changed.
+        const changes = { nodes: new Map(compared.nodes.map((node) => [node.id, node.change])), edges: new Map(compared.edges.map((edge) => [edge.id, edge.change])) };
+        const both = { nodes: compared.nodes, edges: compared.edges, profile: compared.profile };
         return {
           type: "diff",
-          diff: diffRuns(this.baseline, this.run, comparedGraphs(this.baseline, this.run, { ...zones, profile }), drawing),
+          diff: compared,
+          layout: await layout(both, { level: zoomLevelOf(request.grouping, opened), grouping, changes }),
           review: buildReview(this.baseline, this.run, comparedGraphs(this.baseline, this.run, zones), drawing),
           // Both placed in head's style, so a style change doesn't read as every class moving.
           architecture: diffArchitecture(buildPlacements(this.baseline, baseRules, this.rules.profile), buildPlacements(this.run, this.rules), this.moves()),
@@ -380,6 +392,15 @@ export class ViewerSession {
     const last = Math.max(...ranges.map((fn) => fn.lastLine));
     return lines.slice(classStatementLine(lines, first, view.label) - 1, last);
   }
+}
+
+/** A module opens only from a view that has it as a box: anything else would draw nothing, silently. */
+function isOpenable(opened: string | null, grouping: Grouping): boolean {
+  return opened === null || (typeof opened === "string" && (grouping.modules ?? []).includes(opened));
+}
+
+function notAModule(opened: string | null): string {
+  return `${JSON.stringify(opened)} isn't one of this view's modules: open a module from the module view`;
 }
 
 /** Function requests name a function only by the key a view gave: never a language's spelling of it. */

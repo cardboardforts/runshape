@@ -1,16 +1,10 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkNode } from "elkjs/lib/elk.bundled.js";
 
-import { zonePosition } from "@runshape/architecture";
-import { ComponentKind, FixedZone, GraphNode, LayoutShape, SystemGraph } from "@runshape/kernel";
+import { ComponentKind, FixedZone, FlatPoint, GraphNode, LayoutShape, SystemGraph, zonePosition } from "@runshape/kernel";
 
 export const NODE_WIDTH = 188;
 export const NODE_HEIGHT = 46;
-
-export interface Positioned {
-  x: number;
-  y: number;
-}
 
 /** Client, entry, middleware and router take partitions 0–3. */
 const FIRST_STYLE_PARTITION = 4;
@@ -70,7 +64,7 @@ const ATTEMPTS: ElkSettings[] = [
   { wrapping: "OFF", partitioned: false },
 ];
 
-export async function layoutGraph(graph: SystemGraph): Promise<Map<string, Positioned>> {
+export async function layoutGraph(graph: SystemGraph): Promise<Map<string, FlatPoint>> {
   let laidOut: ElkNode | null = null;
   let lastError: unknown = null;
   for (const settings of ATTEMPTS) {
@@ -82,7 +76,7 @@ export async function layoutGraph(graph: SystemGraph): Promise<Map<string, Posit
     }
   }
   if (laidOut === null) throw lastError;
-  const positions = new Map<string, Positioned>();
+  const positions = new Map<string, FlatPoint>();
   for (const child of laidOut.children ?? []) {
     positions.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
   }

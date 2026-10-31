@@ -1,4 +1,4 @@
-import type { Tile } from "../src/three/floor";
+import type { Tile } from "../src/floor";
 
 /** Pairs of tiles whose footprints overlap on the floor, at the same elevation. */
 export function overlappingTiles(tiles: Map<string, Tile>): string[] {

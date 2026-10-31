@@ -1,6 +1,6 @@
-import { ComponentKind, FixedZone, GraphNode, SystemGraph } from "@runshape/kernel";
+import { ComponentKind, FixedZone, FloorPiece, GraphNode, SystemGraph } from "@runshape/kernel";
 
-import { byLabel, FloorLayout, FloorPiece, MAX_TILE, Tile, TILE_SPACING, tileSize } from "./floor";
+import { byLabel, FloorLayout, MAX_TILE, Tile, TILE_SPACING, tileSize } from "./floor";
 
 /**
  * Layers as terraces. The first zone (presentation) is the highest step; each next zone is

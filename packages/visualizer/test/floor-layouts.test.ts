@@ -10,10 +10,10 @@ import { describe, expect, test } from "vitest";
 import { buildSystemGraph, profileFor } from "@runshape/architecture";
 import { ArchitectureStyle, FixedZone, SystemGraph, TraceDirectory } from "@runshape/kernel";
 
-import { layoutBands, STEP_RISE } from "../src/three/bands-layout";
-import type { Tile } from "../src/three/floor";
-import { layoutFloor } from "../src/three/layout-floor";
-import { layoutTriangle } from "../src/three/triangle-layout";
+import { layoutBands, STEP_RISE } from "../src/bands-layout";
+import type { Tile } from "../src/floor";
+import { layoutFloor } from "../src/layout-floor";
+import { layoutTriangle } from "../src/triangle-layout";
 import { overlappingTiles } from "./tiles";
 
 async function graphOf(app: string, style: ArchitectureStyle, collapseMiddleware = true): Promise<SystemGraph> {

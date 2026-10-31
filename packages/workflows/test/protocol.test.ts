@@ -147,3 +147,46 @@ describe("comparing two commits' architecture on the wire", () => {
     expect({ baseRulesKnown: response.baseRulesKnown, decided: response.architecture.decided }).toEqual({ baseRulesKnown: false, decided: [] });
   });
 });
+
+describe("the canvas on the wire: a layout, placed once for 2D and 3D", () => {
+  test("the module view, a module opened from it (its classes; replays must use the layout's grouping), and the same compared", async () => {
+    const session = await refactorSession();
+    const modules = session.summary().modules;
+    const grouping = { ...GROUPING, modules };
+
+    const atModules = await session.handle({ type: "graph", phases: [Phase.Call], grouping });
+    const opened = await session.handle({ type: "graph", phases: [Phase.Call], grouping, opened: "app.services" });
+    const compared = await session.handle({ type: "diff", phases: [Phase.Call], grouping, opened: "app.services" });
+    if (atModules?.type !== "graph" || opened?.type !== "graph" || compared?.type !== "diff") throw new Error("expected two layouts and a diff");
+
+    const boxes = (nodes: { label: string; opens: string | null; change: string | null }[]) =>
+      nodes.map((node) => `${node.label}${node.opens ? " ▸" : ""}${node.change && node.change !== "unchanged" ? ` (${node.change})` : ""}`).join(", ");
+    expect({
+      modules: boxes(atModules.layout.nodes),
+      opened: boxes(opened.layout.nodes),
+      openedGrouping: opened.layout.grouping.modules,
+      compared: boxes(compared.layout.nodes),
+    }).toMatchInlineSnapshot(`
+      {
+        "compared": "app.api ▸, app.db ▸, app.models ▸, services.articles (changed), services.authentication, services.jwt, services.security",
+        "modules": "Client (tests), FakeAsyncPGPool, FakePoolAcquireContent, postgres, FastAPI, Middleware ×3, APIRouter, app.api ▸, app.db ▸, app.models ▸, app.services ▸",
+        "opened": "app.api ▸, app.db ▸, app.models ▸, services.articles, services.authentication, services.jwt, services.security",
+        "openedGrouping": [
+          "app.api",
+          "app.core",
+          "app.db",
+          "app.main",
+          "app.models",
+        ],
+      }
+    `);
+  });
+
+  test("opening a module the view doesn't have is refused, not drawn as nothing", async () => {
+    const session = await refactorSession();
+
+    const response = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING, opened: "app.services" });
+
+    expect(response).toEqual({ type: "error", message: `"app.services" isn't one of this view's modules: open a module from the module view` });
+  });
+});

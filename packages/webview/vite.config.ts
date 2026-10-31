@@ -42,7 +42,7 @@ export default defineConfig({
     outDir: "../extension/dist/webview",
     emptyOutDir: true,
     sourcemap: true,
-    // elkjs (the graph layout engine) is ~1.4MB on its own; the bundle is loaded from disk
+    // three.js and React Flow make a large bundle; it is loaded from disk
     // by the webview, never over a network, so splitting it buys nothing.
     chunkSizeWarningLimit: 2500,
     rollupOptions: {

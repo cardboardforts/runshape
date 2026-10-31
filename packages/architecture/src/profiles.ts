@@ -148,11 +148,6 @@ export function profileFor(style: string): ArchitectureProfile | undefined {
 }
 
 /** Where a zone sits in its style's drawing order (0 faces the requests), or null for fixed zones and other styles' zones. */
-export function zonePosition(profile: ArchitectureProfile, zone: string): number | null {
-  const index = profile.zones.findIndex((candidate) => candidate.id === zone);
-  return index === -1 ? null : index;
-}
-
 export function isAllowedCall(profile: ArchitectureProfile, from: string, to: string): boolean {
   return from === to || profile.allowedCalls.some(([a, b]) => a === from && b === to);
 }

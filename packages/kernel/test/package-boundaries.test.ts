@@ -141,9 +141,10 @@ describe("package boundaries", () => {
     const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
     // The webview's demo runs against the same fixtures, so it's held to the same rule. Its
     // recordings page reads the library's overview through the dev server, whose routes
-    // (dev-server/) read the library through infra; their tests make libraries to read.
+    // (dev-server/) read the library through infra; their tests make libraries to read, and
+    // get what the viewer draws from the session, as the demo does.
     const HOST_ALSO: Record<string, Record<string, string[]>> = {
-      "packages/webview": { demo: ["adapters", "workflows"], "dev-server": ["adapters", "infra"], test: ["adapters", "infra"] },
+      "packages/webview": { demo: ["adapters", "workflows"], "dev-server": ["adapters", "infra"], test: ["adapters", "infra", "workflows"] },
     };
     // A module's tests may wire other modules the way a workflow does (the arch module draws
     // the graphs the trace module's diffs take): values between them, never imports in src.

@@ -16,4 +16,5 @@ export * from "./trace/data/parse";
 export * from "./trace/data/trace-directory";
 export * from "./recordings-model";
 export * from "./recordings-ports";
+export * from "./layout";
 export * from "./ui-protocol";

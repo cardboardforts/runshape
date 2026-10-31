@@ -1,4 +1,4 @@
-import { ArchitectureProfile, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/kernel";
+import { ArchitectureProfile, Change, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/kernel";
 import { detectMoves, Moves } from "./moves";
 import { buildReplay, StepKind } from "./replay";
 
@@ -8,13 +8,6 @@ import { buildReplay, StepKind } from "./replay";
  * agent's, say): which requests now take a different route, touch the database
  * differently, or run different lines.
  */
-export enum Change {
-  Added = "added",
-  Removed = "removed",
-  Changed = "changed",
-  Unchanged = "unchanged",
-}
-
 export interface DiffNode extends GraphNode {
   change: Change;
   /** Its zone in the base, drawn with the base's rules; null when the base hasn't it. */

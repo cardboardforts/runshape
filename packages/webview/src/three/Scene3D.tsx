@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
-import { GraphNode, SystemGraph } from "@runshape/kernel";
-import { Change, Op, ReplayStep } from "@runshape/trace";
+import { Change, Layout, LayoutNode } from "@runshape/kernel";
+import { Op, ReplayStep } from "@runshape/trace";
 import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 
 import { Emphasis, HexScene } from "./hex-scene";
-import { layoutFloor } from "./layout-floor";
 
 interface Props {
-  graph: SystemGraph;
+  layout: Layout;
   wiring: ComponentWiring[];
   /** The selected test's objects, one cube each; null shows per-class counts instead. */
   objects: ObjectGraph | null;
@@ -22,11 +21,11 @@ interface Props {
   /** Replay time, so objects appear as they were built; null when not replaying one recording. */
   clockUs: number | null;
   focusObject: number | null;
-  onOpenComponent: (node: GraphNode) => void;
+  onOpenComponent: (node: LayoutNode) => void;
 }
 
-/** The 3D renderer: same inputs as the 2D graph canvas, drawn on a hexagon floor. */
-export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, clockUs, focusObject, onOpenComponent }: Props) {
+/** The 3D renderer: the same layout as the 2D graph canvas, drawn on the style's floor. */
+export function Scene3D({ layout, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, clockUs, focusObject, onOpenComponent }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<HexScene | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -54,12 +53,12 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
   }, []);
 
   useEffect(() => {
-    scene.current?.setGraph(graph, layoutFloor(graph));
-  }, [graph]);
+    scene.current?.setLayout(layout);
+  }, [layout]);
 
   useEffect(() => {
     scene.current?.setObjects(wiring, objects);
-  }, [graph, wiring, objects]);
+  }, [layout, wiring, objects]);
 
   useEffect(() => {
     scene.current?.setObjectClock(clockUs, focusObject);
@@ -70,7 +69,7 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
       if (selectedScenario === null) return "normal";
       return scenarioIds.includes(selectedScenario) ? "highlighted" : "dimmed";
     };
-    const edgeScenarios = new Map(graph.edges.map((edge) => [edge.id, edge.scenarioIds]));
+    const edgeScenarios = new Map(layout.edges.map((edge) => [edge.id, edge.scenarioIds]));
     const active = new Set(step ? [step.from, step.to] : []);
     scene.current?.setEmphasis(
       (node) => emphasisOf(node.scenarioIds),
@@ -80,7 +79,7 @@ export function Scene3D({ graph, wiring, objects, nodeChanges, edgeChanges, sele
       edgeChanges,
     );
     // wiring/objects: setObjects rebuilds the cubes and lines, which then need their emphasis.
-  }, [graph, wiring, objects, selectedScenario, step, nodeChanges, edgeChanges]);
+  }, [layout, wiring, objects, selectedScenario, step, nodeChanges, edgeChanges]);
 
   useEffect(() => {
     if (step) scene.current?.pulse(step.edgeId, step.kind, stepOp, stepMs);

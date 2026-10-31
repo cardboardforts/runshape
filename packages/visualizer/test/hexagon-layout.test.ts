@@ -9,8 +9,7 @@ import { FixedZone, TraceDirectory } from "@runshape/kernel";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { MAX_OBJECTS_SHOWN, objectSlots } from "../src/three/floor";
-import { layoutHexagon } from "../src/three/hexagon-layout";
+import { layoutHexagon } from "../src/hexagon-layout";
 import { overlappingTiles } from "./tiles";
 
 async function fastapiGraph() {
@@ -69,19 +68,5 @@ describe("layoutHexagon", () => {
       const adapterIds = graph.nodes.filter((n) => n.zone === HexagonalZone.InboundAdapter || n.zone === HexagonalZone.OutboundAdapter).map((n) => n.id);
       expect(Math.min(...reach(adapterIds, -1))).toBeGreaterThan(Math.max(...reach(coreIds, 1)));
     }
-  });
-});
-
-describe("objectSlots", () => {
-  test("one slot per object (up to the cap), all distinct, floating above their tile, even on a terrace", () => {
-    const tile = { id: "class:app.Repo", x: 10, y: 24, z: -4, size: 8, angle: null };
-
-    const slots = objectSlots(tile, 5);
-    const capped = objectSlots(tile, 500);
-
-    expect(slots).toHaveLength(5);
-    expect(new Set(slots.map((s) => s.join(","))).size).toBe(5);
-    expect(slots.every(([x, y, z]) => y > tile.y + 1.2 && Math.abs(x - tile.x) < tile.size && Math.abs(z - tile.z) < tile.size)).toBe(true);
-    expect(capped).toHaveLength(MAX_OBJECTS_SHOWN);
   });
 });

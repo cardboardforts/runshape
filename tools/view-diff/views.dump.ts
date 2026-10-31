@@ -66,8 +66,9 @@ test("dump every view", async () => {
     for (const [name, grouping] of Object.entries(GROUPINGS)) {
       await ask(`graph ${name}`, { type: "graph", phases, grouping });
       await ask(`graph ${name} all-phases`, { type: "graph", phases: PHASE_SETS.all, grouping });
-      const graph = responses[`${app} graph ${name}`] as { graph?: { nodes: { id: string }[] } };
-      for (const node of graph.graph?.nodes ?? []) {
+      // The canvas came as a graph before Phase 3, as a layout since: both list the boxes.
+      const graph = responses[`${app} graph ${name}`] as { graph?: { nodes: { id: string }[] }; layout?: { nodes: { id: string }[] } };
+      for (const node of graph.layout?.nodes ?? graph.graph?.nodes ?? []) {
         await ask(`component ${name} ${node.id}`, { type: "component", id: node.id, grouping });
         await ask(`adviseZone ${name} ${node.id}`, { type: "adviseZone", componentId: node.id, grouping });
       }
@@ -100,7 +101,9 @@ test("dump every view", async () => {
     await ask("adviseArchitecture", { type: "adviseArchitecture" });
     await ask("adopt the model's proposal", { type: "adoptArchitecture", style: "hexagonal", from: "model" });
     // A person places one box by hand: an exact-name rule, first in the file.
-    const placeable = (responses[`${app} graph fine`] as { graph?: { nodes: { qualifiedName: string | null; zoneSource: string }[] } }).graph?.nodes.find(
+    type Boxes = { nodes: { qualifiedName: string | null; zoneSource: string }[] };
+    const fine = responses[`${app} graph fine`] as { graph?: Boxes; layout?: Boxes };
+    const placeable = (fine.layout ?? fine.graph)?.nodes.find(
       (node) => node.qualifiedName !== null && node.zoneSource !== "fixed",
     );
     if (placeable) {
