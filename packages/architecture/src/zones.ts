@@ -3,7 +3,9 @@
 // two disagree is the architecture finding.
 
 import { ArchitectureProfile, QualifiedName, RegionSummary, splitDotted, ZoneRole, ZoneRule } from "@runshape/kernel";
+import { Glob } from "./glob";
 import { HEXAGONAL, PROFILES, profileFor } from "./profiles";
+import { readTaxonomy, Taxonomy, TaxonomyFile } from "./taxonomy";
 
 export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */
@@ -21,6 +23,8 @@ export interface ZoneRulesFile {
   zones: ZoneRule[];
   /** Version 3: areas inside this one with a style of their own. */
   regions?: RegionFile[];
+  /** The categorizer's definitions, declared roles and rules (docs/categorizer.md); top level only. */
+  taxonomy?: TaxonomyFile;
 }
 
 /** A region as runshape.json writes it. */
@@ -90,6 +94,8 @@ export class ZoneRules {
     /** The style the file declares; its zones are the ones rules may name. */
     readonly profile: ArchitectureProfile = HEXAGONAL,
     readonly regions: Region[] = [],
+    /** The categorizer's vocabulary with the project's overrides; a region's rules carry the built-in one, unused. */
+    readonly taxonomy: Taxonomy = Taxonomy.builtIn(),
   ) {
     this.compiled = rules.map((rule) => ({ rule, glob: new Glob(rule.match) }));
     this.compiledRegions = regions.map((region) => ({ region, glob: new Glob(region.match) }));
@@ -114,15 +120,19 @@ export class ZoneRules {
       problems.push(`"version" must be ${REGIONS_VERSION} (or ${RULES_VERSION} without regions, or 1, the older "rings" format)`);
     }
     if (file.version !== REGIONS_VERSION && file.regions !== undefined) problems.push(`"regions" needs "version": ${REGIONS_VERSION}`);
-    const rules = readArea(file, "", null, problems);
+    const area = readArea(file, "", null, problems);
+    // From the file as written: a region with a problem of its own is still a name a rule can switch off in.
+    const regionNames = namedRegions(file.regions);
+    const taxonomy = readTaxonomy(file.taxonomy, regionNames, problems);
     if (problems.length > 0) throw new ZoneRulesError(problems);
-    return rules;
+    return new ZoneRules(area.rules, area.profile, area.regions, taxonomy);
   }
 
   /** Version 3 when there are regions; otherwise version 2, so a file without them doesn't churn. */
   serialize(): string {
     const file: ZoneRulesFile = { version: this.regions.length > 0 ? REGIONS_VERSION : RULES_VERSION, style: this.profile.style, zones: this.rules };
     if (this.regions.length > 0) file.regions = this.regions.map(regionFile);
+    if (this.taxonomy.file !== null) file.taxonomy = this.taxonomy.file;
     return `${JSON.stringify(file, null, 2)}\n`;
   }
 
@@ -159,7 +169,7 @@ export class ZoneRules {
     const region = this.regionContaining(QualifiedName.parse(qualifiedName));
     if (region !== null) {
       const regions = this.regions.map((candidate) => (candidate === region ? { ...region, rules: region.rules.withRuleIn(qualifiedName, zone, reason, by, region.name) } : candidate));
-      return new ZoneRules(this.rules, this.profile, regions);
+      return new ZoneRules(this.rules, this.profile, regions, this.taxonomy);
     }
     if (inRegion !== null && !this.isZoneOfStyle(zone)) {
       const zones = this.profile.zones.map((candidate) => candidate.id).join(", ");
@@ -169,7 +179,7 @@ export class ZoneRules {
     const others = this.rules.filter((rule) => rule !== replaced);
     // Placing a composition root again keeps it one: the role is about what it does, not where it sits.
     const role = replaced?.role === undefined ? {} : { role: replaced.role };
-    return new ZoneRules([{ match: qualifiedName, zone, reason, by, ...role }, ...others], this.profile, this.regions);
+    return new ZoneRules([{ match: qualifiedName, zone, reason, by, ...role }, ...others], this.profile, this.regions, this.taxonomy);
   }
 
   private regionContaining(name: QualifiedName): Region | null {
@@ -181,65 +191,10 @@ export class ZoneRules {
   }
 }
 
-/**
- * Matches dotted names against a glob, segment by segment: "**" is any number of segments
- * (none too), "*" any text within one segment. Not a regular expression: a run of "**"
- * made one backtrack exponentially, and the globs come from a file in the repository. The
- * memo bounds the work to pattern segments × name segments.
- */
-class Glob {
-  private readonly segments: string[];
-
-  constructor(pattern: string) {
-    this.segments = splitDotted(pattern);
-  }
-
-  matches(parts: readonly string[]): boolean {
-    const memo = new Map<number, boolean>();
-    const from = (p: number, n: number): boolean => {
-      const key = p * (parts.length + 1) + n;
-      const known = memo.get(key);
-      if (known !== undefined) return known;
-      let result: boolean;
-      if (p === this.segments.length) {
-        result = n === parts.length;
-      } else if (this.segments[p] === "**") {
-        // Zero segments, or one more and stay on "**".
-        result = from(p + 1, n) || (n < parts.length && from(p, n + 1));
-      } else {
-        result = n < parts.length && segmentMatches(this.segments[p]!, parts[n]!) && from(p + 1, n + 1);
-      }
-      memo.set(key, result);
-      return result;
-    };
-    return from(0, 0);
-  }
-}
-
-/** "*" is any text (a "**" inside a segment counts as "*"); greedy with one backtrack point, so linear. */
-function segmentMatches(pattern: string, text: string): boolean {
-  let p = 0;
-  let t = 0;
-  let star = -1;
-  let resume = 0;
-  while (t < text.length) {
-    if (p < pattern.length && pattern[p] !== "*" && pattern[p] === text[t]) {
-      p += 1;
-      t += 1;
-    } else if (p < pattern.length && pattern[p] === "*") {
-      star = p;
-      resume = t;
-      p += 1;
-    } else if (star !== -1) {
-      p = star + 1;
-      resume += 1;
-      t = resume;
-    } else {
-      return false;
-    }
-  }
-  while (p < pattern.length && pattern[p] === "*") p += 1;
-  return p === pattern.length;
+/** Every region name at any depth, as written; anything malformed is skipped (readArea reports it). */
+function namedRegions(regions: unknown): string[] {
+  if (!Array.isArray(regions)) return [];
+  return regions.flatMap((region: Partial<RegionFile> | null) => [...(typeof region?.name === "string" ? [region.name] : []), ...namedRegions(region?.regions)]);
 }
 
 /** The top level of runshape.json, or one region in it: a style, its rules, and regions inside. */
@@ -247,6 +202,7 @@ interface AreaFile {
   style?: unknown;
   zones?: unknown;
   regions?: unknown;
+  taxonomy?: unknown;
 }
 
 /** A region's names: one exact name, or a name and everything under it. */
@@ -268,6 +224,8 @@ function readArea(file: AreaFile, where: string, around: { name: string; match: 
   const zonesGiven = file.zones === undefined && where !== "" ? [] : file.zones;
   if (!Array.isArray(zonesGiven)) problems.push(`${field("zones")} must be a list of rules`);
   const allowed = (profile ?? HEXAGONAL).zones.map((zone) => zone.id);
+  // Read at the top level only: one inside a region would silently do nothing.
+  if (where !== "" && file.taxonomy !== undefined) problems.push(`${path}taxonomy: the taxonomy is declared once, at the top level`);
 
   const rules: ZoneRule[] = [];
   (Array.isArray(zonesGiven) ? zonesGiven : []).forEach((candidate: Partial<ZoneRule>, index) => {

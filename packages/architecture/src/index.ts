@@ -16,3 +16,4 @@ export * from "./folder-guide";
 export * from "./folder-readme";
 export * from "./placements";
 export * from "./zone-advice";
+export * from "./taxonomy";
