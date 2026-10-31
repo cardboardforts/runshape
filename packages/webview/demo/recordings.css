@@ -223,3 +223,19 @@
 .review-page .tests summary {
   cursor: pointer;
 }
+
+.cost-table {
+  margin: 8px 0;
+}
+
+.cost-table caption {
+  text-align: left;
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+/* A row header names the workflow or function: read as text, not as a column label. */
+.cost-table tbody th {
+  color: inherit;
+  font-weight: normal;
+}

@@ -17,6 +17,36 @@ export interface ReviewPage {
   /** "source": changed means its own text changed; "behaviour": a workflow ran it differently (no source kept). */
   threadsBasis: "source" | "behaviour";
   threads: ReviewPageThread[];
+  /** What the change costs at run time; absent from pages saved before it was measured. */
+  cost?: ReviewPageCost;
+}
+
+/** One number on each side; null on a side that doesn't have it. */
+export interface ReviewPageCount {
+  before: number | null;
+  after: number | null;
+}
+
+export interface ReviewPageMs {
+  beforeMs: number | null;
+  afterMs: number | null;
+}
+
+/** Milliseconds each side, and whether the change is past the noise bands ("slower", "faster") or not. */
+export interface ReviewPageTime extends ReviewPageMs {
+  verdict: "slower" | "faster" | "within-noise" | "not-comparable" | "one-side";
+}
+
+export interface ReviewPageCost {
+  /** What the numbers can't show: one recording each side, the recorder's overhead included. */
+  caveats: string[];
+  /** "`GET /api/articles/feed` newly requested: makes 10 queries": routes whose queries changed. */
+  routes: { label: string; text: string; queries: ReviewPageCount; tests: ReviewPageTest[] }[];
+  /** Workflows whose calls, queries or time changed; the rest are counted in `unchanged`. */
+  workflows: { test: ReviewPageTest; time: ReviewPageTime; calls: ReviewPageCount; queries: ReviewPageCount }[];
+  unchanged: number;
+  /** Each changed function over every workflow; `paths` are the distinct paths that ran through it. */
+  functions: { function: ReviewPageFunction; calls: ReviewPageCount; paths: ReviewPageCount; queries: ReviewPageCount; time: ReviewPageTime; selfTime: ReviewPageMs }[];
 }
 
 export interface ReviewPageSide {

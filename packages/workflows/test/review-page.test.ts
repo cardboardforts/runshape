@@ -29,7 +29,10 @@ describe("buildReviewPage", () => {
 
     const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";
     const DUPLICATE = "tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug";
-    expect({ ...page, sections: page.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({ ...row, changes: row.changes.length })) })) }).toEqual({
+    // The cost is its own test below.
+    const { cost, ...rest } = page;
+    expect(cost).toBeDefined();
+    expect({ ...rest, sections: rest.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({ ...row, changes: row.changes.length })) })) }).toEqual({
       format: "runshape-review-page",
       version: 1,
       base: { asked: "main", recording: "aaaaaaaaaaaa", commit: "0123456789abcdef0123456789abcdef01234567", subject: "the main commit" },
@@ -38,6 +41,8 @@ describe("buildReviewPage", () => {
       callouts: [
         { text: "2 still passing, run differently", tone: "warn" },
         { text: "1 route takes a new way", tone: "info" },
+        // One recording each side: a database wait in unchanged code (see the trace module's cost test).
+        { text: "1 workflow slower past the noise bands (one recording each side)", tone: "info" },
       ],
       moved: [],
       // One row for both tests: they changed through the same four functions, in two ways.
@@ -81,6 +86,49 @@ describe("buildReviewPage", () => {
         },
       ],
     });
+  });
+
+  test("the cost, as the page draws it: the Django feed fix's route that pays, the workflows that changed, and its changed functions", async () => {
+    const runs = fixtureRuns("django-feed-fix");
+    const bundle = buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "a"), headSide: side("head", "b"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: "2026-10-16T09:00:00Z" });
+
+    const page = buildReviewPage(bundle);
+
+    const count = ({ before, after }: { before: number | null; after: number | null }) => `${before}→${after}`;
+    const time = (t: { beforeMs: number | null; afterMs: number | null; verdict?: string }) => `${t.beforeMs?.toFixed(1)}→${t.afterMs?.toFixed(1)}ms${t.verdict ? ` ${t.verdict}` : ""}`;
+    const cost = page.cost!;
+    expect({
+      callouts: page.callouts.map((callout) => `${callout.tone}: ${callout.text}`),
+      routes: cost.routes.map((route) => `${route.label} ${route.text} (${route.tests.map((t) => t.name).join(", ")})`),
+      workflows: cost.workflows.map((w) => `${w.test.name}: ${time(w.time)} | calls ${count(w.calls)} | q ${count(w.queries)}`),
+      unchanged: cost.unchanged,
+      functions: cost.functions.map((fn) => `${fn.function.name}: calls ${count(fn.calls)} | paths ${count(fn.paths)} | q ${count(fn.queries)} | ${time(fn.time)} (self ${time(fn.selfTime)})`),
+    }).toMatchInlineSnapshot(`
+      {
+        "callouts": [
+          "warn: 1 needs a zone decision",
+          "warn: 1 workflow makes more queries",
+          "info: 2 routes take a new way",
+        ],
+        "functions": [
+          "ConduitJSONRenderer.render: calls 24→24 | paths 3→2 | q 0→0 | 0.3→0.2ms within-noise (self 0.3→0.2ms)",
+          "core_exception_handler: calls 2→1 | paths 2→1 | q 0→0 | 0.2→0.2ms within-noise (self 0.2→0.2ms)",
+          "_handle_not_found_error: calls 1→0 | paths 1→0 | q 0→0 | 0.0→0.0ms within-noise (self 0.0→0.0ms)",
+          "ArticlesFeedAPIView.get_queryset: calls 0→1 | paths 0→1 | q 0→1 | 0.0→0.9ms within-noise (self 0.0→0.9ms)",
+          "ArticlesFeedAPIView.list: calls 0→1 | paths 0→1 | q 0→9 | 0.0→2.7ms within-noise (self 0.0→1.3ms)",
+          "ArticleViewSet.retrieve: calls 1→0 | paths 1→0 | q 1→0 | 0.8→0.0ms within-noise (self 0.8→0.0ms)",
+        ],
+        "routes": [
+          "GET /api/articles/feed newly requested: makes 10 queries (test_follower_sees_followed_authors_in_their_feed)",
+          "GET /api/articles/{slug} no longer requested: it made 2 queries (test_follower_sees_followed_authors_in_their_feed)",
+        ],
+        "unchanged": 6,
+        "workflows": [
+          "test_follower_sees_followed_authors_in_their_feed: 377.5→378.7ms within-noise | calls 51→58 | q 28→36",
+          "test_anonymous_visitor_cannot_publish: 2.2→4.5ms within-noise | calls 3→4 | q 0→0",
+        ],
+      }
+    `);
   });
 
   test("a test only the base has is named, not linked: head's graph has nothing to open it at (second-model review)", async () => {

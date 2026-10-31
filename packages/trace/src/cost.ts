@@ -141,6 +141,29 @@ export function workflowCostChanged(workflow: WorkflowCost): boolean {
   return differs(workflow.calls) || differs(workflow.queries) || workflow.routes.some((route) => differs(route.queries)) || isTimeCallout(workflow.time);
 }
 
+/** A route whose queries changed, and the workflows whose requests to it changed alike: who waits. */
+export interface RouteCostChange {
+  label: string;
+  requests: Measure;
+  queries: Measure;
+  workflows: { scenarioId: string; name: string }[];
+}
+
+/** Routes whose queries changed, one entry per route and change, in the workflows' order. */
+export function routeCostChanges(workflows: WorkflowCost[]): RouteCostChange[] {
+  const changes = new Map<string, RouteCostChange>();
+  for (const workflow of workflows) {
+    for (const route of workflow.routes) {
+      const { before, after } = route.queries;
+      if (before === null || after === null || before === after) continue;
+      const key = JSON.stringify([route.label, route.requests, route.queries]);
+      if (!changes.has(key)) changes.set(key, { label: route.label, requests: route.requests, queries: route.queries, workflows: [] });
+      changes.get(key)!.workflows.push({ scenarioId: workflow.scenarioId, name: workflow.name });
+    }
+  }
+  return [...changes.values()];
+}
+
 export function isTimeCallout(verdict: TimeVerdict): boolean {
   return verdict === TimeVerdict.Slower || verdict === TimeVerdict.Faster;
 }

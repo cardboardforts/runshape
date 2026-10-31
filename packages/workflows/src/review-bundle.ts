@@ -15,6 +15,7 @@ import {
   Op,
   reviewMarkdown,
   ReviewSummary,
+  routeCostChanges,
   RouteMapDiff,
   ChangedFunction,
   ThreadKind,
@@ -359,22 +360,19 @@ function costMarkdown(cost: CostDiff | undefined): string[] {
 
 /** "`GET /feed` now makes 10 queries, up from 0 (`test_a`)": workflows whose route changed alike are one line. */
 function routeQueryChanges(workflows: CostDiff["workflows"]): string[] {
-  const lines = new Map<string, string[]>();
-  for (const workflow of workflows) {
-    for (const route of workflow.routes) {
-      const { before, after } = route.queries;
-      if (before === null || after === null || before === after) continue;
-      const queries = (n: number) => `${n} quer${n === 1 ? "y" : "ies"}`;
-      // A route only one side requested didn't get cheaper or dearer: the request went elsewhere.
-      const change =
-        route.requests.before === 0 ? `newly requested: makes ${queries(after)}` :
-        route.requests.after === 0 ? `no longer requested: it made ${queries(before)}` :
-        `now makes ${queries(after)}, ${after > before ? "up" : "down"} from ${before}`;
-      const line = `- ${code(route.label)} ${change}`;
-      lines.set(line, [...(lines.get(line) ?? []), workflow.name]);
-    }
-  }
-  return [...lines].map(([line, names]) => `${line} (${names.slice(0, SHOWN_NAMES).map(code).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""})`);
+  return routeCostChanges(workflows).map((route) => {
+    const names = route.workflows.map((workflow) => workflow.name);
+    return `- ${code(route.label)} ${routeQueryText(route)} (${names.slice(0, SHOWN_NAMES).map(code).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""})`;
+  });
+}
+
+/** "now makes 12 queries, up from 3"; a route only one side requested didn't get cheaper or dearer: the request went elsewhere. */
+export function routeQueryText(route: { requests: Measure; queries: Measure }): string {
+  const [before, after] = [route.queries.before ?? 0, route.queries.after ?? 0];
+  const queries = (n: number) => `${n} quer${n === 1 ? "y" : "ies"}`;
+  if (route.requests.before === 0) return `newly requested: makes ${queries(after)}`;
+  if (route.requests.after === 0) return `no longer requested: it made ${queries(before)}`;
+  return `now makes ${queries(after)}, ${after > before ? "up" : "down"} from ${before}`;
 }
 
 function countText({ before, after }: Measure): string {

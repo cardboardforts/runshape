@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { ReviewPage, ReviewPageFunction, ReviewPageTest, ReviewPageThread } from "@runshape/kernel";
+import type { ReviewPage, ReviewPageCost, ReviewPageCount, ReviewPageFunction, ReviewPageMs, ReviewPageTest, ReviewPageThread, ReviewPageTime } from "@runshape/kernel";
 
 type State = { kind: "loading" } | { kind: "failed"; message: string } | { kind: "missing" } | { kind: "ready"; page: ReviewPage; explained: boolean };
 
@@ -94,6 +94,7 @@ function Page({ page, explained, file }: { page: ReviewPage; explained: boolean;
           ))}
         </ul>
       )}
+      {page.cost !== undefined && <Cost cost={page.cost} into={into} />}
       {page.threads.length > 0 && (
         <section aria-labelledby="threads-heading">
           <h2 id="threads-heading">Threads to follow ({page.threads.length})</h2>
@@ -139,6 +140,110 @@ function Page({ page, explained, file }: { page: ReviewPage; explained: boolean;
       )}
     </>
   );
+}
+
+/**
+ * What the change costs at run time, caveats first: every time on it is one recording each
+ * side. The routes whose queries changed lead, since they say who waits.
+ */
+function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTest) => string }) {
+  return (
+    <section aria-labelledby="cost-heading">
+      <h2 id="cost-heading">Cost</h2>
+      {cost.caveats.map((caveat) => (
+        <p key={caveat} className="muted">
+          {caveat}
+        </p>
+      ))}
+      {cost.routes.length > 0 && (
+        <ul aria-label="Queries by route">
+          {cost.routes.map((route) => (
+            <li key={`${route.label} ${route.text}`}>
+              <code>{route.label}</code> {route.text}
+              <Tests tests={route.tests} into={into} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {cost.workflows.length > 0 && (
+        <table className="recordings-table cost-table">
+          <caption>Workflows whose cost changed</caption>
+          <thead>
+            <tr>
+              <th scope="col">Workflow</th>
+              <th scope="col">Time (ms)</th>
+              <th scope="col">Calls</th>
+              <th scope="col">Queries</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cost.workflows.map((workflow) => (
+              <tr key={workflow.test.id}>
+                <th scope="row">{workflow.test.inHead ? <a href={into(workflow.test)}>{workflow.test.name}</a> : workflow.test.name}</th>
+                <td>{timeText(workflow.time)}</td>
+                <td>{countText(workflow.calls)}</td>
+                <td>{countText(workflow.queries)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {cost.unchanged > 0 && (
+        <p className="muted">
+          {cost.unchanged} {cost.unchanged === 1 ? "workflow costs" : "workflows cost"} the same: the same calls and queries, no time change past the noise bands.
+        </p>
+      )}
+      {cost.functions.length > 0 && (
+        <table className="recordings-table cost-table">
+          <caption>Changed functions, over every workflow</caption>
+          <thead>
+            <tr>
+              <th scope="col">Function</th>
+              <th scope="col">Calls</th>
+              <th scope="col">Paths that ran</th>
+              <th scope="col">Queries under it</th>
+              <th scope="col">Time (ms)</th>
+              <th scope="col">Its own lines (ms)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cost.functions.map((fn) => (
+              <tr key={functionKey(fn.function)}>
+                <th scope="row">{functionsText([fn.function])}</th>
+                <td>{countText(fn.calls)}</td>
+                <td>{countText(fn.paths)}</td>
+                <td>{countText(fn.queries)}</td>
+                <td>{timeText(fn.time)}</td>
+                <td>{msText(fn.selfTime)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function countText({ before, after }: ReviewPageCount): string {
+  return before === after ? `${after}` : `${before ?? "—"} → ${after ?? "—"}`;
+}
+
+function msText({ beforeMs, afterMs }: ReviewPageMs): string {
+  const ms = (value: number | null) => (value === null ? "—" : value.toFixed(1));
+  return `${ms(beforeMs)} → ${ms(afterMs)}`;
+}
+
+/** A change is named only past the noise bands; otherwise the numbers say "within noise". */
+const VERDICT_WORDS: Record<ReviewPageTime["verdict"], string> = {
+  slower: ", slower",
+  faster: ", faster",
+  "within-noise": ", within noise",
+  "not-comparable": ", not comparable",
+  "one-side": "",
+};
+
+function timeText(time: ReviewPageTime): string {
+  return `${msText(time)}${VERDICT_WORDS[time.verdict]}`;
 }
 
 function Thread({ thread, into }: { thread: ReviewPageThread; into: (test: ReviewPageTest) => string }) {
