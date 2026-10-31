@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "@runshape/kernel";
-import { buildReplay, describeGap, formatMicros, ReplayPace, stepDurationsMs } from "../src";
+import { describeGap, formatMicros, Phase, ReplayPace, stepDurationsMs } from "@runshape/kernel";
+import { buildReplay } from "../src";
 import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 describe("replay pace", () => {

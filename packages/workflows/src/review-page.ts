@@ -1,25 +1,8 @@
 // The PR page's content (page.json), from a saved review: what the UI draws, worked out here so
 // the UI reads kernel types only.
 import { claimText } from "@runshape/architecture";
-import { ReviewCallout, ReviewHighlights, ReviewPage, ReviewPageCategories, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageStory, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
-import {
-  ChangedFunction,
-  CostDiff,
-  describeChange,
-  groupThreads,
-  Measure,
-  REVIEW_HEADINGS,
-  REVIEW_ORDER,
-  reviewHeadline,
-  reviewRows,
-  ReviewCategory,
-  routeCostChanges,
-  ThreadKind,
-  TimeVerdict,
-  moreExternalCalls,
-  workflowCostChanged,
-  WorkflowSides,
-} from "@runshape/trace";
+import { REVIEW_ORDER, ReviewCallout, ReviewCategory, ReviewHighlights, ReviewPage, ReviewPageCategories, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageStory, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
+import { ChangedFunction, CostDiff, describeChange, groupThreads, Measure, REVIEW_HEADINGS, reviewHeadline, reviewRows, routeCostChanges, ThreadKind, TimeVerdict, moreExternalCalls, workflowCostChanged, WorkflowSides } from "@runshape/trace";
 import type { Explanation } from "@runshape/explainer";
 
 import { BundleCategories, ReviewBundle, ReviewSide, reviewHighlights, routeExternalCallText } from "./review-bundle";

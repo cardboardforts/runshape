@@ -1,56 +1,6 @@
-import { ArchitectureProfile, Change, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, Scenario } from "@runshape/kernel";
+import { ArchitectureProfile, Change, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionChange, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, RunDiff, Scenario, ScenarioDiff, StepKind } from "@runshape/kernel";
 import { detectMoves, Moves } from "./moves";
-import { buildReplay, StepKind } from "./replay";
-
-/**
- * What a code change did to behaviour: the same tests recorded before and after, compared
- * flow by flow. This is the review aid for a change you didn't write line by line (an AI
- * agent's, say): which requests now take a different route, touch the database
- * differently, or run different lines.
- */
-export interface DiffNode extends GraphNode {
-  change: Change;
-  /** Its zone in the base, drawn with the base's rules; null when the base hasn't it. */
-  zoneBefore: string | null;
-}
-
-export interface DiffEdge extends GraphEdge {
-  change: Change;
-  callsBefore: number;
-}
-
-export interface FunctionChange {
-  symbol: FunctionRef;
-  /** Lines (in the new code) whose statement didn't run before. */
-  linesNowReached: number[];
-  /** Lines (in the old code) whose statement no longer runs. */
-  linesNoLongerReached: number[];
-}
-
-export interface ScenarioDiff {
-  id: string;
-  name: string;
-  change: Change;
-  outcomeBefore: Outcome | null;
-  outcomeAfter: Outcome | null;
-  hopsAdded: string[];
-  hopsRemoved: string[];
-  statementsAdded: string[];
-  statementsRemoved: string[];
-  functionsChanged: FunctionChange[];
-}
-
-export interface RunDiff {
-  /** Reasons the two recordings may differ that have nothing to do with the code. */
-  caveats: string[];
-  nodes: DiffNode[];
-  edges: DiffEdge[];
-  scenarios: ScenarioDiff[];
-  /** Both sides are drawn in the rules' style. */
-  profile: ArchitectureProfile;
-  /** Code that moved rather than changed (see moves.ts), one line per namespace or lone function. */
-  moved: string[];
-}
+import { buildReplay } from "./replay";
 
 export interface DiffOptions {
   phases?: Phase[];

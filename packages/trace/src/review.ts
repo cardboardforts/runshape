@@ -1,71 +1,8 @@
-import { Op } from "./align";
-import { Change, ComparedGraphs, FINE_GROUPING, Grouping, Outcome, Phase, Run, SymbolKind } from "@runshape/kernel";
+import { Change, ComparedGraphs, FINE_GROUPING, Grouping, Op, Outcome, Phase, REVIEW_ORDER, ReviewCategory, ReviewItem, ReviewSummary, Run, SymbolKind } from "@runshape/kernel";
 import { diffExecution } from "./execution-diff";
 import { detectMoves, Moves } from "./moves";
 import { diffRuns } from "./run-diff";
 import { causesByScenario, ChangedFunction, Threads } from "./threads";
-
-/**
- * A pull request reviewed by its behaviour: every test run on the base and on the head,
- * sorted by what a reviewer should look at first. Red tests already get attention; the
- * signal this exists for is the test that is still green but now executes differently —
- * a real user journey whose route through the code changed without anyone being told.
- */
-export enum ReviewCategory {
-  NowFailing = "now-failing",
-  /** Green on both sides, yet executed differently: what CI can't show. */
-  SilentChange = "silent-change",
-  NowPassing = "now-passing",
-  NowSkipped = "now-skipped",
-  /** Broken on both sides; it may fail differently now. */
-  StillFailing = "still-failing",
-  Added = "added",
-  Removed = "removed",
-  Unchanged = "unchanged",
-}
-
-export const REVIEW_ORDER = [
-  ReviewCategory.NowFailing,
-  ReviewCategory.SilentChange,
-  ReviewCategory.NowPassing,
-  ReviewCategory.NowSkipped,
-  ReviewCategory.StillFailing,
-  ReviewCategory.Added,
-  ReviewCategory.Removed,
-  ReviewCategory.Unchanged,
-];
-
-export interface ReviewItem {
-  scenarioId: string;
-  name: string;
-  category: ReviewCategory;
-  outcomeBefore: Outcome | null;
-  outcomeAfter: Outcome | null;
-  /** Functions this test calls now and never did before (not merely under a new caller). */
-  newCalls: string[];
-  /** Functions it no longer calls at all. */
-  goneCalls: string[];
-  /** Calls that still happen, under a different caller. */
-  movedCalls: number;
-  queriesAdded: string[];
-  queriesRemoved: string[];
-  /** Functions whose executed statements differ. */
-  changedPaths: string[];
-  /** Sort key within a category: how much moved. */
-  weight: number;
-  /** False when the executions were too different to align call by call. */
-  aligned: boolean;
-}
-
-export interface ReviewSummary {
-  base: { createdAt: string; recorder: string | null };
-  head: { createdAt: string; recorder: string | null };
-  caveats: string[];
-  counts: Record<ReviewCategory, number>;
-  items: ReviewItem[];
-  /** Code that moved rather than changed (see moves.ts). */
-  moved: string[];
-}
 
 const FAILING = new Set([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
 

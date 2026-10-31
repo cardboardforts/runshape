@@ -1,6 +1,7 @@
+import { Op } from "@runshape/kernel";
 import { describe, expect, test } from "vitest";
 
-import { align, MAX_EDIT_DISTANCE, Op } from "../src";
+import { align, MAX_EDIT_DISTANCE } from "../src";
 
 const show = (before: string, after: string) =>
   align([...before], [...after], (c) => c)

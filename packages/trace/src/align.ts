@@ -2,11 +2,7 @@
 // what ran before into what ran after. Used for call sequences, executed statements and
 // replay hops alike.
 
-export enum Op {
-  Same = "same",
-  Added = "added",
-  Removed = "removed",
-}
+import { Op } from "@runshape/kernel";
 
 export interface Aligned<T> {
   op: Op;

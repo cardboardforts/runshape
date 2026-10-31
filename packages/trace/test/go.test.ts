@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase } from "@runshape/kernel";
-import { buildReplay, StepKind } from "../src";
+import { Phase, StepKind } from "@runshape/kernel";
+import { buildReplay } from "../src";
 import { buildSystemGraph } from "@runshape/architecture";
 import { loadFixtureRun } from "../../kernel/test/fixtures";
 

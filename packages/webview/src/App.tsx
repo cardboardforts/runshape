@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, Change, ComponentView, ComponentWiring, FlatPoint, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, ObjectGraph, Phase, RunSummary, Timeline, UiResponse, zoomLevelKey } from "@runshape/kernel";
-import { CallStep, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/trace";
+import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, CallStep, Change, ComponentView, ComponentWiring, describeGap, ExecutionDiff, FlatPoint, FunctionExecutionDiff, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, MergedReplayStep, ObjectGraph, Op, Phase, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, RunSummary, stepDurationsMs, Timeline, UiResponse, zoomLevelKey } from "@runshape/kernel";
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";

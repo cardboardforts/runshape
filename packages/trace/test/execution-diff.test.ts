@@ -9,9 +9,8 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf } from "./graphs";
 
-import { Op } from "../src";
-import { CodeSymbol, FunctionInfo, Phase, pythonSymbol, Role, Run, Span, SymbolKind } from "@runshape/kernel";
-import { diffExecution, diffFunctionExecution, FunctionExecutionDiff, mergeReplays } from "../src";
+import { CodeSymbol, FunctionExecutionDiff, FunctionInfo, Op, Phase, pythonSymbol, Role, Run, Span, SymbolKind } from "@runshape/kernel";
+import { diffExecution, diffFunctionExecution, mergeReplays } from "../src";
 import { fixtureRuns, loadFixtureRun } from "../../kernel/test/fixtures";
 
 const CREATE = "tests/test_api/test_routes/test_articles.py::test_user_can_create_article";

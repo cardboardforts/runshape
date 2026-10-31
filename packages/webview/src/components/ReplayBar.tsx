@@ -1,4 +1,3 @@
-import { Op, ReplayPace, ReplayStep, StepKind } from "@runshape/trace";
 
 interface Props {
   scenarioName: string;
@@ -73,4 +72,5 @@ export function ReplayBar({ scenarioName, steps, ops, index, playing, pace, pace
       </button>
     </div>
   );
-}
+}import { Op, ReplayPace, ReplayStep, StepKind } from "@runshape/kernel";
+

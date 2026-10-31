@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Background, Controls, NodeChange, ReactFlow } from "@xyflow/react";
 
-import { Change, FlatPoint, Layout, LayoutNode } from "@runshape/kernel";
-import { Op, ReplayStep } from "@runshape/trace";
+import { Change, FlatPoint, Layout, LayoutNode, Op, ReplayStep } from "@runshape/kernel";
 
 import { ComponentFlowNode, ComponentNode, Emphasis } from "./ComponentNode";
 import { PulseEdge, PulseFlowEdge } from "./PulseEdge";

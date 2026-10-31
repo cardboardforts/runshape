@@ -10,8 +10,8 @@
  *   infra (the generic Node toolkit) ──> nothing: it fits the kernel's ports by shape
  *   kernel ──> nothing
  *
- * What the code still does that the target forbids is listed in NOT_YET; Phase 0b (PLAN.md)
- * empties it one PR at a time, and an entry that's no longer true fails, so the list only
+ * What the code still does that the target forbids is listed in NOT_YET; Phase 0b and Phase 6 (PLAN.md)
+ * emptied it one PR at a time, and an entry that's no longer true fails, so the list only
  * shrinks. Each package also lists what it imports in its package.json. The kernel and the
  * modules import nothing from Node, VS Code or React. The TypeScript recorder stands alone: it
  * writes the trace format, it doesn't share code with the viewer.
@@ -56,15 +56,13 @@ const PERMITTED: Record<Role, string[]> = {
   recorder: [],
 };
 
-/** Imports the target forbids that the code still has. Phase 0b removes them. */
-const NOT_YET: Record<string, string[]> = {
-  // The trace module's diffs, replays, routes and review (RunDiff, ExecutionDiff, ReplayStep,
-  // RouteMap, ReviewSummary and ~15 more, plus the replay pacing and gap wording the webview
-  // calls): the review module (Phase 6) reshapes them into a kernel DTO, as Phase 1 did for the
-  // PR page, rather than moving today's shapes into the kernel only to change them there.
-  "packages/kernel": ["trace"], // the UI protocol names them, type-only
-  "packages/webview": ["trace"], // the UI draws them
-};
+/**
+ * Imports the target forbids that the code still has. Empty since Phase 6, when the trace
+ * module's diffs, replays, routes and review moved into the kernel (comparison-views.ts): the
+ * UI protocol and the webview read them, so they're shared words, not one module's. A new
+ * entry here is a step backwards and needs a reason in PLAN.md.
+ */
+const NOT_YET: Record<string, string[]> = {};
 
 /** Which @runshape packages each one may import: its role's, and what it doesn't yet do without. */
 const ALLOWED: Record<string, string[]> = Object.fromEntries(

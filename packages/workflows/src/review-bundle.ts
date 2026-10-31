@@ -1,30 +1,7 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { ArchitectureDiff, Change, Grouping, Phase, Placement, plainMarkdown, PlacementChange, QualifiedName, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
+import { ArchitectureDiff, Change, Grouping, Op, Phase, Placement, PlacementChange, plainMarkdown, QualifiedName, RegionSummary, ReviewHighlights, ReviewSummary, RouteMapDiff, Run, ZoneRule } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildPlacements, CategorizedItem, categorize, checkTagRules, claimText, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
-import {
-  buildReview,
-  buildThreads,
-  CostDiff,
-  detectMoves,
-  diffCost,
-  diffRouteMaps,
-  diffRuns,
-  groupThreads,
-  Measure,
-  Moves,
-  Op,
-  reviewMarkdown,
-  ReviewSummary,
-  routeCostChanges,
-  WorkflowCost,
-  WorkflowSides,
-  RouteMapDiff,
-  ChangedFunction,
-  ThreadKind,
-  Threads,
-  TimeVerdict,
-  workflowCostChanged,
-} from "@runshape/trace";
+import { buildReview, buildThreads, CostDiff, detectMoves, diffCost, diffRouteMaps, diffRuns, groupThreads, Measure, Moves, reviewMarkdown, routeCostChanges, WorkflowCost, WorkflowSides, ChangedFunction, ThreadKind, Threads, TimeVerdict, workflowCostChanged } from "@runshape/trace";
 
 import { NoteKind, ReviewStory, storyIsEmpty } from "./story";
 

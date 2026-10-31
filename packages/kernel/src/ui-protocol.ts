@@ -6,7 +6,7 @@ import type { ArchitectureStyle } from "./trace/model/arch-trace";
 import type { FlatPoint, Layout, ZoomLevel } from "./layout";
 import type { ComponentView } from "./trace/model/component-view";
 import type { Grouping } from "./trace/model/components";
-import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/trace";
+import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "./comparison-views";
 import type { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "./recording-views";
 
 export interface ScenarioSummary {

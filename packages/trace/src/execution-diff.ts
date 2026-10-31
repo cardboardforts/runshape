@@ -1,39 +1,7 @@
-import { align, Aligned, Op } from "./align";
-import { CodeSymbol, FINE_GROUPING, FunctionRef, functionRef, Grouping, Phase, renamedComponentId, Role, Run, Scenario, Span } from "@runshape/kernel";
+import { align, Aligned } from "./align";
+import { CallStep, CodeSymbol, ExecutionDiff, FINE_GROUPING, FunctionExecutionDiff, FunctionRef, functionRef, Grouping, MergedReplayStep, Op, Phase, renamedComponentId, ReplayStep, Role, Run, Scenario, Span, StatementStep, StepKind } from "@runshape/kernel";
 import { Moves } from "./moves";
-import { buildReplay, ReplayStep, StepKind } from "./replay";
-
-/**
- * How one test's execution changed between two recordings, matched by what ran rather than
- * where it sits in the file: calls by their path of qualified names, statements by their
- * text. A function that moved (or had code inserted above it) lines up with itself; a call
- * that now happens under a new parent shows as removed in one place and added in another.
- */
-export interface CallStep {
-  op: Op;
-  depth: number;
-  symbol: FunctionRef;
-  /** "test_x > create_new_article > get_slug_for_article": where the call sits, to show. */
-  path: string;
-  /** Set on a removed/added pair of the same function: it still runs, under a new caller. */
-  reparented: boolean;
-  /** The namespace the function had in the base, when it moved (see moves.ts); null otherwise. */
-  movedFrom: string | null;
-}
-
-export interface ExecutionDiff {
-  scenarioId: string;
-  /** False when the two executions were too different to align (see align.ts). */
-  complete: boolean;
-  calls: CallStep[];
-  added: number;
-  removed: number;
-}
-
-export interface MergedReplayStep {
-  op: Op;
-  step: ReplayStep;
-}
+import { buildReplay } from "./replay";
 
 /** Project code only: framework landmarks rarely change and would bury the calls that did. */
 const PROJECT_ROLES = new Set([Role.Source, Role.Test]);
@@ -140,28 +108,6 @@ function nearestProjectAncestor(span: Span): Span | null {
     if (PROJECT_ROLES.has(ancestor.fn.role)) return ancestor;
   }
   return null;
-}
-
-/** One function in one test: the statements it executed, before against after, by their text. */
-export interface StatementStep {
-  op: Op;
-  text: string;
-  beforeLine: number | null;
-  afterLine: number | null;
-}
-
-export interface FunctionExecutionDiff {
-  scenarioId: string;
-  symbol: FunctionRef;
-  /** "text" when both recordings carry their source; otherwise line numbers stand in, and moves show as changes. */
-  matchedBy: "text" | "line-number";
-  /** False when the two were too different to align (see align.ts). */
-  complete: boolean;
-  callsBefore: number;
-  callsAfter: number;
-  fileBefore: string | null;
-  fileAfter: string | null;
-  statements: StatementStep[];
 }
 
 interface Statement {

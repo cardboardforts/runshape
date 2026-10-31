@@ -1,4 +1,3 @@
-import { CallStep, ExecutionDiff, FunctionExecutionDiff, Op } from "@runshape/trace";
 
 /** Unchanged calls kept around each change, so it's clear where in the flow it happened. */
 const CONTEXT = 2;
@@ -108,4 +107,5 @@ export function FunctionExecutionPanel({ diff }: { diff: FunctionExecutionDiff }
       )}
     </section>
   );
-}
+}import { CallStep, ExecutionDiff, FunctionExecutionDiff, Op } from "@runshape/kernel";
+

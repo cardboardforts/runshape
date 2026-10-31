@@ -6,8 +6,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { ArchitectureProfile, Change, ComponentWiring, FloorPiece, FloorTile, GraphNode, Layout, LayoutNode, ObjectGraph } from "@runshape/kernel";
-import { Op, StepKind } from "@runshape/trace";
+import { ArchitectureProfile, Change, ComponentWiring, FloorPiece, FloorTile, GraphNode, Layout, LayoutNode, ObjectGraph, Op, StepKind } from "@runshape/kernel";
 
 import { zoneColor } from "../zone-style";
 

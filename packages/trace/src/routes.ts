@@ -1,67 +1,6 @@
-import { BoundaryCall, Change, FunctionRef, functionRef, Outcome, Phase, Role, Route, Run, Span, SymbolKind } from "@runshape/kernel";
-import { align, Op } from "./align";
+import { BoundaryCall, Change, FunctionRef, functionRef, Op, Outcome, Phase, RequestRef, Role, Route, RouteGroupDiff, RouteMap, RouteMapDiff, RouteVariant, RouteVariantDiff, Run, Span, SymbolKind, VariantStep } from "@runshape/kernel";
+import { align } from "./align";
 import { Moves } from "./moves";
-
-/**
- * A run's requests by the route that served them, and each route's requests by the path they
- * took through the project's code. Real traffic sends a route hundreds of requests that do a
- * handful of different things; a variant is one of those things.
- */
-export interface RouteMap {
-  routes: RouteGroup[];
-  /** Startup, background work, unit tests: scenarios with no request in the phases shown. */
-  scenariosWithoutRequests: number;
-}
-
-export interface RouteGroup {
-  /** Method and pattern as recorded: what pairs a route across two recordings. */
-  id: string;
-  /** "GET /orders/{id}": the pattern written one way whatever the framework's syntax. */
-  label: string;
-  /** False when no route in the framework's table served it: grouped by its literal path. */
-  routed: boolean;
-  requestCount: number;
-  /** The main path first, then by how many requests took each. */
-  variants: RouteVariant[];
-}
-
-export interface RouteVariant {
-  /** The shape of the call tree: what makes two requests the same variant. */
-  key: string;
-  steps: VariantStep[];
-  requests: RequestRef[];
-  /** The route's most taken path (the longest, on a tie): the others are told against it. */
-  isMain: boolean;
-  /**
-   * False when the request matched the route's pattern but was turned away before its handler
-   * ran (authentication, validation in middleware): `steps` are what ran instead, and `adds`
-   * lists them rather than `skips` listing the whole main path.
-   */
-  reachedHandler: boolean;
-  /** What the main path runs that this one doesn't, and the other way round. */
-  skips: string[];
-  adds: string[];
-}
-
-export interface VariantStep {
-  /** What pairs a step across variants: the function's symbol key, or the external call. */
-  key: string;
-  /** Below the request's entry: the project code the framework called first is depth 0. */
-  depth: number;
-  label: string;
-  /** Null for a call out of the program (a query, an HTTP call). */
-  symbol: FunctionRef | null;
-  /** It ran more than once in a row (a loop): how many times doesn't make another variant. */
-  repeated: boolean;
-}
-
-export interface RequestRef {
-  scenarioId: string;
-  scenarioName: string;
-  /** "GET /orders/ord-1": the request as sent. */
-  line: string;
-  outcome: Outcome;
-}
 
 export interface RouteMapOptions {
   phases?: Phase[];
@@ -110,40 +49,6 @@ export function buildRouteMap(run: Run, options: RouteMapOptions = {}): RouteMap
     }),
     scenariosWithoutRequests,
   };
-}
-
-/** How a route's ways through the code changed between two recordings. */
-export interface RouteMapDiff {
-  routes: RouteGroupDiff[];
-}
-
-export interface RouteGroupDiff {
-  id: string;
-  label: string;
-  routed: boolean;
-  /** Changed when a variant appeared or went; requests per variant may differ either way. */
-  change: Change;
-  variants: RouteVariantDiff[];
-}
-
-export interface RouteVariantDiff {
-  /** Head's variant, or the base's when it's gone. */
-  variant: RouteVariant;
-  /**
-   * Changed: a path only head takes, paired with one only the base took that it mostly
-   * follows. A refactor that adds a call to every placed order is one variant changed, not
-   * one gone and one new.
-   */
-  change: Change;
-  /** For a changed variant: the base's, and the functions one calls that the other doesn't. */
-  previous: RouteVariant | null;
-  nowCalls: string[];
-  noLongerCalls: string[];
-  /** The path with each step marked: a changed variant's steps aligned with its previous one's. */
-  path: { op: Op; step: VariantStep }[];
-  /** Requests that took it in each recording. */
-  before: number;
-  after: number;
 }
 
 /** How much of the longer path two variants must share, in order, to be one variant changed. */

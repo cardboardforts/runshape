@@ -5,10 +5,10 @@
  * time land in self. Tracing slows project code, so compare these with each other, not
  * with production latencies.
  */
+import { formatMicros } from "@runshape/kernel";
 import { describe, expect, test } from "vitest";
 
 import { buildComponentView } from "../src";
-import { formatMicros } from "@runshape/trace";
 import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 describe("time per function", () => {

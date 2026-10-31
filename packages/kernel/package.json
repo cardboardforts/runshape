@@ -7,8 +7,5 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p ."
-  },
-  "dependencies": {
-    "@runshape/trace": "0.1.0"
   }
 }

@@ -1,8 +1,7 @@
-import { CatalogFunction, FunctionRef, functionRef, Phase, Role, Run, Scenario } from "@runshape/kernel";
+import { CatalogFunction, FunctionRef, functionRef, Phase, Role, RouteMap, Run, RunDiff, Scenario } from "@runshape/kernel";
 
 import { Moves } from "./moves";
-import { buildRouteMap, RouteMap } from "./routes";
-import { RunDiff } from "./run-diff";
+import { buildRouteMap } from "./routes";
 
 /** How a workflow through a changed function fares: it ran the same, ran differently, or only one side has it. */
 export enum ThreadKind {

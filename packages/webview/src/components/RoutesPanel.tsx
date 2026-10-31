@@ -1,5 +1,4 @@
-import { Change, FunctionRef } from "@runshape/kernel";
-import { Op, RouteMap, RouteMapDiff, RouteVariant, VariantStep } from "@runshape/trace";
+import { Change, FunctionRef, Op, RouteMap, RouteMapDiff, RouteVariant, VariantStep } from "@runshape/kernel";
 
 interface Props {
   routes: RouteMap;

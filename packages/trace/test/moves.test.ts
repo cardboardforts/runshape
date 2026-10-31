@@ -13,8 +13,8 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf, reviewOf } from "./graphs";
 
-import { Change, CodeSymbol, FunctionInfo, Outcome, Phase, Role, Run, Scenario, Span, SymbolKind, TraceDirectory, TraceFiles } from "@runshape/kernel";
-import { detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, mergeReplays, Op } from "../src";
+import { Change, CodeSymbol, FunctionInfo, Op, Outcome, Phase, Role, Run, Scenario, Span, SymbolKind, TraceDirectory, TraceFiles } from "@runshape/kernel";
+import { detectMoves, diffRouteMaps, diffExecution, diffFunctionExecution, mergeReplays } from "../src";
 import { fixtureFiles } from "../../kernel/test/fixtures";
 import { rewritten } from "./rewrite";
 

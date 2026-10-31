@@ -54,9 +54,9 @@ hosts:      packages/cli (command line, composition root), packages/extension (V
 ```
 
 The target (GOALS.md, "Target architecture") is a kernel every module points at and modules
-that never import each other; PLAN.md's Phase 0b gets there. Until then,
-`package-boundaries.test.ts` lists what still crosses (`NOT_YET`): core's UI protocol uses
-the modules' view models (architecture, views, visualizer) until Phase 3.
+that never import each other; PLAN.md's Phase 0b got there, and Phase 6 moved the last
+crossing (the trace module's diffs, replays, routes and review, which the UI protocol and the
+webview read) into the kernel. `package-boundaries.test.ts`'s `NOT_YET` is empty.
 
 `packages/kernel/test/package-boundaries.test.ts` checks every arrow from the imports
 themselves, and that only infra, the adapters and the hosts touch the disk. `runshape.json`
