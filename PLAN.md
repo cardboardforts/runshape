@@ -389,6 +389,11 @@ behave differently" works on a real Runshape PR.
 6. **Two misreadings Runshape's own folder guides showed (Phase 0, PR 5):** a composition
    root wiring adapters is not a handler skipping the core, and calling a function you were
    handed (a callback) is not a dependency pointing outward.
+   - **Done (2026-10-31).** A rule may declare `"role": "composition-root"`: its calls wire,
+     so they're never findings. Runshape's CLI declares three (`"by": "llm"`, for your approval
+     in the diff); FastAPI's `app.api.dependencies` is the same pattern. Callbacks: not seen
+     since Phase 0b's restructuring (the TypeScript recorder records no closures, and Python's
+     are comprehensions inside their own function), so no rule was added for them.
 
 **Done when:** Runshape opens at its modules (recorders, trace, infra, architecture, …), a
 changed module is marked, and clicking down reaches a function's diff.

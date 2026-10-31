@@ -26,6 +26,13 @@ the skill behind a model call in VS Code, frontend styles, the cycle (Flux) layo
 Framework, test-double and external zones stay fixed: they're facts about the code, not
 choices in a style.
 
+## Composition roots
+
+A rule may say `"role": "composition-root"`: code that builds the adapters and hands them in
+(an app's main, FastAPI's dependency functions). Its calls are wiring, so they're never
+findings, whatever zones they cross. Everyone else's calls are judged as before. Declared,
+not detected: a handler that happens to build things is still a handler.
+
 ## Regions: a style per area (`runshape.json` v3)
 
 A **region** is an area of the code with one style; a **zone** is a slot inside that style.

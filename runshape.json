@@ -16,6 +16,9 @@
     { "match": "packages.adapters.src.models.**", "zone": "outbound-adapter", "reason": "language models: claude -p and the Anthropic API; fit the kernel's LanguageModel port", "by": "llm" },
     { "match": "packages.adapters.src.library.**", "zone": "outbound-adapter", "reason": "the recordings and reviews a project keeps (RecordingStore, ReviewStore, on infra) and the git refs they compare", "by": "user" },
     { "match": "packages.adapters.src.project.**", "zone": "outbound-adapter", "reason": "the project's own working tree, for the recordings workflow: implements the kernel's ProjectFiles port", "by": "llm" },
+    { "match": "packages.cli.src.runshape-bin", "zone": "inbound-adapter", "reason": "the CLI's composition root: builds git, the library, the recorders and the logger, and hands them to the workflows", "by": "llm", "role": "composition-root" },
+    { "match": "packages.cli.src.main", "zone": "inbound-adapter", "reason": "runshape-review-md's composition root: opens a traces directory and hands it to the review", "by": "llm", "role": "composition-root" },
+    { "match": "packages.cli.src.choose-model", "zone": "inbound-adapter", "reason": "picks and builds the language model an --explain asks: wiring for the composition root", "by": "llm", "role": "composition-root" },
     { "match": "packages.cli.src.**", "zone": "inbound-adapter", "reason": "the command line: parsing each command into a call on the workflows' Recordings, the launchd job it prints, the composition root", "by": "user" }
   ]
 }

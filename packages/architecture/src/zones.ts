@@ -22,7 +22,15 @@ export interface ZoneRule {
   reason: string;
   /** Who decided: a person, or a model's or the detector's proposal a person accepted. */
   by: "user" | "llm" | "detected";
+  /**
+   * "composition-root": code that builds the adapters and hands them in (an app's main, a
+   * framework's dependency functions). Its calls wire; they don't break the style.
+   */
+  role?: ZoneRole;
 }
+
+export type ZoneRole = "composition-root";
+const ROLES: ZoneRole[] = ["composition-root"];
 
 const DECIDERS: ZoneRule["by"][] = ["user", "llm", "detected"];
 
@@ -288,8 +296,9 @@ function readArea(file: AreaFile, where: string, around: { name: string; match: 
     }
     if (typeof candidate?.reason !== "string" || candidate.reason.trim() === "") problems.push(`${at}.reason must say why`);
     if (candidate?.by !== undefined && !DECIDERS.includes(candidate.by)) problems.push(`${at}.by must be "user", "llm" or "detected"`);
+    if (candidate?.role !== undefined && !ROLES.includes(candidate.role)) problems.push(`${at}.role must be ${ROLES.map((role) => `"${role}"`).join(" or ")}, or left out`);
     if (problems.length === before) {
-      rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user" });
+      rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user", ...(candidate.role === undefined ? {} : { role: candidate.role }) });
     }
   });
 

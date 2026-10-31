@@ -149,6 +149,7 @@ class GraphBuilder {
       });
     }
     const edges: GraphEdge[] = [];
+    const wiring = new Set([...this.nodes.values()].filter((tally) => this.isCompositionRoot(tally)).map((tally) => tally.ref.id));
     for (const [id, tally] of this.edges) {
       edges.push({
         id,
@@ -156,13 +157,19 @@ class GraphBuilder {
         to: tally.to,
         calls: tally.calls,
         scenarioIds: [...tally.scenarioIds].sort(),
-        // Constructing an adapter (dependency injection) isn't using it.
-        violation: tally.uses > 0 ? forbiddenCall(this.profile, zones.get(tally.from) ?? "", zones.get(tally.to) ?? "") : null,
+        // Constructing an adapter (dependency injection) isn't using it, and a declared
+        // composition root's calls are all wiring.
+        violation: tally.uses > 0 && !wiring.has(tally.from) ? forbiddenCall(this.profile, zones.get(tally.from) ?? "", zones.get(tally.to) ?? "") : null,
       });
     }
     nodes.sort((a, b) => a.id.localeCompare(b.id));
     edges.sort((a, b) => a.id.localeCompare(b.id));
     return { nodes, edges, profile: this.profile };
+  }
+
+  private isCompositionRoot(tally: NodeTally): boolean {
+    if (tally.ref.name === null || this.rules.profile.style !== this.profile.style) return false;
+    return this.rules.matchFor(tally.ref.name)?.rule.role === "composition-root";
   }
 
   private isStyleZone(zone: ZoneId): boolean {
@@ -180,7 +187,7 @@ class GraphBuilder {
         return {
           zone: match.rule.zone,
           source: ZoneSource.Rule,
-          reason: `${decidedBy} in runshape.json (${match.rule.match}): ${match.rule.reason}`,
+          reason: `${decidedBy} in runshape.json (${match.rule.match}): ${match.rule.reason}${match.rule.role === "composition-root" ? " (composition root: its calls wire the adapters, they don't skip the core)" : ""}`,
         };
       }
     }

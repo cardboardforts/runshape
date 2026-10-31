@@ -66,4 +66,27 @@ describe("zones on the system graph", () => {
       ]
     `);
   });
+
+  test("a declared composition root wires the adapters: its calls aren't findings, everyone else's still are", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const rules = ZoneRules.parse(
+      JSON.stringify({
+        version: 2,
+        style: "hexagonal",
+        zones: [{ match: "app.api.dependencies.**", zone: "inbound-adapter", reason: "FastAPI's dependency functions hand each route its repositories", role: "composition-root" }],
+      }),
+    );
+
+    const graph = buildSystemGraph(run, { rules, profile: HEXAGONAL });
+
+    expect(violations(graph).map((line) => line.split(":")[0])).toEqual([
+      "articles.articles_common -> ArticlesRepository",
+      "articles.articles_resource -> ArticlesRepository",
+      "routes.authentication -> UsersRepository",
+    ]);
+    expect(describeZones(graph, ["dependencies.authentication"])).toEqual([
+      "dependencies.authentication: inbound-adapter [rule] declared in runshape.json (app.api.dependencies.**): FastAPI's dependency functions hand each route its repositories (composition root: its calls wire the adapters, they don't skip the core)",
+    ]);
+    expect(() => ZoneRules.parse(JSON.stringify({ version: 2, zones: [{ match: "a.**", zone: "core", reason: "r", role: "boss" }] }))).toThrowError(/zones\[0\]\.role must be "composition-root", or left out/);
+  });
 });
