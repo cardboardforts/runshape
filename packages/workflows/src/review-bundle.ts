@@ -1,7 +1,27 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { Grouping, Phase, ReviewHighlights, Run } from "@runshape/kernel";
 import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, RegionSummary, ZoneRule, ZoneRules } from "@runshape/architecture";
-import { buildReview, buildThreads, Change, detectMoves, diffRouteMaps, diffRuns, groupThreads, Op, reviewMarkdown, ReviewSummary, RouteMapDiff, ChangedFunction, ThreadKind, Threads } from "@runshape/trace";
+import {
+  buildReview,
+  buildThreads,
+  Change,
+  CostDiff,
+  detectMoves,
+  diffCost,
+  diffRouteMaps,
+  diffRuns,
+  groupThreads,
+  Measure,
+  Op,
+  reviewMarkdown,
+  ReviewSummary,
+  RouteMapDiff,
+  ChangedFunction,
+  ThreadKind,
+  Threads,
+  TimeVerdict,
+  workflowCostChanged,
+} from "@runshape/trace";
 
 /** One side of the comparison: what was asked for, and the recording that answered it. */
 export interface ReviewSide {
@@ -58,6 +78,8 @@ export interface ReviewBundle {
   routes: { routes: BundleRoute[]; unchanged: number };
   /** Each function the change touched, and the workflows (tests, requests) that run through it. */
   threads: Threads;
+  /** What the change costs at run time; absent from bundles saved before it was measured. */
+  cost?: CostDiff;
 }
 
 export const REVIEW_FORMAT = "runshape-review";
@@ -81,6 +103,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
   const baseRules = input.baseRules ?? rules;
   const moves = detectMoves(base, head);
   const graphs = comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules });
+  const threads = buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves });
   return {
     format: REVIEW_FORMAT,
     version: REVIEW_VERSION,
@@ -93,7 +116,8 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     // Both placed in head's style: a style change is one change, not every class moving.
     architecture: diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves),
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),
-    threads: buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves }),
+    threads,
+    cost: diffCost(base, head, threads, { phases: BUNDLE_OPTIONS.phases, moves }),
   };
 }
 
@@ -147,6 +171,7 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
     "",
     `Compared ${sideText(bundle.base)} with ${sideText(bundle.head)}.`,
     "",
+    ...costMarkdown(bundle.cost),
     ...threadsMarkdown(bundle.threads),
     ...architectureMarkdown(bundle.architecture, bundle.baseRulesKnown),
     ...routesMarkdown(bundle.routes),
@@ -297,6 +322,89 @@ const THREAD_WORDS: Record<ThreadKind, string> = {
   [ThreadKind.New]: "newly run through it",
   [ThreadKind.Gone]: "no longer run through it",
   [ThreadKind.Same]: "run as before",
+};
+
+/**
+ * "Cost": the routes whose queries changed (the route that pays), the workflows whose calls,
+ * queries or time changed, and each changed function's calls, paths and time. The caveats come
+ * first: one recording each side is the reader's first fact about every time below.
+ */
+function costMarkdown(cost: CostDiff | undefined): string[] {
+  if (cost === undefined) return [];
+  const out = ["### Cost", "", ...cost.caveats.map((caveat) => `> ${caveat}`), ""];
+  const changed = cost.workflows.filter(workflowCostChanged);
+  const routes = routeQueryChanges(changed);
+  if (routes.length > 0) out.push("Queries by route:", "", ...routes, "");
+  if (changed.length > 0) {
+    out.push("| Workflow | Time (ms) | Calls | Queries |", "|---|---|---|---|");
+    for (const workflow of changed.slice(0, SHOWN_FUNCTIONS)) {
+      out.push(`| ${code(workflow.name)} | ${timeText(workflow.timeUs, workflow.time)} | ${countText(workflow.calls)} | ${countText(workflow.queries)} |`);
+    }
+    if (changed.length > SHOWN_FUNCTIONS) out.push(`| and ${changed.length - SHOWN_FUNCTIONS} more (review.json lists every workflow) | | | |`);
+    out.push("");
+  }
+  const same = cost.workflows.length - changed.length;
+  if (same > 0) out.push(`${same} workflow${same === 1 ? "" : "s"} cost the same: the same calls and queries, and no time change past the noise bands.`, "");
+  if (cost.functions.length > 0) {
+    out.push("Changed functions, over every workflow:", "", "| Function | Calls | Paths that ran | Queries under it | Time (ms) | Its own lines (ms) |", "|---|---|---|---|---|---|");
+    for (const fn of cost.functions.slice(0, SHOWN_FUNCTIONS)) {
+      const name = `${code(fn.symbol.path)} (${fn.symbol.namespace}), ${fn.change}`;
+      out.push(`| ${name} | ${countText(fn.calls)} | ${countText(fn.paths)} | ${countText(fn.queries)} | ${timeText(fn.timeUs, fn.time)} | ${msText(fn.selfTimeUs)} |`);
+    }
+    if (cost.functions.length > SHOWN_FUNCTIONS) out.push(`| and ${cost.functions.length - SHOWN_FUNCTIONS} more (review.json lists every function) | | | | | |`);
+    out.push("");
+  }
+  return out;
+}
+
+/** "`GET /feed` now makes 10 queries, up from 0 (`test_a`)": workflows whose route changed alike are one line. */
+function routeQueryChanges(workflows: CostDiff["workflows"]): string[] {
+  const lines = new Map<string, string[]>();
+  for (const workflow of workflows) {
+    for (const route of workflow.routes) {
+      const { before, after } = route.queries;
+      if (before === null || after === null || before === after) continue;
+      const queries = (n: number) => `${n} quer${n === 1 ? "y" : "ies"}`;
+      // A route only one side requested didn't get cheaper or dearer: the request went elsewhere.
+      const change =
+        route.requests.before === 0 ? `newly requested: makes ${queries(after)}` :
+        route.requests.after === 0 ? `no longer requested: it made ${queries(before)}` :
+        `now makes ${queries(after)}, ${after > before ? "up" : "down"} from ${before}`;
+      const line = `- ${code(route.label)} ${change}`;
+      lines.set(line, [...(lines.get(line) ?? []), workflow.name]);
+    }
+  }
+  return [...lines].map(([line, names]) => `${line} (${names.slice(0, SHOWN_NAMES).map(code).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""})`);
+}
+
+function countText({ before, after }: Measure): string {
+  return before === after ? `${after}` : `${before ?? "—"} → ${after ?? "—"}`;
+}
+
+/** Milliseconds to a tenth: already finer than one traced run can tell apart. */
+function ms(us: number): string {
+  return (us / 1000).toFixed(1);
+}
+
+function msText({ before, after }: Measure): string {
+  return `${before === null ? "—" : ms(before)} → ${after === null ? "—" : ms(after)}`;
+}
+
+/** "10.6 → 25.3, **slower** (+14.7, +138%)": a change is named only past the noise bands. */
+function timeText(timeUs: Measure, verdict: TimeVerdict): string {
+  if (verdict !== TimeVerdict.Slower && verdict !== TimeVerdict.Faster) return `${msText(timeUs)}${TIME_WORDS[verdict]}`;
+  const [before, after] = [timeUs.before!, timeUs.after!];
+  const sign = after > before ? "+" : "−";
+  const share = before === 0 ? "" : `, ${sign}${Math.round((Math.abs(after - before) / before) * 100)}%`;
+  return `${msText(timeUs)}, **${verdict}** (${sign}${ms(Math.abs(after - before))}${share})`;
+}
+
+const TIME_WORDS: Record<TimeVerdict, string> = {
+  [TimeVerdict.Slower]: "",
+  [TimeVerdict.Faster]: "",
+  [TimeVerdict.WithinNoise]: ", within noise",
+  [TimeVerdict.NotComparable]: ", not comparable",
+  [TimeVerdict.OneSide]: "",
 };
 
 /** What a morning's list shows of a review before it's opened, and the PR page's callouts. */

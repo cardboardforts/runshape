@@ -56,6 +56,27 @@ describe("buildReviewBundle", () => {
 
       Compared \`main\` (\`0123456\` the main commit) with the working tree (on \`0123456\`).
 
+      ### Cost
+
+      > Each side was recorded once, so a time difference may be noise: one is called out only past both 10 ms and 50%, and even then a second recording is what confirms it.
+      > Times include the recorder's own overhead (settrace), which isn't subtracted: code that makes many calls looks slower than it runs untraced. Call and query counts don't depend on timing.
+
+      | Workflow | Time (ms) | Calls | Queries |
+      |---|---|---|---|
+      | \`test_user_can_create_article\` | 10.6 → 25.3, **slower** (+14.7, +138%) | 52 → 54 | 10 |
+      | \`test_user_can_not_create_article_with_duplicated_slug\` | 20.8 → 20.0, within noise | 38 → 40 | 5 |
+
+      2 workflows cost the same: the same calls and queries, and no time change past the noise bands.
+
+      Changed functions, over every workflow:
+
+      | Function | Calls | Paths that ran | Queries under it | Time (ms) | Its own lines (ms) |
+      |---|---|---|---|---|---|
+      | \`_normalize_title\` (app.services.articles), added | 0 → 2 | 0 → 1 | 0 | 0.0 → 0.0, within noise | 0.0 → 0.0 |
+      | \`create_new_article\` (app.api.routes.articles.articles_resource), edited | 2 | 2 | 13 | 7.2 → 21.9, **slower** (+14.7, +203%) | 1.4 → 0.5 |
+      | \`ensure_slug_available\` (app.services.articles), added | 0 → 2 | 0 → 2 | 0 → 5 | 0.0 → 2.4, within noise | 0.0 → 0.2 |
+      | \`get_slug_for_article\` (app.services.articles), edited | 2 | 1 | 0 | 0.1 → 0.2, within noise | 0.1 → 0.2 |
+
       ### Threads to follow (4 changed functions)
 
       - \`_normalize_title\`, \`ensure_slug_available\` (app.services.articles), added: 2 workflows: 2 newly run through them
@@ -73,6 +94,32 @@ describe("buildReviewBundle", () => {
 
       - \`POST /api/articles\`: 2 ways changed
         - now calls \`ensure_slug_available\`, \`_normalize_title\` (2 ways)
+      "
+    `);
+  });
+
+  test("the cost section names the route that pays: the Django feed fix sends the feed to its own view, which makes 10 queries", async () => {
+    // Before the fix the feed's URL matched the article-by-slug route and 404'd; now the feed
+    // view serves it. The route lines come first because that's who waits. Times all move by
+    // a few milliseconds, none past both noise bands, so none is named slower or faster.
+    const runs = fixtureRuns("django-feed-fix");
+
+    const bundle = buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
+
+    const markdown = reviewBundleMarkdown(bundle);
+    expect(markdown.slice(markdown.indexOf("Queries by route"), markdown.indexOf("Changed functions"))).toMatchInlineSnapshot(`
+      "Queries by route:
+
+      - \`GET /api/articles/feed\` newly requested: makes 10 queries (\`test_follower_sees_followed_authors_in_their_feed\`)
+      - \`GET /api/articles/{slug}\` no longer requested: it made 2 queries (\`test_follower_sees_followed_authors_in_their_feed\`)
+
+      | Workflow | Time (ms) | Calls | Queries |
+      |---|---|---|---|
+      | \`test_follower_sees_followed_authors_in_their_feed\` | 377.5 → 378.7, within noise | 51 → 58 | 28 → 36 |
+      | \`test_anonymous_visitor_cannot_publish\` | 2.2 → 4.5, within noise | 3 → 4 | 0 |
+
+      6 workflows cost the same: the same calls and queries, and no time change past the noise bands.
+
       "
     `);
   });
