@@ -1,4 +1,4 @@
-import { ArchitectureProfile, CodeSymbol, Grouping, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse } from "@runshape/kernel";
+import { ArchitectureProfile, CodeSymbol, Grouping, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse } from "@runshape/kernel";
 import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 import { buildReplay, buildReview, buildRouteMap, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves } from "@runshape/trace";
 import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, UnknownFunctionError } from "@runshape/visualizer";
@@ -187,6 +187,11 @@ export class ViewerSession {
         }
         const invalid = invalidZoneRequest(request, this.rules);
         if (invalid !== null) return { type: "error", message: invalid };
+        // The viewer draws the top level's style; a region's zones are its own (Phase 2's module view sets them).
+        const region = this.rules.placementsOf(QualifiedName.parse(request.qualifiedName))[1];
+        if (region !== undefined) {
+          return { type: "error", message: `${request.qualifiedName} is in the ${region.region} region (${region.style}): set its zone in that region's zones in ${RULES_FILE}.` };
+        }
         const next = this.rules.withRuleFor(request.qualifiedName, request.zone, request.reason, request.by);
         const replaces = this.rules.rules.some((rule) => rule.match === request.qualifiedName);
         const change =
@@ -253,7 +258,9 @@ export class ViewerSession {
     const current =
       this.rulesProblem !== null
         ? `runshape.json can't be read now (${this.rulesProblem}); it is replaced.`
-        : this.rules.rules.length === 0
+        : this.rules.regions.length > 0
+          ? `It replaces runshape.json's ${this.rules.rules.length} rule(s) and ${this.rules.regions.length} region(s) (${this.rules.regions.map((region) => region.name).join(", ")}), which are discarded.`
+          : this.rules.rules.length === 0
           ? `runshape.json has no rules now (${this.rules.profile.style} style).`
           : `It replaces runshape.json's ${this.rules.rules.length} rule(s) (${this.rules.profile.style} style), which are discarded:\n${this.rules.rules
               .slice(0, MAX_LISTED_RULES)

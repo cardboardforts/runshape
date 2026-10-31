@@ -8,6 +8,8 @@ import { HEXAGONAL, PROFILES, profileFor } from "./profiles";
 export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */
 export const RULES_VERSION = 2;
+/** Version 3 adds nested regions; a file without regions is still written as version 2. */
+export const REGIONS_VERSION = 3;
 
 export interface ZoneRule {
   /**
@@ -28,6 +30,45 @@ export interface ZoneRulesFile {
   version: number;
   style: string;
   zones: ZoneRule[];
+  /** Version 3: areas inside this one with a style of their own. */
+  regions?: RegionFile[];
+}
+
+/** A region as runshape.json writes it. */
+export interface RegionFile {
+  name: string;
+  match: string;
+  in: string;
+  style: string;
+  reason: string;
+  by: ZoneRule["by"];
+  zones: ZoneRule[];
+  regions?: RegionFile[];
+}
+
+/**
+ * An area of the code with one style, inside one zone of the area around it: Runshape's trace
+ * module could be layered inside the hexagon's core. A subtree of names, so "inside" can be
+ * checked when the file loads.
+ */
+export interface Region {
+  name: string;
+  /** "a.b.**" (the name and everything under it) or one exact name. */
+  match: string;
+  /** The parent's zone the region sits in, whole. */
+  in: string;
+  reason: string;
+  by: ZoneRule["by"];
+  /** Its own rules, in its own style, and its own regions. */
+  rules: ZoneRules;
+}
+
+/** Where a name lands in one area: the region (top level: ""), its style, and the zone a rule gives it there. */
+export interface RegionPlacement {
+  region: string;
+  style: string;
+  /** Null when no rule there names it: inference decides. */
+  zone: string | null;
 }
 
 /** runshape.json version 1, from before zones were called zones. */
@@ -47,16 +88,22 @@ export interface RuleMatch {
   index: number;
 }
 
-/** First matching rule wins, so specific rules go above broad ones. */
+/**
+ * First matching rule wins, so specific rules go above broad ones. A name inside a region is
+ * the region's: at this level it sits in the region's zone, whatever the rules here say.
+ */
 export class ZoneRules {
   private readonly compiled: { rule: ZoneRule; glob: Glob }[];
+  private readonly compiledRegions: { region: Region; glob: Glob }[];
 
   constructor(
     readonly rules: ZoneRule[],
     /** The style the file declares; its zones are the ones rules may name. */
     readonly profile: ArchitectureProfile = HEXAGONAL,
+    readonly regions: Region[] = [],
   ) {
     this.compiled = rules.map((rule) => ({ rule, glob: new Glob(rule.match) }));
+    this.compiledRegions = regions.map((region) => ({ region, glob: new Glob(region.match) }));
   }
 
   static none(profile: ArchitectureProfile = HEXAGONAL): ZoneRules {
@@ -74,37 +121,29 @@ export class ZoneRules {
     const problems: string[] = [];
     if (typeof data !== "object" || data === null) throw new ZoneRulesError(["expected an object"]);
     const file = upgrade(data as Partial<ZoneRulesFile> | RingRulesFileV1);
-    if (file.version !== RULES_VERSION) problems.push(`"version" must be ${RULES_VERSION} (or 1, the older "rings" format)`);
-    const profile = file.style === undefined ? HEXAGONAL : profileFor(file.style);
-    if (profile === undefined) {
-      problems.push(`"style" ${JSON.stringify(file.style)} is not one of ${PROFILES.map((p) => p.style).join(", ")}`);
+    if (file.version !== RULES_VERSION && file.version !== REGIONS_VERSION) {
+      problems.push(`"version" must be ${REGIONS_VERSION} (or ${RULES_VERSION} without regions, or 1, the older "rings" format)`);
     }
-    if (!Array.isArray(file.zones)) problems.push(`"zones" must be a list of rules`);
-    const allowed = (profile ?? HEXAGONAL).zones.map((zone) => zone.id);
-    const rules: ZoneRule[] = [];
-    (Array.isArray(file.zones) ? file.zones : []).forEach((candidate: Partial<ZoneRule>, index) => {
-      const where = `zones[${index}]`;
-      const before = problems.length;
-      if (typeof candidate?.match !== "string" || candidate.match.trim() === "") problems.push(`${where}.match must be a non-empty string`);
-      if (profile !== undefined && !allowed.includes(candidate?.zone as string)) {
-        problems.push(`${where}.zone must be one of ${allowed.join(", ")} (the ${profile.style} zones)`);
-      }
-      if (typeof candidate?.reason !== "string" || candidate.reason.trim() === "") problems.push(`${where}.reason must say why`);
-      if (candidate?.by !== undefined && !DECIDERS.includes(candidate.by)) problems.push(`${where}.by must be "user", "llm" or "detected"`);
-      if (problems.length === before) {
-        rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user" });
-      }
-    });
+    if (file.version !== REGIONS_VERSION && file.regions !== undefined) problems.push(`"regions" needs "version": ${REGIONS_VERSION}`);
+    const rules = readArea(file, "", null, problems);
     if (problems.length > 0) throw new ZoneRulesError(problems);
-    return new ZoneRules(rules, profile);
+    return rules;
   }
 
+  /** Version 3 when there are regions; otherwise version 2, so a file without them doesn't churn. */
   serialize(): string {
-    const file: ZoneRulesFile = { version: RULES_VERSION, style: this.profile.style, zones: this.rules };
+    const file: ZoneRulesFile = { version: this.regions.length > 0 ? REGIONS_VERSION : RULES_VERSION, style: this.profile.style, zones: this.rules };
+    if (this.regions.length > 0) file.regions = this.regions.map(regionFile);
     return `${JSON.stringify(file, null, 2)}\n`;
   }
 
+  /** At this level: a name inside a region sits in the region's zone; otherwise the first rule that matches. */
   matchFor(name: QualifiedName): RuleMatch | null {
+    const region = this.regionContaining(name);
+    if (region !== null) {
+      const reason = `the ${region.name} region (${region.rules.profile.style}): ${region.reason}`;
+      return { rule: { match: region.match, zone: region.in, reason, by: region.by }, index: -1 };
+    }
     for (let index = 0; index < this.compiled.length; index += 1) {
       const entry = this.compiled[index]!;
       if (entry.glob.matches(name.segments)) return { rule: entry.rule, index };
@@ -112,10 +151,37 @@ export class ZoneRules {
     return null;
   }
 
-  /** The rule for exactly this name replaces any earlier one and goes first: it's the most specific. */
+  /** Where a name lands at every level, outermost first: the top level, then each region it's in. */
+  placementsOf(name: QualifiedName, regionName = ""): RegionPlacement[] {
+    const here: RegionPlacement = { region: regionName, style: this.profile.style, zone: this.matchFor(name)?.rule.zone ?? null };
+    const region = this.regionContaining(name);
+    return region === null ? [here] : [here, ...region.rules.placementsOf(name, region.name)];
+  }
+
+  /**
+   * The rule for exactly this name replaces any earlier one and goes first: it's the most
+   * specific. Inside a region it goes into the innermost region's rules, in that region's style.
+   */
   withRuleFor(qualifiedName: string, zone: string, reason: string, by: ZoneRule["by"]): ZoneRules {
+    return this.withRuleIn(qualifiedName, zone, reason, by, null);
+  }
+
+  private withRuleIn(qualifiedName: string, zone: string, reason: string, by: ZoneRule["by"], inRegion: string | null): ZoneRules {
+    const region = this.regionContaining(QualifiedName.parse(qualifiedName));
+    if (region !== null) {
+      const regions = this.regions.map((candidate) => (candidate === region ? { ...region, rules: region.rules.withRuleIn(qualifiedName, zone, reason, by, region.name) } : candidate));
+      return new ZoneRules(this.rules, this.profile, regions);
+    }
+    if (inRegion !== null && !this.isZoneOfStyle(zone)) {
+      const zones = this.profile.zones.map((candidate) => candidate.id).join(", ");
+      throw new ZoneRulesError([`${qualifiedName} is in the ${inRegion} region (${this.profile.style}): its zone is one of ${zones}`]);
+    }
     const others = this.rules.filter((rule) => rule.match !== qualifiedName);
-    return new ZoneRules([{ match: qualifiedName, zone, reason, by }, ...others], this.profile);
+    return new ZoneRules([{ match: qualifiedName, zone, reason, by }, ...others], this.profile, this.regions);
+  }
+
+  private regionContaining(name: QualifiedName): Region | null {
+    return this.compiledRegions.find((entry) => entry.glob.matches(name.segments))?.region ?? null;
   }
 
   isZoneOfStyle(zone: string): boolean {
@@ -182,6 +248,137 @@ function segmentMatches(pattern: string, text: string): boolean {
   }
   while (p < pattern.length && pattern[p] === "*") p += 1;
   return p === pattern.length;
+}
+
+/** The top level of runshape.json, or one region in it: a style, its rules, and regions inside. */
+interface AreaFile {
+  style?: unknown;
+  zones?: unknown;
+  regions?: unknown;
+}
+
+/** A region's names: one exact name, or a name and everything under it. */
+interface Subtree {
+  segments: string[];
+  exact: boolean;
+}
+
+/**
+ * One area's rules and regions, each problem pushed with where it is ("regions[0].zones[1]").
+ * `around` is the region this area is (null at the top level): its rules must stay inside it.
+ */
+function readArea(file: AreaFile, where: string, around: { name: string; match: string; subtree: Subtree } | null, problems: string[]): ZoneRules {
+  const path = where === "" ? "" : `${where}.`;
+  const field = (name: string) => (where === "" ? `"${name}"` : `${path}${name}`);
+  // The top level was hexagonal before files named a style; a region always names its own.
+  const profile = file.style === undefined && where === "" ? HEXAGONAL : profileFor(file.style as string);
+  if (profile === undefined) problems.push(`${field("style")} ${JSON.stringify(file.style)} is not one of ${PROFILES.map((p) => p.style).join(", ")}`);
+  const zonesGiven = file.zones === undefined && where !== "" ? [] : file.zones;
+  if (!Array.isArray(zonesGiven)) problems.push(`${field("zones")} must be a list of rules`);
+  const allowed = (profile ?? HEXAGONAL).zones.map((zone) => zone.id);
+
+  const rules: ZoneRule[] = [];
+  (Array.isArray(zonesGiven) ? zonesGiven : []).forEach((candidate: Partial<ZoneRule>, index) => {
+    const at = `${path}zones[${index}]`;
+    const before = problems.length;
+    if (typeof candidate?.match !== "string" || candidate.match.trim() === "") problems.push(`${at}.match must be a non-empty string`);
+    else if (around !== null && isOutside(candidate.match, around.subtree)) problems.push(`${at}.match ${candidate.match} is outside the ${around.name} region (${around.match})`);
+    if (profile !== undefined && !allowed.includes(candidate?.zone as string)) {
+      problems.push(`${at}.zone must be one of ${allowed.join(", ")} (the ${profile.style} zones)`);
+    }
+    if (typeof candidate?.reason !== "string" || candidate.reason.trim() === "") problems.push(`${at}.reason must say why`);
+    if (candidate?.by !== undefined && !DECIDERS.includes(candidate.by)) problems.push(`${at}.by must be "user", "llm" or "detected"`);
+    if (problems.length === before) {
+      rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user" });
+    }
+  });
+
+  const regions: Region[] = [];
+  const placed: { name: string; index: number; subtree: Subtree }[] = [];
+  const regionsGiven = file.regions === undefined ? [] : file.regions;
+  if (!Array.isArray(regionsGiven)) problems.push(`${field("regions")} must be a list of regions`);
+  (Array.isArray(regionsGiven) ? regionsGiven : []).forEach((given: unknown, index) => {
+    const at = `${path}regions[${index}]`;
+    if (typeof given !== "object" || given === null) {
+      problems.push(`${at} must be a region: name, match, in, style, reason, zones`);
+      return;
+    }
+    const candidate = given as Partial<RegionFile>;
+    const before = problems.length;
+    const name = typeof candidate.name === "string" && candidate.name.trim() !== "" ? candidate.name : null;
+    if (name === null) problems.push(`${at}.name must be a non-empty string`);
+    const subtree = typeof candidate.match === "string" ? subtreeOf(candidate.match) : null;
+    if (subtree === null) problems.push(`${at}.match must be a name, or a name and everything under it ("a.b.**")`);
+    else if (around !== null && !contains(around.subtree, subtree)) problems.push(`${at}.match ${candidate.match} is outside the ${around.name} region (${around.match})`);
+    if (subtree !== null) {
+      for (const other of placed) {
+        if (contains(other.subtree, subtree) || contains(subtree, other.subtree)) {
+          problems.push(`${at} (${name ?? "unnamed"}) overlaps ${path}regions[${other.index}] (${other.name}): a name is in one region at each level`);
+        }
+      }
+      placed.push({ name: name ?? "unnamed", index, subtree });
+    }
+    if (profile !== undefined && !allowed.includes(candidate.in as string)) {
+      problems.push(`${at}.in must be one of ${allowed.join(", ")} (the ${profile.style} zone it sits in)`);
+    }
+    if (typeof candidate.reason !== "string" || candidate.reason.trim() === "") problems.push(`${at}.reason must say why`);
+    if (candidate.by !== undefined && !DECIDERS.includes(candidate.by)) problems.push(`${at}.by must be "user", "llm" or "detected"`);
+    const inner = readArea(candidate, at, subtree === null ? null : { name: name ?? "unnamed", match: candidate.match!, subtree }, problems);
+    if (problems.length === before) regions.push({ name: name!, match: candidate.match!, in: candidate.in!, reason: candidate.reason!, by: candidate.by ?? "user", rules: inner });
+  });
+
+  // A rule here that only ever matches names inside a region would put part of it in another zone.
+  rules.forEach((rule, index) => {
+    const inside = placed.find((region) => isInside(rule.match, region.subtree));
+    if (inside !== undefined) {
+      problems.push(`${path}zones[${index}] (${rule.match}) is inside the ${inside.name} region: a region sits in one zone, whole; set it in the region's zones`);
+    }
+  });
+  return new ZoneRules(rules, profile ?? HEXAGONAL, regions);
+}
+
+function subtreeOf(match: string): Subtree | null {
+  const segments = splitDotted(match);
+  const exact = segments.at(-1) !== "**";
+  const prefix = exact ? segments : segments.slice(0, -1);
+  if (prefix.length === 0 || prefix.some((segment) => segment.includes("*"))) return null;
+  return { segments: prefix, exact };
+}
+
+/** Every name in `inner` is in `outer`. */
+function contains(outer: Subtree, inner: Subtree): boolean {
+  if (outer.exact) return inner.exact && startsWith(inner.segments, outer.segments) && inner.segments.length === outer.segments.length;
+  return startsWith(inner.segments, outer.segments);
+}
+
+/** The segments a rule's glob fixes before its first wildcard: every name it matches starts with them. */
+function fixedPrefix(match: string): { segments: string[]; wild: boolean } {
+  const segments = splitDotted(match);
+  const first = segments.findIndex((segment) => segment.includes("*"));
+  return first === -1 ? { segments, wild: false } : { segments: segments.slice(0, first), wild: true };
+}
+
+/** The rule matches only names inside the region. */
+function isInside(match: string, region: Subtree): boolean {
+  const fixed = fixedPrefix(match);
+  if (region.exact) return !fixed.wild && fixed.segments.length === region.segments.length && startsWith(fixed.segments, region.segments);
+  return startsWith(fixed.segments, region.segments);
+}
+
+/** The rule can match no name inside the region. */
+function isOutside(match: string, region: Subtree): boolean {
+  const fixed = fixedPrefix(match);
+  return !startsWith(fixed.segments, region.segments) && !startsWith(region.segments, fixed.segments);
+}
+
+function startsWith(segments: readonly string[], prefix: readonly string[]): boolean {
+  return prefix.length <= segments.length && prefix.every((segment, i) => segments[i] === segment);
+}
+
+function regionFile(region: Region): RegionFile {
+  const file: RegionFile = { name: region.name, match: region.match, in: region.in, style: region.rules.profile.style, reason: region.reason, by: region.by, zones: region.rules.rules };
+  if (region.rules.regions.length > 0) file.regions = region.rules.regions.map(regionFile);
+  return file;
 }
 
 /** Reads a version 1 file ("rings", "ring") as version 2; the next save writes version 2. */

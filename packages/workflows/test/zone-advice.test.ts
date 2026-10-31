@@ -207,6 +207,20 @@ describe("saving rules safely", () => {
     expect(store.asked).toEqual([]);
   });
 
+  test("a name inside a region is refused, not saved as a top-level rule that would split the region", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const store = new RecordingStore(true);
+    const rules = ZoneRules.parse(
+      JSON.stringify({ version: 3, style: "hexagonal", zones: [], regions: [{ name: "db", match: "app.db.**", in: "outbound-adapter", style: "layered", reason: "the persistence layers", zones: [] }] }),
+    );
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, ruleStore: store, rules });
+
+    const response = await session.handle({ type: "setZone", qualifiedName: "app.db.repositories.users.UsersRepository", zone: HexagonalZone.Core, reason: "r", by: "user" });
+
+    expect(response).toEqual({ type: "error", message: "app.db.repositories.users.UsersRepository is in the db region (layered): set its zone in that region's zones in runshape.json." });
+    expect(store.asked).toEqual([]);
+  });
+
   test("a failed model request ends the 'asking' state with a message", async () => {
     const run = await loadFixtureRun("fastapi");
     const failing: ZoneAdvisor = { available: true, complete: async () => Promise.reject(new Error("access denied by the user")) };

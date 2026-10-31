@@ -367,6 +367,11 @@ behave differently" works on a real Runshape PR.
 1. **runshape.json v3, nested regions:** a region is an area with one style. A zone is a slot
    inside that style. A child region sits inside one of its parent's zones, the innermost
    match wins, and a child spanning two parent zones is a load error. Still reads v1 and v2.
+   - **Done (2026-10-31).** `ZoneRules` holds `regions`, each with its own rules in its own
+     style; `placementsOf(name)` gives a name's zone at every level, outermost first, and
+     `matchFor` at a level says the region's `in`. Every load error is reported with its path
+     (docs/architecture-profiles.md). The viewer still draws the top level only: setting a
+     zone for a name inside a region is refused until the module view (step 4) can show it.
 2. **Seams:** a call that crosses a region boundary. Going in through the parent's zone is
    expected; reaching past it is a violation. Mixing styles inside one region is a smell.
 3. **Event-driven profile**, recognised from the recorded call pattern.

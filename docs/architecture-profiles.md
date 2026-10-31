@@ -26,6 +26,36 @@ the skill behind a model call in VS Code, frontend styles, the cycle (Flux) layo
 Framework, test-double and external zones stay fixed: they're facts about the code, not
 choices in a style.
 
+## Regions: a style per area (`runshape.json` v3)
+
+A **region** is an area of the code with one style; a **zone** is a slot inside that style.
+A region sits inside one zone of the area around it, whole, and may hold regions of its own:
+
+```json
+{
+  "version": 3,
+  "style": "hexagonal",
+  "zones": [{ "match": "packages.cli.**", "zone": "inbound-adapter", "reason": "the command line" }],
+  "regions": [
+    {
+      "name": "trace", "match": "packages.trace.**", "in": "core", "style": "layered",
+      "reason": "diffs on top of the run model",
+      "zones": [{ "match": "packages.trace.src.review", "zone": "presentation", "reason": "what a reviewer reads" }],
+      "regions": []
+    }
+  ]
+}
+```
+
+- A region's `match` is a subtree: a name, or a name and everything under it (`a.b.**`), so
+  "inside" is checked when the file loads.
+- The innermost region a name is in decides its zone; at each level above, it sits in the
+  zone its region is `in`.
+- Load errors (every one reported): a rule above a region that only matches names inside it
+  (it would split the region across zones), a region outside its parent, two regions that
+  overlap, an `in` that isn't a zone of the parent's style, a region rule outside its region.
+- A file without regions is still written as version 2.
+
 ## Detecting the shape
 
 Three layers, cheapest and most explainable first, mirroring how rings work today:
