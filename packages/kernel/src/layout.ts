@@ -87,6 +87,9 @@ export interface HiddenDetail {
   edges: number;
   /** The calls the hidden boxes made or took, so "how much is missing" is answerable. */
   calls: number;
+  /** Hidden calls against the style, and hidden boxes or calls that changed: what a reviewer can't afford to miss (kept, so 0 unless the cap couldn't). */
+  violations: number;
+  changes: number;
 }
 
 export interface Layout {
@@ -102,4 +105,6 @@ export interface Layout {
   hidden: HiddenDetail;
   /** Set when the 2D layout fell back to plain positions (the layout engine failed): why. */
   flatProblem: string | null;
+  /** Set when a saved arrangement exists but was ignored (unreadable, too big): why. Set by whoever loaded it. */
+  arrangementProblem: string | null;
 }

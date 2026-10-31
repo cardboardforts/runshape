@@ -880,12 +880,17 @@ function withBoxAt(layout: Layout, id: string, to: { flat: FlatPoint } | { floor
 
 /** What the layout couldn't draw as asked: boxes left out to keep the level readable, or a plain 2D fallback. */
 function LayoutNotes({ layout }: { layout: Layout }) {
-  if (layout.hidden.nodes === 0 && layout.flatProblem === null) return null;
+  if (layout.hidden.nodes === 0 && layout.flatProblem === null && layout.arrangementProblem === null) return null;
+  const missed = [
+    layout.hidden.violations > 0 ? `${layout.hidden.violations} call${layout.hidden.violations === 1 ? "" : "s"} against the style` : "",
+    layout.hidden.changes > 0 ? `${layout.hidden.changes} change${layout.hidden.changes === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
   return (
     <p className="layout-notes" role="status">
       {layout.hidden.nodes > 0 &&
-        `${layout.hidden.nodes} quieter box${layout.hidden.nodes === 1 ? "" : "es"} not drawn (${layout.hidden.calls} calls)${layout.level.kind === "modules" ? "" : ": open a module to see fewer at once"}. `}
-      {layout.flatProblem !== null && `The 2D layout fell back to a plain grid (${layout.flatProblem}).`}
+        `${layout.hidden.nodes} quieter box${layout.hidden.nodes === 1 ? "" : "es"} not drawn (${layout.hidden.calls} calls${missed.length > 0 ? `, among them ${missed.join(" and ")}` : ""})${layout.level.kind === "modules" ? "" : ": open a module to see fewer at once"}. `}
+      {layout.flatProblem !== null && `The 2D layout fell back to a plain grid (${layout.flatProblem}). `}
+      {layout.arrangementProblem !== null && `Saved arrangement ignored: ${layout.arrangementProblem}`}
     </p>
   );
 }

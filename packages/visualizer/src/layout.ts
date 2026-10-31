@@ -68,6 +68,7 @@ export async function layout(graph: SystemGraph, view: LayoutView): Promise<Layo
     floor: { radius: floor.radius, pieces: floor.floor },
     hidden,
     flatProblem: problem,
+    arrangementProblem: null,
   };
 }
 
@@ -109,12 +110,13 @@ function openedModule(graph: SystemGraph, module: string): SystemGraph {
 const ALWAYS_SHOWN = new Set([ComponentKind.Client, ComponentKind.Entry, ComponentKind.Middleware, ComponentKind.Router]);
 
 function capDetail(graph: SystemGraph, changes: GraphChanges | null): { kept: SystemGraph; hidden: Layout["hidden"] } {
-  if (graph.nodes.length <= MAX_BOXES) return { kept: graph, hidden: { nodes: 0, edges: 0, calls: 0 } };
-  const changed = (node: GraphNode) => {
-    const change = changes?.nodes.get(node.id);
-    return change !== undefined && change !== Change.Unchanged;
-  };
-  const mustShow = (node: GraphNode) => ALWAYS_SHOWN.has(node.kind) || changed(node);
+  if (graph.nodes.length <= MAX_BOXES) return { kept: graph, hidden: { nodes: 0, edges: 0, calls: 0, violations: 0, changes: 0 } };
+  const changedNode = (node: GraphNode) => isChange(changes?.nodes.get(node.id));
+  const changedEdge = (edge: GraphEdge) => isChange(changes?.edges.get(edge.id));
+  // A call against the style, or one that changed, is what a reviewer is looking for: both its
+  // ends stay, however quiet they are, or the line would vanish with them.
+  const endsOfFindings = new Set(graph.edges.filter((edge) => edge.violation !== null || changedEdge(edge)).flatMap((edge) => [edge.from, edge.to]));
+  const mustShow = (node: GraphNode) => ALWAYS_SHOWN.has(node.kind) || changedNode(node) || endsOfFindings.has(node.id);
   // Busiest first; ties by id, so the same graph always keeps the same boxes.
   const ranked = [...graph.nodes].sort((a, b) => Number(mustShow(b)) - Number(mustShow(a)) || b.calls - a.calls || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const keptIds = new Set(ranked.slice(0, Math.max(MAX_BOXES, graph.nodes.filter(mustShow).length)).map((node) => node.id));
@@ -123,8 +125,18 @@ function capDetail(graph: SystemGraph, changes: GraphChanges | null): { kept: Sy
   const hiddenEdges = graph.edges.filter((edge) => !keptIds.has(edge.from) || !keptIds.has(edge.to));
   return {
     kept: { ...graph, nodes, edges },
-    hidden: { nodes: graph.nodes.length - nodes.length, edges: hiddenEdges.length, calls: hiddenEdges.reduce((total, edge) => total + edge.calls, 0) },
+    hidden: {
+      nodes: graph.nodes.length - nodes.length,
+      edges: hiddenEdges.length,
+      calls: hiddenEdges.reduce((total, edge) => total + edge.calls, 0),
+      violations: hiddenEdges.filter((edge) => edge.violation !== null).length,
+      changes: hiddenEdges.filter(changedEdge).length + graph.nodes.filter((node) => !keptIds.has(node.id) && changedNode(node)).length,
+    },
   };
+}
+
+function isChange(change: Change | undefined): boolean {
+  return change !== undefined && change !== Change.Unchanged;
 }
 
 /** Columns of this many when the layout engine fails: plain, but every box visible. */

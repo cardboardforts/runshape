@@ -59,7 +59,7 @@ describe("layout, level by level", () => {
     `);
     expect(drawn(modules)).toMatchInlineSnapshot(`
       [
-        "{"kind":"modules"} right, hidden {"nodes":0,"edges":0,"calls":0}",
+        "{"kind":"modules"} right, hidden {"nodes":0,"edges":0,"calls":0,"violations":0,"changes":0}",
         "  [Client (tests)] client edge",
         "  [FakeAsyncPGPool] test-double test-double",
         "  [FakePoolAcquireContent] test-double test-double",
@@ -95,7 +95,7 @@ describe("layout, level by level", () => {
     // into app.db land on the app.db box, not on its repositories (that's the next click).
     expect(drawn(api)).toMatchInlineSnapshot(`
       [
-        "{"kind":"module","module":"app.api"} right, hidden {"nodes":0,"edges":0,"calls":0}",
+        "{"kind":"module","module":"app.api"} right, hidden {"nodes":0,"edges":0,"calls":0,"violations":0,"changes":0}",
         "  [RWAPIKeyHeader] class inbound-adapter",
         "  [FakeAsyncPGPool] test-double test-double",
         "  [FakePoolAcquireContent] test-double test-double",
@@ -191,7 +191,12 @@ describe("capped detail", () => {
       profile: HEXAGONAL,
     };
     const quietest = classes.at(-1)!.id;
-    const changes = { nodes: new Map([[quietest, Change.Added]]), edges: new Map() };
+    // Two of the quietest call each other against the style, and two others by a call that's new:
+    // a reviewer is looking for exactly these lines, so neither may vanish with its boxes.
+    const [a, b, c, d] = classes.slice(-5, -1).map((node) => node.id) as [string, string, string, string];
+    graph.edges.push({ id: "violation", from: a, to: b, calls: 1, scenarioIds: [], violation: "calls back into a request handler" });
+    graph.edges.push({ id: "new-call", from: c, to: d, calls: 1, scenarioIds: [], violation: null });
+    const changes = { nodes: new Map([[quietest, Change.Added]]), edges: new Map([["new-call", Change.Added]]) };
 
     const view = await layout(graph, { level: { kind: "classes" }, grouping: { collapseMiddleware: true }, changes });
 
@@ -203,6 +208,7 @@ describe("capped detail", () => {
       quietestButAdded: ids.has(quietest),
       leftOut: classes.filter((c) => !ids.has(c.id)).map((c) => c.id).join(" "),
       changes: [...new Set(view.nodes.map((n) => n.change))],
+      findingsDrawn: view.edges.filter((edge) => edge.violation !== null || edge.change === Change.Added).map((edge) => `${edge.from} -> ${edge.to}`),
     }).toMatchInlineSnapshot(`
       {
         "changes": [
@@ -211,12 +217,18 @@ describe("capped detail", () => {
         ],
         "client": true,
         "drawn": 100,
+        "findingsDrawn": [
+          "c115 -> c116",
+          "c117 -> c118",
+        ],
         "hidden": {
           "calls": 42,
+          "changes": 0,
           "edges": 21,
           "nodes": 21,
+          "violations": 0,
         },
-        "leftOut": "c98 c99 c100 c101 c102 c103 c104 c105 c106 c107 c108 c109 c110 c111 c112 c113 c114 c115 c116 c117 c118",
+        "leftOut": "c94 c95 c96 c97 c98 c99 c100 c101 c102 c103 c104 c105 c106 c107 c108 c109 c110 c111 c112 c113 c114",
         "quietestButAdded": true,
       }
     `);
