@@ -184,8 +184,11 @@ export class ZoneRules {
       const zones = this.profile.zones.map((candidate) => candidate.id).join(", ");
       throw new ZoneRulesError([`${qualifiedName} is in the ${inRegion} region (${this.profile.style}): its zone is one of ${zones}`]);
     }
-    const others = this.rules.filter((rule) => rule.match !== qualifiedName);
-    return new ZoneRules([{ match: qualifiedName, zone, reason, by }, ...others], this.profile, this.regions);
+    const replaced = this.rules.find((rule) => rule.match === qualifiedName);
+    const others = this.rules.filter((rule) => rule !== replaced);
+    // Placing a composition root again keeps it one: the role is about what it does, not where it sits.
+    const role = replaced?.role === undefined ? {} : { role: replaced.role };
+    return new ZoneRules([{ match: qualifiedName, zone, reason, by, ...role }, ...others], this.profile, this.regions);
   }
 
   private regionContaining(name: QualifiedName): Region | null {
@@ -296,7 +299,13 @@ function readArea(file: AreaFile, where: string, around: { name: string; match: 
     }
     if (typeof candidate?.reason !== "string" || candidate.reason.trim() === "") problems.push(`${at}.reason must say why`);
     if (candidate?.by !== undefined && !DECIDERS.includes(candidate.by)) problems.push(`${at}.by must be "user", "llm" or "detected"`);
-    if (candidate?.role !== undefined && !ROLES.includes(candidate.role)) problems.push(`${at}.role must be ${ROLES.map((role) => `"${role}"`).join(" or ")}, or left out`);
+    if (candidate?.role !== undefined) {
+      if (!ROLES.includes(candidate.role)) problems.push(`${at}.role must be ${ROLES.map((role) => `"${role}"`).join(" or ")}, or left out`);
+      // Only the top level's graph is judged by edge; a role in a region would silently do nothing.
+      else if (around !== null) problems.push(`${at}.role: a composition root is declared at the top level, not inside a region`);
+      // A role silences every finding from what it matches: it names code, it doesn't sweep.
+      else if (typeof candidate.match === "string" && fixedPrefix(candidate.match).segments.length === 0) problems.push(`${at}.role needs a match that names code ("app.main", "app.wiring.**"), not one that starts with a wildcard`);
+    }
     if (problems.length === before) {
       rules.push({ match: candidate.match!, zone: candidate.zone!, reason: candidate.reason!, by: candidate.by ?? "user", ...(candidate.role === undefined ? {} : { role: candidate.role }) });
     }

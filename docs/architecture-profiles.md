@@ -31,7 +31,10 @@ choices in a style.
 A rule may say `"role": "composition-root"`: code that builds the adapters and hands them in
 (an app's main, FastAPI's dependency functions). Its calls are wiring, so they're never
 findings, whatever zones they cross. Everyone else's calls are judged as before. Declared,
-not detected: a handler that happens to build things is still a handler.
+not detected: a handler that happens to build things is still a handler. Keep it narrow and
+above the broader rule for its folder: a match starting with a wildcard is refused, so is a
+role inside a region, and adding or dropping a role shows in a review's architecture section.
+A region's own checks (entering through its way in) still apply to a composition root's calls.
 
 ## Regions: a style per area (`runshape.json` v3)
 

@@ -112,7 +112,8 @@ function diffRules(before: ZoneRule[], after: ZoneRule[]): ArchitectureDiff["rul
   for (const rule of after) {
     const was = old.get(rule.match);
     if (was === undefined) added.push(rule);
-    else if (was.zone !== rule.zone || was.reason !== rule.reason || was.by !== rule.by) changed.push({ before: was, after: rule });
+    // A role silences findings: adding or dropping one is a change a reviewer must see.
+    else if (was.zone !== rule.zone || was.reason !== rule.reason || was.by !== rule.by || was.role !== rule.role) changed.push({ before: was, after: rule });
   }
   return { added, removed: before.filter((rule) => !now.has(rule.match)), changed };
 }

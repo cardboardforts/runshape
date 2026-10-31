@@ -185,7 +185,7 @@ function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): 
     out.push(`Style changed: ${diff.styleBefore} → ${diff.styleAfter}.`, "");
     changes += 1;
   }
-  const rule = (r: ZoneRule) => `${code(r.match)} → ${zone(r.zone)} (${decider(r.by)}): ${r.reason}`;
+  const rule = (r: ZoneRule) => `${code(r.match)} → ${zone(r.zone)}${r.role === undefined ? "" : `, ${r.role}`} (${decider(r.by)}): ${r.reason}`;
   const region = (r: RegionSummary) => `${r.path} (${code(r.match)}, ${r.style}, in ${zone(r.in)}; ${decider(r.by)}): ${r.reason}; ${r.zones.length} rule${r.zones.length === 1 ? "" : "s"}`;
   const decisions = [
     ...diff.rules.added.map((r) => `- Rule added: ${rule(r)}`),

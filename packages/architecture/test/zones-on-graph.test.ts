@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { buildSystemGraph, HEXAGONAL, HexagonalZone, ZoneRules } from "../src";
+import { buildPlacements, buildSystemGraph, diffArchitecture, HEXAGONAL, HexagonalZone, ZoneRules } from "../src";
 import { SystemGraph } from "@runshape/kernel";
 import { loadFixtureRun } from "../../kernel/test/fixtures";
 
@@ -88,5 +88,21 @@ describe("zones on the system graph", () => {
       "dependencies.authentication: inbound-adapter [rule] declared in runshape.json (app.api.dependencies.**): FastAPI's dependency functions hand each route its repositories (composition root: its calls wire the adapters, they don't skip the core)",
     ]);
     expect(() => ZoneRules.parse(JSON.stringify({ version: 2, zones: [{ match: "a.**", zone: "core", reason: "r", role: "boss" }] }))).toThrowError(/zones\[0\]\.role must be "composition-root", or left out/);
+    // Placed again from the viewer, it stays a composition root (second-model review).
+    expect(rules.withRuleFor("app.api.dependencies.**", "inbound-adapter", "moved", "user").rules[0]?.role).toBe("composition-root");
+  });
+
+  test("a role names code: not a sweep, not inside a region; adding one shows in the review (second-model review)", async () => {
+    const run = await loadFixtureRun("fastapi");
+    const plain = { match: "app.api.dependencies.**", zone: "inbound-adapter", reason: "wiring" };
+    const parse = (zones: object[], regions: object[] = []) => ZoneRules.parse(JSON.stringify(regions.length ? { version: 3, style: "hexagonal", zones, regions } : { version: 2, style: "hexagonal", zones }));
+
+    const added = diffArchitecture(buildPlacements(run, parse([plain])), buildPlacements(run, parse([{ ...plain, role: "composition-root" }])));
+
+    expect(added.rules.changed.map((change) => `${change.after.match}: ${change.before.role ?? "no role"} -> ${change.after.role}`)).toEqual(["app.api.dependencies.**: no role -> composition-root"]);
+    expect(() => parse([{ match: "**", zone: "core", reason: "r", role: "composition-root" }])).toThrowError(/zones\[0\]\.role needs a match that names code/);
+    expect(() => parse([], [{ name: "api", match: "app.api.**", in: "inbound-adapter", style: "layered", reason: "r", zones: [{ match: "app.api.x", zone: "presentation", reason: "r", role: "composition-root" }] }])).toThrowError(
+      /regions\[0\]\.zones\[0\]\.role: a composition root is declared at the top level/,
+    );
   });
 });
