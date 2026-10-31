@@ -1,5 +1,5 @@
 import { byCodeUnit, ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/kernel";
-import { ZoneRule } from "./zones";
+import { flattenRegions, RegionSummary, ZoneRule } from "./zones";
 import { ArchitectureSnapshot, Placement } from "./placements";
 
 /** One component's place before and after; null on the side it doesn't exist. */
@@ -24,6 +24,8 @@ export interface ArchitectureDiff {
   zones: { id: string; name: string }[];
   /** Rules by their glob: added, removed, or kept with another zone, reason or decider. */
   rules: { added: ZoneRule[]; removed: ZoneRule[]; changed: { before: ZoneRule; after: ZoneRule }[] };
+  /** Regions (runshape.json v3) by path: added, removed, or kept with another match, zone, style, reason, decider or rules. */
+  regions: { added: RegionSummary[]; removed: RegionSummary[]; changed: { before: RegionSummary; after: RegionSummary }[] };
   /** Placements a rule made or unmade: someone decided these. */
   decided: PlacementChange[];
   /** Inferred zones that moved with the tests' behaviour, no rule on either side. */
@@ -80,12 +82,26 @@ export function diffArchitecture(before: ArchitectureSnapshot, after: Architectu
     styleAfter: after.declaredStyle,
     zones: after.zones,
     rules: diffRules(before.rules, after.rules),
+    regions: diffRegions(flattenRegions(before.regions ?? []), flattenRegions(after.regions ?? [])),
     decided,
     observed,
     unplaced,
     removed: [...previous.values(), ...merged].sort((a, b) => byCodeUnit(a.component, b.component)),
     unusedRules: after.unusedRules,
   };
+}
+
+function diffRegions(before: RegionSummary[], after: RegionSummary[]): ArchitectureDiff["regions"] {
+  const old = new Map(before.map((region) => [region.path, region]));
+  const now = new Set(after.map((region) => region.path));
+  const changed: { before: RegionSummary; after: RegionSummary }[] = [];
+  const added: RegionSummary[] = [];
+  for (const region of after) {
+    const was = old.get(region.path);
+    if (was === undefined) added.push(region);
+    else if (JSON.stringify(was) !== JSON.stringify(region)) changed.push({ before: was, after: region });
+  }
+  return { added, removed: before.filter((region) => !now.has(region.path)), changed };
 }
 
 function diffRules(before: ZoneRule[], after: ZoneRule[]): ArchitectureDiff["rules"] {

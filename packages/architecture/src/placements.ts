@@ -1,6 +1,6 @@
 import { ArchitectureProfile, byCodeUnit, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/kernel";
 import { buildSystemGraph } from "./system-graph";
-import { ZoneRule, ZoneRules } from "./zones";
+import { RegionFile, regionFile, ZoneRule, ZoneRules } from "./zones";
 
 /** One of the project's classes or modules, where it sits, and who put it there. */
 export interface Placement {
@@ -33,6 +33,8 @@ export interface ArchitectureSnapshot {
   /** The style's zones, so a person reading the file sees names, not only ids. */
   zones: { id: string; name: string }[];
   rules: ZoneRule[];
+  /** runshape.json v3's regions, as the file has them; absent in snapshots kept before regions. */
+  regions?: RegionFile[];
   /** Rules no recorded component matched: after a rename, it's the rule that needs a look. */
   unusedRules: string[];
   /** By kind and component name, in code-unit order: two snapshots line up, on any machine. */
@@ -76,6 +78,7 @@ export function buildPlacements(run: Run, rules: ZoneRules, profile: Architectur
     declaredStyle: rules.profile.style,
     zones: profile.zones.map(({ id, name }) => ({ id, name })),
     rules: rules.rules,
+    regions: rules.regions.map(regionFile),
     unusedRules: rules.rules.map((rule) => rule.match).filter((match) => !used.has(match)),
     placements,
   };

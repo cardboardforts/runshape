@@ -138,3 +138,15 @@ describe("nested regions", () => {
     expect(() => rules.withRuleFor("packages.trace.src.routes", "core", "r", "user")).toThrowError(/packages.trace.src.routes is in the trace region \(layered\): its zone is one of presentation, business, data/);
   });
 });
+
+describe("regions and the rules around them", () => {
+  test("a region wins over a broader rule listed before it; a rule that can't reach an exact region's one name is refused; names are unique (second-model review)", () => {
+    const broad = ZoneRules.parse(JSON.stringify({ ...RUNSHAPE, zones: [{ match: "**", zone: "outbound-adapter", reason: "everything else" }, ...RUNSHAPE.zones] }));
+    const exact = { version: 3, style: "hexagonal", zones: [], regions: [{ name: "one", match: "a.b", in: "core", style: "layered", reason: "r", zones: [{ match: "a.b.c", zone: "business", reason: "r" }] }] };
+    const twins = { version: 3, style: "hexagonal", zones: [], regions: ["a.**", "b.**"].map((match) => ({ name: "twin", match, in: "core", style: "layered", reason: "r" })) };
+
+    expect(placed(broad, "packages.trace.src.review")).toBe("(hexagonal):core > trace(layered):presentation");
+    expect(() => ZoneRules.parse(JSON.stringify(exact))).toThrowError(/regions\[0\]\.zones\[0\]\.match a\.b\.c is outside the one region \(a\.b\)/);
+    expect(() => ZoneRules.parse(JSON.stringify(twins))).toThrowError(/regions\[1\]\.name twin is used by another region here/);
+  });
+});

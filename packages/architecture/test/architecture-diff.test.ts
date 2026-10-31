@@ -51,6 +51,28 @@ describe("diffArchitecture", () => {
     ]);
   });
 
+  test("a region added, and a region whose rules changed, are decisions even when no class's top-level zone moves (second-model review)", async () => {
+    const run = await loadFixtureRun("go-shop");
+    const withRegion = (zones: object[], inner: object[]) =>
+      ZoneRules.parse(
+        JSON.stringify({ version: 3, style: "hexagonal", zones, regions: [{ name: "orders", match: "example\\.com.shop.internal.orders.**", in: "core", style: "layered", reason: "the order rules, in layers", zones: inner }] }),
+      );
+    const layer = { match: "example\\.com.shop.internal.orders.**", zone: "business", reason: "rules" };
+
+    // ORDERS already put orders in core: the region sits in core too, so no placement moves.
+    const added = diffArchitecture(buildPlacements(run, rules([ORDERS])), buildPlacements(run, withRegion([], [])));
+    const changed = diffArchitecture(buildPlacements(run, withRegion([], [])), buildPlacements(run, withRegion([], [layer])));
+
+    expect({
+      added: [added.regions.added.map((r) => `${r.path} in ${r.in} (${r.style})`), added.rules.removed.map((r) => r.match), added.decided.map((c) => c.component)],
+      changed: changed.regions.changed.map((r) => `${r.after.path}: ${r.before.zones.length} -> ${r.after.zones.length} rules`),
+    }).toEqual({
+      // The region took over the rule's match and zone: no class moved, but the region is a decision.
+      added: [["orders in core (layered)"], ["example\\.com.shop.internal.orders.**"], []],
+      changed: ["orders: 0 -> 1 rules"],
+    });
+  });
+
   test("a rule removed, and one whose zone changed hands from a person to a model", async () => {
     const run = await loadFixtureRun("go-shop");
     const reassigned = { ...ORDERS, zone: "inbound-adapter", reason: "a model thinks so", by: "llm" };

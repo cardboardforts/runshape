@@ -1,6 +1,6 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { Grouping, Phase, ReviewHighlights, Run } from "@runshape/kernel";
-import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, RegionSummary, ZoneRule, ZoneRules } from "@runshape/architecture";
 import { buildReview, buildThreads, Change, detectMoves, diffRouteMaps, diffRuns, groupThreads, Op, reviewMarkdown, ReviewSummary, RouteMapDiff, ChangedFunction, ThreadKind, Threads } from "@runshape/trace";
 
 /** One side of the comparison: what was asked for, and the recording that answered it. */
@@ -162,6 +162,18 @@ function sideText(side: ReviewSide): string {
   return `where this branch left ${code(side.asked)} (${commit}; ${code(side.asked)} has ${since})`;
 }
 
+/** "trace: in core → business; style layered → hexagonal; its rules changed (2 → 3)": only what differs. */
+function regionChange(before: RegionSummary, after: RegionSummary): string {
+  const parts: string[] = [];
+  if (before.match !== after.match) parts.push(`match ${code(before.match)} → ${code(after.match)}`);
+  if (before.in !== after.in) parts.push(`in ${before.in} → ${after.in}`);
+  if (before.style !== after.style) parts.push(`style ${before.style} → ${after.style}`);
+  if (before.by !== after.by) parts.push(`${decider(before.by)} → ${decider(after.by)}`);
+  if (before.reason !== after.reason) parts.push(`reason: ${after.reason}`);
+  if (JSON.stringify(before.zones) !== JSON.stringify(after.zones)) parts.push(`its rules changed (${before.zones.length} → ${after.zones.length})`);
+  return `${after.path}: ${parts.join("; ")}`;
+}
+
 function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): string[] {
   const zone = (id: string) => diff.zones.find((candidate) => candidate.id === id)?.name ?? id;
   const placed = (placement: Placement | null) =>
@@ -174,10 +186,14 @@ function architectureMarkdown(diff: ArchitectureDiff, baseRulesKnown: boolean): 
     changes += 1;
   }
   const rule = (r: ZoneRule) => `${code(r.match)} → ${zone(r.zone)} (${decider(r.by)}): ${r.reason}`;
+  const region = (r: RegionSummary) => `${r.path} (${code(r.match)}, ${r.style}, in ${zone(r.in)}; ${decider(r.by)}): ${r.reason}; ${r.zones.length} rule${r.zones.length === 1 ? "" : "s"}`;
   const decisions = [
     ...diff.rules.added.map((r) => `- Rule added: ${rule(r)}`),
     ...diff.rules.removed.map((r) => `- Rule removed: ${rule(r)}`),
     ...diff.rules.changed.map((r) => `- Rule changed: ${code(r.after.match)}: ${zone(r.before.zone)} (${decider(r.before.by)}) → ${rule(r.after)}`),
+    ...diff.regions.added.map((r) => `- Region added: ${region(r)}`),
+    ...diff.regions.removed.map((r) => `- Region removed: ${region(r)}`),
+    ...diff.regions.changed.map((r) => `- Region changed: ${regionChange(r.before, r.after)}`),
     ...diff.decided.filter((c) => !isConfirmation(c)).map((c) => `- ${code(c.component)}: ${placed(c.before)} → ${placed(c.after)}`),
   ];
   const confirmations = diff.decided.filter(isConfirmation).length;
@@ -289,7 +305,7 @@ export function reviewHighlights(bundle: ReviewBundle): ReviewHighlights {
     nowFailing: bundle.review.counts["now-failing"],
     silentChanges: bundle.review.counts["silent-change"],
     newTests: bundle.review.counts.added,
-    decided: bundle.architecture.decided.length + bundle.architecture.rules.added.length + bundle.architecture.rules.removed.length + bundle.architecture.rules.changed.length,
+    decided: bundle.architecture.decided.length + bundle.architecture.regions.added.length + bundle.architecture.regions.removed.length + bundle.architecture.regions.changed.length + bundle.architecture.rules.added.length + bundle.architecture.rules.removed.length + bundle.architecture.rules.changed.length,
     needsDecision: bundle.architecture.unplaced.length,
     routesChanged: bundle.routes.routes.length,
   };

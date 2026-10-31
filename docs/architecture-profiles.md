@@ -50,7 +50,8 @@ A region sits inside one zone of the area around it, whole, and may hold regions
 - A region's `match` is a subtree: a name, or a name and everything under it (`a.b.**`), so
   "inside" is checked when the file loads.
 - The innermost region a name is in decides its zone; at each level above, it sits in the
-  zone its region is `in`.
+  zone its region is `in`. A region beats every rule around it, whatever their order: a broad
+  `**` rule listed first still doesn't reach inside a region.
 - Load errors (every one reported): a rule above a region that only matches names inside it
   (it would split the region across zones), a region outside its parent, two regions that
   overlap, an `in` that isn't a zone of the parent's style, a region rule outside its region.

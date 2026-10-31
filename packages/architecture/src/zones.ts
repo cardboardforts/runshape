@@ -310,6 +310,7 @@ function readArea(file: AreaFile, where: string, around: { name: string; match: 
     const subtree = typeof candidate.match === "string" ? subtreeOf(candidate.match) : null;
     if (subtree === null) problems.push(`${at}.match must be a name, or a name and everything under it ("a.b.**")`);
     else if (around !== null && !contains(around.subtree, subtree)) problems.push(`${at}.match ${candidate.match} is outside the ${around.name} region (${around.match})`);
+    if (name !== null && placed.some((other) => other.name === name)) problems.push(`${at}.name ${name} is used by another region here: names say which region a review means`);
     if (subtree !== null) {
       for (const other of placed) {
         if (contains(other.subtree, subtree) || contains(subtree, other.subtree)) {
@@ -368,6 +369,8 @@ function isInside(match: string, region: Subtree): boolean {
 /** The rule can match no name inside the region. */
 function isOutside(match: string, region: Subtree): boolean {
   const fixed = fixedPrefix(match);
+  // An exact region holds one name: a rule fixing more segments than that can never match it.
+  if (region.exact && fixed.segments.length > region.segments.length) return true;
   return !startsWith(fixed.segments, region.segments) && !startsWith(region.segments, fixed.segments);
 }
 
@@ -375,7 +378,27 @@ function startsWith(segments: readonly string[], prefix: readonly string[]): boo
   return prefix.length <= segments.length && prefix.every((segment, i) => segments[i] === segment);
 }
 
-function regionFile(region: Region): RegionFile {
+/** A region as a review compares it: by its path ("trace/moves"), its own rules included, its regions apart. */
+export interface RegionSummary {
+  path: string;
+  match: string;
+  in: string;
+  style: string;
+  reason: string;
+  by: ZoneRule["by"];
+  zones: ZoneRule[];
+}
+
+/** Every region at every depth, outermost first. */
+export function flattenRegions(regions: readonly RegionFile[], parent = ""): RegionSummary[] {
+  return regions.flatMap((region) => {
+    const path = parent === "" ? region.name : `${parent}/${region.name}`;
+    const { regions: inner, name: _name, ...own } = region;
+    return [{ path, ...own }, ...flattenRegions(inner ?? [], path)];
+  });
+}
+
+export function regionFile(region: Region): RegionFile {
   const file: RegionFile = { name: region.name, match: region.match, in: region.in, style: region.rules.profile.style, reason: region.reason, by: region.by, zones: region.rules.rules };
   if (region.rules.regions.length > 0) file.regions = region.rules.regions.map(regionFile);
   return file;
