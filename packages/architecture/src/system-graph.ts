@@ -1,7 +1,7 @@
-import { ArchitectureProfile, CLIENT_ID, ComparedGraphs, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, FixedZone, GraphEdge, GraphNode, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Smell, Span, SymbolKind, SystemGraph, ZoneId, ZoneSource } from "@runshape/kernel";
+import { ArchitectureProfile, byCodeUnit, CLIENT_ID, ComparedGraphs, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, FixedZone, GraphEdge, GraphNode, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Smell, Span, SymbolKind, SystemGraph, ZoneId, ZoneSource } from "@runshape/kernel";
 
 import { forbiddenCall, zoneFromName } from "./profiles";
-import { ZoneRules } from "./zones";
+import { RuleMatch, ZoneRules } from "./zones";
 
 export interface GraphOptions {
   /** Defaults to the test body only; include Setup to see app startup and fixtures. */
@@ -56,6 +56,8 @@ class NodeTally {
   calledByFramework = false;
   isRouteHandler = false;
   readonly externalSystems = new Set<string>();
+  /** In the module view, the classes and modules this box stands for, by name. */
+  readonly members = new Map<string, QualifiedName>();
 
   constructor(readonly ref: ComponentRef) {}
 }
@@ -96,6 +98,10 @@ class GraphBuilder {
       if (!phases.has(span.phase)) continue;
       const ref = componentOf(span, this.grouping);
       const node = this.node(ref);
+      if (this.grouping.modules !== undefined) {
+        const member = componentOf(span, { collapseMiddleware: this.grouping.collapseMiddleware }).name;
+        if (member !== null) node.members.set(member.text, member);
+      }
       node.calls += 1;
       node.scenarioIds.add(scenario.nodeid);
       if (span.obj !== null) node.objectIds.add(`${scenario.nodeid}#${span.obj.id}`);
@@ -172,6 +178,21 @@ class GraphBuilder {
     return this.rules.matchFor(tally.ref.name)?.rule.role === "composition-root";
   }
 
+  /**
+   * A module box no rule names sits where its own code's rules put most of it: "packages.cli"
+   * is inbound when packages.cli.src.** is. Ties go to the first member, in name order.
+   */
+  private membersMatch(tally: NodeTally): RuleMatch | null {
+    const matches = [...tally.members.values()]
+      .sort((a, b) => byCodeUnit(a.text, b.text))
+      .map((member) => this.rules.matchFor(member))
+      .filter((match): match is RuleMatch => match !== null);
+    const counts = new Map<string, number>();
+    for (const match of matches) counts.set(match.rule.zone, (counts.get(match.rule.zone) ?? 0) + 1);
+    const most = Math.max(0, ...counts.values());
+    return matches.find((match) => counts.get(match.rule.zone) === most) ?? null;
+  }
+
   private isStyleZone(zone: ZoneId): boolean {
     return this.profile.zones.some((candidate) => candidate.id === zone);
   }
@@ -181,7 +202,7 @@ class GraphBuilder {
     if (fixed !== null) return { zone: fixed, source: ZoneSource.Fixed, reason: "framework, test or external code" };
     // Rules name zones of the style they were written for; drawing another style ignores them.
     if (tally.ref.name !== null && this.rules.profile.style === this.profile.style) {
-      const match = this.rules.matchFor(tally.ref.name);
+      const match = this.rules.matchFor(tally.ref.name) ?? this.membersMatch(tally);
       if (match !== null) {
         const decidedBy = match.rule.by === "llm" ? "proposed by a model, accepted" : "declared";
         return {

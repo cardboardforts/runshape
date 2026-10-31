@@ -1,5 +1,5 @@
 import { ArchitectureProfile, CodeSymbol, Grouping, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse } from "@runshape/kernel";
-import { ArchitectureAdvice, ArchitectureAdviceError, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
+import { ArchitectureAdvice, ArchitectureAdviceError, moduleRoots, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 import { buildReplay, buildReview, buildRouteMap, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves } from "@runshape/trace";
 import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, UnknownFunctionError } from "@runshape/visualizer";
 
@@ -101,6 +101,8 @@ export class ViewerSession {
       style: this.rules.profile.style,
       canEditRules: this.ruleStore !== null,
       canAdviseZones: this.advisor?.available ?? false,
+      // Both sides' code: a package only the base or only head has is still a box.
+      modules: moduleRoots([...run.catalog, ...(this.baseline?.catalog ?? [])].map((fn) => fn.symbol.namespaceName), this.rules),
     };
   }
 

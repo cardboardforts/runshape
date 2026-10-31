@@ -382,6 +382,13 @@ behave differently" works on a real Runshape PR.
 3. **Event-driven profile**, recognised from the recorded call pattern.
 4. **Module view:** the default view is modules with dependency lines, changed ones marked.
    Click to open a region's shape, its sub-modules, its classes, then a function's diff.
+   - **First cut done (2026-10-31).** `Grouping.modules` draws all the project's code under a
+     prefix as one box, so the graph, compare (changed modules marked), replay and findings work
+     at module level unchanged. `moduleRoots` picks the modules: top-level regions, then each
+     package (down while there's one way down). The viewer opens there ("By module"); clicking
+     a module opens its classes and what they call ("← all modules" goes back). A module no rule
+     names sits where its own code's rules put most of it. Not yet: a region drawn in its own
+     style when opened, and sub-modules between a module and its classes.
 5. **Categorizer on the branch:** new or changed code that no rule covers gets a proposed
    placement, committed to the branch for approval in the diff. A function now doing another
    zone's work is called out, with renames recognised (`moves.ts`) so a rename isn't mistaken

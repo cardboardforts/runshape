@@ -7,6 +7,7 @@ export * from "./profiles";
 export * from "./system-graph";
 export * from "./zones";
 export * from "./seams";
+export * from "./modules";
 export * from "./architecture";
 export * from "./architecture-advice";
 export * from "./architecture-diff";

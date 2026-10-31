@@ -7,6 +7,11 @@ export const MIDDLEWARE_CHAIN_ID = "landmark:middleware-chain";
 export interface Grouping {
   /** One "middleware" box instead of one per middleware class. */
   collapseMiddleware: boolean;
+  /**
+   * The module view: one box per module, each module a dotted name prefix ("packages.trace"),
+   * all the project's code under it drawn as that one box. Absent: a box per class and module.
+   */
+  modules?: string[];
 }
 
 export const FINE_GROUPING: Grouping = { collapseMiddleware: false };
@@ -58,6 +63,8 @@ export function componentOf(span: Span, grouping: Grouping = FINE_GROUPING): Com
     const name = fn.symbol.localName.text;
     return { id: `landmark:${kind}:${name}`, kind, label: name, name: null };
   }
+  const inModule = grouping.modules === undefined ? null : moduleHolding(span.obj?.type ?? ownerName(span), grouping.modules);
+  if (inModule !== null) return moduleComponent(inModule);
   if (span.obj !== null) {
     return classComponent(span.obj.type);
   }
@@ -116,6 +123,19 @@ function doubleOwner(name: QualifiedName, renaming: Renaming): QualifiedName {
 
 function renamedIfMoved(ref: ComponentRef, name: QualifiedName, make: (name: QualifiedName) => ComponentRef): ComponentRef {
   return name.equals(ref.name!) ? ref : make(name);
+}
+
+/** Parsed once per list of modules: componentOf runs for every span. */
+const parsedModules = new WeakMap<string[], QualifiedName[]>();
+
+/** The module a name is in (the longest prefix that holds it), or null outside every module. */
+function moduleHolding(name: QualifiedName, modules: string[]): QualifiedName | null {
+  let parsed = parsedModules.get(modules);
+  if (parsed === undefined) {
+    parsed = modules.map((text) => QualifiedName.parse(text)).sort((a, b) => b.segments.length - a.segments.length);
+    parsedModules.set(modules, parsed);
+  }
+  return parsed.find((module) => module.equals(name) || module.holds(name)) ?? null;
 }
 
 function moduleComponent(module: QualifiedName): ComponentRef {

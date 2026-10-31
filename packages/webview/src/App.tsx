@@ -60,6 +60,8 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const [includeSetup, setIncludeSetup] = useState(false);
   const [grouping, setGrouping] = useState<Grouping>(INITIAL_GROUPING);
+  /** The module opened from the module view (a dotted prefix): its classes, and what they call. */
+  const [focus, setFocus] = useState<string | null>(null);
   const [graph, setGraph] = useState<SystemGraph | null>(null);
   const [positions, setPositions] = useState<Map<string, Positioned> | null>(null);
   // Bumped per layout: the canvas remounts and fits the new layout instead of keeping a
@@ -111,10 +113,10 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
 
   // In compare mode the canvas shows the union of both recordings. Memoised only so the
   // layout effect below sees a stable object, not a new one every render.
-  const displayed = useMemo<SystemGraph | null>(
-    () => (compare && diff !== null ? { nodes: diff.nodes, edges: diff.edges, profile: diff.profile } : graph),
-    [compare, diff, graph],
-  );
+  const displayed = useMemo<SystemGraph | null>(() => {
+    const whole = compare && diff !== null ? { nodes: diff.nodes, edges: diff.edges, profile: diff.profile } : graph;
+    return whole === null || focus === null ? whole : focused(whole, focus);
+  }, [compare, diff, graph, focus]);
 
   // The host is the outside world: subscribe once, ask for the run and its graph.
   useEffect(() => {
@@ -174,6 +176,13 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
               // Its tab goes with compare mode; it mustn't be left showing "Comparing…".
               setListing((current) => (current === "architecture" ? "tests" : current));
             }
+          }
+          // The first load opens at the modules, when there's more than one to show.
+          if (!runLoaded.current && !loadFailed.current && response.summary.modules.length > 1) {
+            const next = { ...viewOptions.current.grouping, modules: response.summary.modules };
+            setGrouping(next);
+            viewOptions.current.grouping = next;
+            host.post({ type: "graph", phases: viewOptions.current.phases, grouping: next, style: viewOptions.current.style });
           }
           if (pendingOpenAt.current !== null) {
             const scenarioId = pendingOpenAt.current;
@@ -352,10 +361,26 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
     requestViews(next ? WITH_SETUP : TEST_BODY_ONLY, grouping, compare);
   };
   const toggleMiddleware = () => {
-    const next = { collapseMiddleware: !grouping.collapseMiddleware };
+    const next = { ...grouping, collapseMiddleware: !grouping.collapseMiddleware };
     setGrouping(next);
     requestViews(phases, next, compare);
   };
+  const showModules = (on: boolean) => {
+    const next: Grouping = on ? { ...grouping, modules: summary.modules } : { collapseMiddleware: grouping.collapseMiddleware };
+    setGrouping(next);
+    setFocus(null);
+    requestViews(phases, next, compare);
+  };
+  /** From the module view, into one module: its classes, drawn as before, and what they call. */
+  const openModule = (module: string) => {
+    const next: Grouping = { collapseMiddleware: grouping.collapseMiddleware };
+    setGrouping(next);
+    setFocus(module);
+    requestViews(phases, next, compare);
+  };
+  // A module box opens the module; any other box opens its panel.
+  const openNode = (node: GraphNode) =>
+    grouping.modules !== undefined && node.qualifiedName !== null && summary.modules.includes(node.qualifiedName) ? openModule(node.qualifiedName) : openComponent(node);
   const changeStyle = (style: string) => {
     const next = style === summary.style ? undefined : style;
     setDrawStyle(next);
@@ -446,6 +471,19 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
           <label className="toggle">
             <input type="checkbox" checked={!grouping.collapseMiddleware} onChange={toggleMiddleware} /> Show each middleware
           </label>
+          {summary.modules.length > 1 && (
+            <label className="toggle">
+              <input type="checkbox" checked={grouping.modules !== undefined} onChange={(event) => showModules(event.target.checked)} /> By module
+            </label>
+          )}
+          {focus !== null && (
+            <p className="module-focus">
+              In <code>{focus}</code> ·{" "}
+              <button type="button" className="link" onClick={() => showModules(true)}>
+                ← all modules
+              </button>
+            </p>
+          )}
           <label className="toggle">
             <input type="checkbox" checked={threeD} onChange={toggleThreeD} /> 3D
           </label>
@@ -590,7 +628,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             // at zero); a change replay interleaves two recordings whose clocks don't mix.
             clockUs={replayClock ? step!.tUs : null}
             focusObject={replayClock ? (step!.objectId ?? null) : null}
-            onOpenComponent={openComponent}
+            onOpenComponent={openNode}
           />
         ) : displayed === null || positions === null ? (
           <p className={layoutFailure ? "centered" : "muted centered"} role={layoutFailure ? "alert" : "status"}>
@@ -610,7 +648,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             stepOp={replay?.ops?.[replay.index] ?? null}
             stepIndex={replay?.index ?? 0}
             stepMs={stepMs[replayIndex] ?? 0}
-            onOpenComponent={openComponent}
+            onOpenComponent={openNode}
           />
         )}
         {replay && (
@@ -811,4 +849,12 @@ function Legend({ ruleCount, profile }: { ruleCount: number; profile: Architectu
       </ul>
     </section>
   );
+}
+
+/** A module's own boxes, and the ones they call or are called by: the rest of the graph is another module's. */
+function focused(graph: SystemGraph, module: string): SystemGraph {
+  const inside = new Set(graph.nodes.filter((node) => node.qualifiedName !== null && (node.qualifiedName === module || node.qualifiedName.startsWith(`${module}.`))).map((node) => node.id));
+  const edges = graph.edges.filter((edge) => inside.has(edge.from) || inside.has(edge.to));
+  const shown = new Set([...inside, ...edges.flatMap((edge) => [edge.from, edge.to])]);
+  return { ...graph, nodes: graph.nodes.filter((node) => shown.has(node.id)), edges };
 }

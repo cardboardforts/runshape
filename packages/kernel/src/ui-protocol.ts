@@ -34,6 +34,8 @@ export interface RunSummary {
   style: ArchitectureStyle;
   canEditRules: boolean;
   canAdviseZones: boolean;
+  /** The module view's boxes, as dotted prefixes (Grouping.modules): regions, then packages. */
+  modules: string[];
 }
 
 export type UiRequest =
