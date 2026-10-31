@@ -3,7 +3,7 @@
  * with the intervals it was actually running — an async handler's bar has gaps while it
  * awaits the database. External calls are marks under the call that made them.
  */
-import { formatMicros } from "@runshape/kernel";
+import { formatMicros } from "./micros";
 import { describe, expect, test } from "vitest";
 
 import { buildTimeline } from "../src";

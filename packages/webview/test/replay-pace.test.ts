@@ -6,15 +6,23 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { describeGap, formatMicros, Phase, ReplayPace, stepDurationsMs } from "@runshape/kernel";
-import { buildReplay } from "../src";
+import { Phase, ReplayStep } from "@runshape/kernel";
+import { ViewerSession } from "@runshape/workflows";
+
+import { describeGap, formatMicros, ReplayPace, stepDurationsMs } from "../src/replay-pace";
 import { loadFixtureRun } from "../../kernel/test/fixtures";
+
+/** A test's replay, as the viewer gets it from the session. */
+async function replayOf(app: "fastapi", scenarioId: string): Promise<ReplayStep[]> {
+  const run = await loadFixtureRun(app);
+  const response = await new ViewerSession(run, { sources: { readLines: async () => null } }).handle({ type: "replay", scenarioId, phases: [Phase.Call], grouping: { collapseMiddleware: true } });
+  if (response?.type !== "replay") throw new Error(`expected a replay, got ${JSON.stringify(response)}`);
+  return response.steps;
+}
 
 describe("replay pace", () => {
   test("registering a user: the query and the password hash take the time, not the plumbing", async () => {
-    const run = await loadFixtureRun("fastapi");
-    const scenario = run.scenario("tests/test_api/test_routes/test_registration.py::test_user_success_registration")!;
-    const steps = buildReplay(scenario, [Phase.Call], { collapseMiddleware: true });
+    const steps = await replayOf("fastapi", "tests/test_api/test_routes/test_registration.py::test_user_success_registration");
 
     const recorded = stepDurationsMs(steps, ReplayPace.Recorded);
     const even = stepDurationsMs(steps, ReplayPace.Even);

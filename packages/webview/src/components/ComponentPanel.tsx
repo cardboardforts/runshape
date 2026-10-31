@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import { ComponentView, formatMicros, FunctionSummary } from "@runshape/kernel";
+import { ComponentView, FunctionSummary } from "@runshape/kernel";
+import { formatMicros } from "../replay-pace";
 
 interface Props {
   view: ComponentView;

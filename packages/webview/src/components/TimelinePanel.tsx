@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { formatMicros, FunctionRef, Timeline, TimelineBar } from "@runshape/kernel";
+import { FunctionRef, Timeline, TimelineBar } from "@runshape/kernel";
+import { formatMicros } from "../replay-pace";
 
 interface Props {
   timeline: Timeline;

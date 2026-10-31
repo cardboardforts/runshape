@@ -13,7 +13,7 @@ Mostly **Core** code. Drawn hexagonal, from 15 runshape.json rules and what the 
 | `execution-diff.ts` | Core | — | `diffExecution`, `diffFunctionExecution`, `mergeReplays` |
 | `index.ts` | — | | no functions of its own (types, re-exports, or a script's top-level code) |
 | `moves.ts` | Core | `Moves` | `Moves.headKey`, `Moves.module`, `Moves.type`, `Moves.baseScenarioId`, `Moves.static none` |
-| `replay.ts` | Core | — | `buildReplay`, `describeGap`, `formatMicros`, `stepDurationsMs` |
+| `replay.ts` | Core | — | `buildReplay` |
 | `review.ts` | Core | — | `reviewMarkdown`, `buildReview`, `reviewCategoryOf` |
 | `routes.ts` | Core | — | `diffRouteMaps`, `buildRouteMap`, `routeForPath`, `readablePattern` |
 | `run-diff.ts` | Core | — | `diffRuns` |

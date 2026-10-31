@@ -5,7 +5,7 @@
  * time land in self. Tracing slows project code, so compare these with each other, not
  * with production latencies.
  */
-import { formatMicros } from "@runshape/kernel";
+import { formatMicros } from "./micros";
 import { describe, expect, test } from "vitest";
 
 import { buildComponentView } from "../src";

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, CallStep, Change, ComponentView, ComponentWiring, describeGap, ExecutionDiff, FlatPoint, FunctionExecutionDiff, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, MergedReplayStep, ObjectGraph, Op, Phase, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, RunSummary, stepDurationsMs, Timeline, UiResponse, zoomLevelKey } from "@runshape/kernel";
+import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, CallStep, Change, ComponentView, ComponentWiring, ExecutionDiff, FlatPoint, FunctionExecutionDiff, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, MergedReplayStep, ObjectGraph, Op, Phase, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, RunSummary, Timeline, UiResponse, zoomLevelKey } from "@runshape/kernel";
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";
@@ -17,6 +17,7 @@ import { ArchitectureChangesPanel } from "./components/ArchitectureChangesPanel"
 import type { Host } from "./host";
 import { zoneClass, zoneColor } from "./zone-style";
 import { Scene3D } from "./three/Scene3D";
+import { describeGap, ReplayPace, stepDurationsMs } from "./replay-pace";
 
 type Listing = "tests" | "routes" | "architecture";
 
