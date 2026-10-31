@@ -374,6 +374,11 @@ behave differently" works on a real Runshape PR.
      zone for a name inside a region is refused until the module view (step 4) can show it.
 2. **Seams:** a call that crosses a region boundary. Going in through the parent's zone is
    expected; reaching past it is a violation. Mixing styles inside one region is a smell.
+   - **Checks done (2026-10-31).** `regionCalls(graph, rules)`: each call that enters or leaves
+     a region, and why it breaks a style. Entering must land on the region's way in (its style's
+     first zone); below the top, the deepest region both ends share judges the call by its
+     style, so calls inside a region are checked too (nothing did before). Not yet: leaving a
+     region, mixing styles, and showing any of it (the module view, step 4).
 3. **Event-driven profile**, recognised from the recorded call pattern.
 4. **Module view:** the default view is modules with dependency lines, changed ones marked.
    Click to open a region's shape, its sub-modules, its classes, then a function's diff.
