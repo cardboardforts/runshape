@@ -3,26 +3,10 @@
 // catalogue of styles against evidence from a recording and proposes how the app's
 // modules map onto that style's zones. A person (or a model, see
 // .claude/skills/architecture-shape) decides; this only proposes, and says why.
-import { ArchitectureStyle, LayoutShape, QualifiedName, Run } from "@runshape/kernel";
+import { ArchitectureCandidate, ArchitectureStyle, LayoutShape, QualifiedName, Run, ZoneProposal, ZoneRule } from "@runshape/kernel";
 import { buildSystemGraph } from "./system-graph";
 import { HexagonalZone, PROFILES } from "./profiles";
-import { ZoneRule, ZoneRules } from "./zones";
-
-export interface ZoneProposal {
-  zone: string;
-  /** Dotted-name globs, in the same form as runshape.json rules. */
-  patterns: string[];
-}
-
-export interface ArchitectureCandidate {
-  style: ArchitectureStyle;
-  name: string;
-  layout: LayoutShape;
-  /** 0–1; relative, for ranking candidates against each other, not a probability. */
-  score: number;
-  evidence: string[];
-  zones: ZoneProposal[];
-}
+import { ZoneRules } from "./zones";
 
 /**
  * Scores every profile on two kinds of evidence from the recording:

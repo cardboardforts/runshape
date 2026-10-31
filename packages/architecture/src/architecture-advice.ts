@@ -1,11 +1,11 @@
 // Asking a language model which architecture an app has, past what package names can tell.
 // The deterministic ranking is its evidence; the model may disagree, and must say why. Like
 // zone advice it only proposes: the session keeps the proposal and a person adopts it.
-import { ArchitectureCandidate } from "./architecture";
 import type { QualifiedName } from "@runshape/kernel";
-import { Confidence, languageName } from "./zone-advice";
+import { languageName } from "./zone-advice";
 import { profileFor, PROFILES } from "./profiles";
-import { ZoneRule, ZoneRules } from "./zones";
+import { ZoneRules } from "./zones";
+import { ArchitectureCandidate, Confidence, ZoneRule } from "@runshape/kernel";
 
 export interface ArchitectureAdvice {
   rules: ZoneRules;

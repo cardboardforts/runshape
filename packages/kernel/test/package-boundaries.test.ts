@@ -58,8 +58,12 @@ const PERMITTED: Record<Role, string[]> = {
 
 /** Imports the target forbids that the code still has. Phase 0b removes them. */
 const NOT_YET: Record<string, string[]> = {
-  "packages/kernel": ["architecture", "trace", "visualizer"], // the UI protocol's view models, type-only (Phase 3)
-  "packages/webview": ["architecture", "trace", "visualizer"], // the UI draws the modules' view models (Phase 3)
+  // The trace module's diffs, replays, routes and review (RunDiff, ExecutionDiff, ReplayStep,
+  // RouteMap, ReviewSummary and ~15 more, plus the replay pacing and gap wording the webview
+  // calls): the review module (Phase 6) reshapes them into a kernel DTO, as Phase 1 did for the
+  // PR page, rather than moving today's shapes into the kernel only to change them there.
+  "packages/kernel": ["trace"], // the UI protocol names them, type-only
+  "packages/webview": ["trace"], // the UI draws them
 };
 
 /** Which @runshape packages each one may import: its role's, and what it doesn't yet do without. */
@@ -139,12 +143,14 @@ describe("package boundaries", () => {
     const violations: string[] = [];
     const fixtures = join(ROOT, "packages", "kernel", "test", "fixtures");
     const isFixtures = (target: string) => target === fixtures || target.startsWith(`${fixtures}/`) || target.startsWith(`${fixtures}.`);
-    // The webview's demo runs against the same fixtures, so it's held to the same rule. Its
+    // The webview's demo runs against the same fixtures, so it's held to the same rule. It is
+    // the browser's composition root (as the extension is VS Code's): it reads a recording's
+    // runshape.json with the arch module and hands the rules to the session. Its
     // recordings page reads the library's overview through the dev server, whose routes
     // (dev-server/) read the library through infra; their tests make libraries to read, and
     // get what the viewer draws from the session, as the demo does.
     const HOST_ALSO: Record<string, Record<string, string[]>> = {
-      "packages/webview": { demo: ["adapters", "workflows"], "dev-server": ["adapters", "infra"], test: ["adapters", "infra", "workflows"] },
+      "packages/webview": { demo: ["adapters", "architecture", "workflows"], "dev-server": ["adapters", "infra"], test: ["adapters", "infra", "workflows"] },
     };
     // A module's tests may wire other modules the way a workflow does (the arch module draws
     // the graphs the trace module's diffs take): values between them, never imports in src.

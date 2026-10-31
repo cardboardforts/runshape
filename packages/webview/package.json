@@ -9,10 +9,8 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@runshape/architecture": "0.1.0",
     "@runshape/kernel": "0.1.0",
     "@runshape/trace": "0.1.0",
-    "@runshape/visualizer": "0.1.0",
     "@xyflow/react": "12.12.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -20,6 +18,7 @@
   },
   "devDependencies": {
     "@runshape/adapters": "0.1.0",
+    "@runshape/architecture": "0.1.0",
     "@runshape/infra": "0.1.0",
     "@runshape/workflows": "0.1.0",
     "@types/react": "19.3.0",

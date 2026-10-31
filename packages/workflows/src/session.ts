@@ -116,6 +116,7 @@ export class ViewerSession {
       canEditRules: this.ruleStore !== null,
       canAdviseZones: this.advisor?.available ?? false,
       modules: this.modules(),
+      styles: PROFILES.map(({ style, name }) => ({ style, name })),
     };
   }
 

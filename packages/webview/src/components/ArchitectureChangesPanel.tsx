@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ArchitectureDiff, Placement, PlacementChange, ZoneRule } from "@runshape/architecture";
+import { ArchitectureDiff, Placement, PlacementChange, ZoneRule } from "@runshape/kernel";
 
 interface Props {
   diff: ArchitectureDiff;

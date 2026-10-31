@@ -2,7 +2,7 @@
 // Inference says what a component *does*; a rule says what it *is supposed to be*. Where the
 // two disagree is the architecture finding.
 
-import { ArchitectureProfile, QualifiedName, splitDotted } from "@runshape/kernel";
+import { ArchitectureProfile, QualifiedName, RegionSummary, splitDotted, ZoneRole, ZoneRule } from "@runshape/kernel";
 import { HEXAGONAL, PROFILES, profileFor } from "./profiles";
 
 export const RULES_FILE = "runshape.json";
@@ -11,25 +11,6 @@ export const RULES_VERSION = 2;
 /** Version 3 adds nested regions; a file without regions is still written as version 2. */
 export const REGIONS_VERSION = 3;
 
-export interface ZoneRule {
-  /**
-   * Dotted-name glob: `*` is any text within one segment, `**` any number of segments (zero too:
-   * `app.**` matches `app`). A dot inside a segment is written `\.` (Go's `example\.com.shop`).
-   */
-  match: string;
-  /** One of the style's zone ids (profiles.ts). Framework, external and test-double zones are facts, not choices. */
-  zone: string;
-  reason: string;
-  /** Who decided: a person, or a model's or the detector's proposal a person accepted. */
-  by: "user" | "llm" | "detected";
-  /**
-   * "composition-root": code that builds the adapters and hands them in (an app's main, a
-   * framework's dependency functions). Its calls wire; they don't break the style.
-   */
-  role?: ZoneRole;
-}
-
-export type ZoneRole = "composition-root";
 const ROLES: ZoneRole[] = ["composition-root"];
 
 const DECIDERS: ZoneRule["by"][] = ["user", "llm", "detected"];
@@ -394,17 +375,6 @@ function isOutside(match: string, region: Subtree): boolean {
 
 function startsWith(segments: readonly string[], prefix: readonly string[]): boolean {
   return prefix.length <= segments.length && prefix.every((segment, i) => segments[i] === segment);
-}
-
-/** A region as a review compares it: by its path ("trace/moves"), its own rules included, its regions apart. */
-export interface RegionSummary {
-  path: string;
-  match: string;
-  in: string;
-  style: string;
-  reason: string;
-  by: ZoneRule["by"];
-  zones: ZoneRule[];
 }
 
 /** Every region at every depth, outermost first. */

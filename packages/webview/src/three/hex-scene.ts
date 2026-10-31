@@ -6,10 +6,8 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
-import { HEXAGONAL } from "@runshape/architecture";
-import { ArchitectureProfile, Change, FloorPiece, FloorTile, GraphNode, Layout, LayoutNode } from "@runshape/kernel";
+import { ArchitectureProfile, Change, ComponentWiring, FloorPiece, FloorTile, GraphNode, Layout, LayoutNode, ObjectGraph } from "@runshape/kernel";
 import { Op, StepKind } from "@runshape/trace";
-import { ComponentWiring, ObjectGraph } from "@runshape/visualizer";
 
 import { zoneColor } from "../zone-style";
 
@@ -19,6 +17,8 @@ import { chooseVisibleLabels, LabelBox, LabelTier, labelPriority } from "./label
 import { Point, routeEdges } from "./routes";
 
 const CALL_COLOR = 0x5eead4;
+/** Before any layout there are no tiles to colour; this only keeps the types honest. */
+const UNKNOWN_ZONE_COLOR = 0x8a8f98;
 const VIOLATION_COLOR = 0xe5534b;
 const ADDED_COLOR = 0x10b981;
 const REMOVED_COLOR = 0xe5534b;
@@ -101,7 +101,8 @@ export class HexScene {
   private readonly controls: OrbitControls;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
-  private profile: ArchitectureProfile = HEXAGONAL;
+  /** The style the layout is drawn in; null until the first layout arrives, when nothing is drawn. */
+  private profile: ArchitectureProfile | null = null;
   private readonly world = new THREE.Group();
   private readonly tiles = new Map<string, TileParts>();
   private readonly arcs = new Map<string, ArcParts>();
@@ -211,7 +212,7 @@ export class HexScene {
       const count = own ? own.length : tile.node.instances;
       if (count === 0) continue;
       const slots = objectSlots(tile.layout, count);
-      const color = zoneColor(this.profile, tile.node.zone);
+      const color = this.colorOf(tile.node.zone);
       const mesh = new THREE.InstancedMesh(
         new THREE.BoxGeometry(OBJECT_SIDE, OBJECT_SIDE, OBJECT_SIDE),
         new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9 }),
@@ -324,7 +325,7 @@ export class HexScene {
       const change = nodeChanges?.get(id) ?? null;
       tile.body.material.opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.55;
       tile.body.material.emissiveIntensity = active ? 1.2 : 0.25;
-      tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : zoneColor(this.profile, tile.node.zone)));
+      tile.outline.material.color.setHex(changeColor(change) ?? (tile.node.smells.length ? CHANGED_COLOR : this.colorOf(tile.node.zone)));
       tile.outline.material.opacity = emphasis === "dimmed" ? 0.2 : 1;
       const objects = this.objectMeshes.get(id);
       if (objects) (objects.material as THREE.MeshStandardMaterial).opacity = emphasis === "dimmed" ? DIMMED_OPACITY : 0.9;
@@ -393,9 +394,13 @@ export class HexScene {
     for (const piece of floor.pieces) this.addFloorPiece(piece);
   }
 
+  private colorOf(zone: string): number {
+    return this.profile === null ? UNKNOWN_ZONE_COLOR : zoneColor(this.profile, zone);
+  }
+
   /** A flat polygon at its elevation; a raised one (a terrace) gets a face down to the ground. */
   private addFloorPiece(piece: FloorPiece): void {
-    const color = piece.zone === null ? CORE_FLOOR_COLOR : zoneColor(this.profile, piece.zone);
+    const color = piece.zone === null ? CORE_FLOOR_COLOR : this.colorOf(piece.zone);
     const shape = new THREE.Shape(piece.corners.map(([x, z]) => new THREE.Vector2(x, -z)));
     const floor = new THREE.Mesh(
       new THREE.ShapeGeometry(shape),
@@ -417,7 +422,7 @@ export class HexScene {
 
   private addTile(node: LayoutNode, tile: FloorTile): void {
     const { x, y, z, size } = tile;
-    const color = zoneColor(this.profile, node.zone);
+    const color = this.colorOf(node.zone);
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(size, TILE_HEIGHT, size),
       new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.25, transparent: true, opacity: 0.55, roughness: 0.6 }),

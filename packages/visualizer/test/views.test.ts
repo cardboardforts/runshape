@@ -5,9 +5,9 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { Phase, pythonSymbol, SystemGraph } from "@runshape/kernel";
+import { FunctionView, Phase, pythonSymbol, SystemGraph } from "@runshape/kernel";
 import { buildComponentView } from "../src";
-import { buildFunctionView, FunctionView } from "../src";
+import { buildFunctionView } from "../src";
 import { buildReplay } from "@runshape/trace";
 import { buildSystemGraph } from "@runshape/architecture";
 import { loadFixtureRun } from "../../kernel/test/fixtures";

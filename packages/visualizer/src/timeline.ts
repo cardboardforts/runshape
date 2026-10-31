@@ -1,39 +1,4 @@
-import { componentOf, externalComponent, FINE_GROUPING, FunctionRef, functionRef, Grouping, Phase, Role, Scenario, Span } from "@runshape/kernel";
-
-/** One call on the timeline: when it started and ended, and when it was actually running. */
-export interface TimelineBar {
-  spanId: number;
-  /**
-   * The bar's row: below its caller, and below any bar of its row it overlaps in time (an
-   * async generator dependency stays open beside the handler it serves). 0 is the top.
-   */
-  depth: number;
-  startUs: number;
-  endUs: number;
-  /** Running intervals; gaps between them are a coroutine awaiting. */
-  runs: [startUs: number, endUs: number][];
-  label: string;
-  componentId: string;
-  role: Role;
-  symbol: FunctionRef;
-}
-
-/** An external call (database, HTTP): an instant, under the call that made it. */
-export interface TimelineMark {
-  tUs: number;
-  depth: number;
-  componentId: string;
-  label: string;
-}
-
-export interface Timeline {
-  scenarioId: string;
-  startUs: number;
-  endUs: number;
-  depth: number;
-  bars: TimelineBar[];
-  externals: TimelineMark[];
-}
+import { componentOf, externalComponent, FINE_GROUPING, FunctionRef, functionRef, Grouping, Phase, Role, Scenario, Span, Timeline, TimelineBar, TimelineMark } from "@runshape/kernel";
 
 /** A scenario's calls laid out over time (a flame chart), for the phases asked for. */
 export function buildTimeline(scenario: Scenario, phases: Phase[] = [Phase.Call], grouping: Grouping = FINE_GROUPING): Timeline {

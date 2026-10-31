@@ -1,7 +1,7 @@
-import { byCodeUnit, CatalogFunction, FINE_GROUPING, Phase, Role, Run } from "@runshape/kernel";
+import { byCodeUnit, CatalogFunction, FINE_GROUPING, Phase, Placement, Role, Run, ZoneRule } from "@runshape/kernel";
 import { buildSystemGraph } from "./system-graph";
-import { ZoneRule, ZoneRules } from "./zones";
-import { ArchitectureSnapshot, Placement } from "./placements";
+import { ZoneRules } from "./zones";
+import { ArchitectureSnapshot } from "./placements";
 
 /** One source folder, as its README describes it (folder-guide.test.ts says why). */
 export interface FolderGuide {

@@ -1,21 +1,6 @@
-import { ArchitectureProfile, byCodeUnit, ComponentKind, FINE_GROUPING, Phase, QualifiedName, Run, ZoneSource } from "@runshape/kernel";
+import { ArchitectureProfile, byCodeUnit, ComponentKind, FINE_GROUPING, Phase, Placement, QualifiedName, Run, ZoneRule, ZoneSource } from "@runshape/kernel";
 import { buildSystemGraph } from "./system-graph";
-import { RegionFile, regionFile, ZoneRule, ZoneRules } from "./zones";
-
-/** One of the project's classes or modules, where it sits, and who put it there. */
-export interface Placement {
-  /** Its name in Runshape's dotted syntax, as runshape.json globs match it. */
-  component: string;
-  kind: ComponentKind.Class | ComponentKind.Module;
-  zone: string;
-  source: ZoneSource.Rule | ZoneSource.Inferred;
-  /** The glob of the rule that placed it; null when inferred. */
-  rule: string | null;
-  /** Who made the rule: a person, or a model's or the detector's proposal a person accepted. */
-  decidedBy: ZoneRule["by"] | null;
-  /** The rule's reason, or the behaviour inference went by. */
-  reason: string;
-}
+import { RegionFile, regionFile, ZoneRules } from "./zones";
 
 /**
  * A commit's architecture: its rules, and where they and the recorded behaviour put each

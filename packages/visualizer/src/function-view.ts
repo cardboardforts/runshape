@@ -1,40 +1,4 @@
-import { CatalogFunction, CodeSymbol, FunctionRef, functionRef, Outcome, Run, Span } from "@runshape/kernel";
-
-/**
- * One function's source with, for every line, the scenarios (tests) whose execution passed
- * through it — the "bundle of wires" view. Lines no scenario reached are untested; scenarios
- * that took exactly the same path are candidates for consolidation.
- */
-export interface FunctionView {
-  symbol: FunctionRef;
-  file: string;
-  firstLine: number;
-  lastLine: number;
-  lines: LineView[];
-  scenarios: ScenarioPath[];
-  samePathGroups: string[][];
-  untestedLines: number[];
-  executableLineCount: number;
-}
-
-export interface LineView {
-  number: number;
-  text: string;
-  executable: boolean;
-  scenarioIds: string[];
-  hits: number;
-}
-
-export interface ScenarioPath {
-  scenarioId: string;
-  name: string;
-  outcome: Outcome;
-  calls: number;
-  /** Distinct lines reached, ascending. */
-  lines: number[];
-  /** Lines in execution order for the first call, consecutive repeats collapsed. */
-  firstCallPath: number[];
-}
+import { CatalogFunction, CodeSymbol, FunctionRef, functionRef, FunctionView, LineView, Outcome, Run, ScenarioPath, Span } from "@runshape/kernel";
 
 export class UnknownFunctionError extends Error {}
 

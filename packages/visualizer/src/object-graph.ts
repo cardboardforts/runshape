@@ -1,44 +1,4 @@
-import { classComponentId, Run, Scenario } from "@runshape/kernel";
-
-/**
- * Who holds a reference to whom, as recorded when each object's __init__ finished (the `W`
- * events). For constructor-injected code this is the composition root's wiring diagram,
- * observed rather than read: OrderService#1.repository -> SqlOrderRepository#0.
- */
-export interface ObjectNode {
-  /** The recording's object id, unique within one scenario. */
-  id: number;
-  componentId: string;
-  className: string;
-  /** The function that constructed it, e.g. "compose" or "get_repository.<locals>._get_repo"; null if built outside project code. */
-  builtBy: string | null;
-  /** When it appeared, in the scenario's microseconds: a replay shows it from then on. */
-  seenUs: number;
-}
-
-export interface ObjectWire {
-  from: number;
-  to: number;
-  attribute: string;
-  /** When the holder's __init__ finished: a replay draws the wire from then on. */
-  atUs: number;
-}
-
-export interface ObjectGraph {
-  scenarioId: string;
-  objects: ObjectNode[];
-  wires: ObjectWire[];
-}
-
-/** Across every scenario: component A's objects hold component B's objects, via these attributes. */
-export interface ComponentWiring {
-  from: string;
-  to: string;
-  attributes: string[];
-  /** How many object-to-object references were seen, over all scenarios. */
-  references: number;
-  scenarioIds: string[];
-}
+import { classComponentId, ComponentWiring, ObjectGraph, ObjectNode, ObjectWire, Run, Scenario } from "@runshape/kernel";
 
 export function buildObjectGraph(scenario: Scenario): ObjectGraph {
   const objects: ObjectNode[] = scenario.objects.map((obj) => ({

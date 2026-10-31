@@ -6,20 +6,32 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { profileFor } from "@runshape/architecture";
-import { ArchitectureStyle, FixedZone } from "@runshape/kernel";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { ArchitectureProfile, ArchitectureStyle, FixedZone, Phase, TraceDirectory } from "@runshape/kernel";
+import { ViewerSession } from "@runshape/workflows";
 
 import { zoneClass, zoneColor, zoneLabel } from "../src/zone-style";
 
-function table(style: ArchitectureStyle): string[] {
-  const profile = profileFor(style)!;
+/** The style as the viewer gets it: the profile a layout drawn in it carries. */
+async function profileOf(style: ArchitectureStyle): Promise<ArchitectureProfile> {
+  const fixtures = join(import.meta.dirname, "..", "..", "kernel", "test", "fixtures", "fastapi");
+  const run = await new TraceDirectory({ readText: (path) => readFile(join(fixtures, path), "utf8") }).latest();
+  const response = await new ViewerSession(run, { sources: { readLines: async () => null } }).handle({ type: "graph", phases: [Phase.Call], grouping: { collapseMiddleware: true }, style });
+  if (response?.type !== "graph") throw new Error(`expected a layout, got ${JSON.stringify(response)}`);
+  return response.layout.profile;
+}
+
+async function table(style: ArchitectureStyle): Promise<string[]> {
+  const profile = await profileOf(style);
   const zones = [...profile.zones.map((zone) => zone.id), ...Object.values(FixedZone), "a-zone-of-another-style"];
   return zones.map((zone) => `${zone.padEnd(24)}${zoneClass(profile, zone).padEnd(24)}#${zoneColor(profile, zone).toString(16).padStart(6, "0")}  ${zoneLabel(profile, zone)}`);
 }
 
 describe("zone style", () => {
-  test("hexagonal and layered share a palette by position", () => {
-    expect(table(ArchitectureStyle.Hexagonal)).toMatchInlineSnapshot(`
+  test("hexagonal and layered share a palette by position", async () => {
+    expect(await table(ArchitectureStyle.Hexagonal)).toMatchInlineSnapshot(`
       [
         "inbound-adapter         zone-at-0               #3b82f6  inbound adapters",
         "core                    zone-at-1               #10b981  core",
@@ -30,7 +42,7 @@ describe("zone style", () => {
         "a-zone-of-another-style zone-a-zone-of-another-style#8a8f98  a-zone-of-another-style",
       ]
     `);
-    expect(table(ArchitectureStyle.Layered)).toMatchInlineSnapshot(`
+    expect(await table(ArchitectureStyle.Layered)).toMatchInlineSnapshot(`
       [
         "presentation            zone-at-0               #3b82f6  presentation",
         "business                zone-at-1               #10b981  business",

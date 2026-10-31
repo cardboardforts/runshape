@@ -428,6 +428,14 @@ changed module is marked, and clicking down reaches a function's diff.
      the browser); back to every class 1.2 s before, 0.9 s after. The response is still 2.2 MB
      at class level, nearly all of it every box's and call's test ids: sending them once, by
      index, is the next saving. Not yet: the `LanguageModel` parameter (nothing to ask it yet).
+   - **UI protocol, Phase 0b's deferral (2026-10-31).** The webview now draws kernel types for
+     everything but the trace module's: the visualizer's views (function, timeline, objects,
+     wiring) and the arch module's answers (rules, placements, architecture diff, candidates,
+     zone advice) are kernel DTOs, built by their modules as before, and "Draw as" lists the
+     styles the summary sends. The kernel imports no module but trace. `NOT_YET` keeps
+     `trace` for both (RunDiff, ExecutionDiff, replays, routes, the review summary, ~20 types,
+     and the replay pacing the webview calls): the review module (Phase 6) reshapes those into a
+     kernel DTO, as the PR page did, rather than moving today's shapes only to change them.
 2. **The same model for agents:** `runshape view --json`, what a human would see at each level.
 3. **Saved arrangements:** moving a module in 2D or 3D is saved, keyed by region and module
    names so it survives between diffs. New things get a computed spot near their neighbours.

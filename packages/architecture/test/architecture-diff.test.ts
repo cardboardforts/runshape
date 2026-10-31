@@ -13,9 +13,9 @@
 import { describe, expect, test } from "vitest";
 
 
-import { QualifiedName, ZoneSource } from "@runshape/kernel";
+import { ArchitectureDiff, Placement, QualifiedName, ZoneSource } from "@runshape/kernel";
 import { detectMoves, diffRuns, Moves } from "@runshape/trace";
-import { ArchitectureDiff, ArchitectureSnapshot, buildPlacements, comparedGraphs, diffArchitecture, Placement, ZoneRules } from "../src";
+import { ArchitectureSnapshot, buildPlacements, comparedGraphs, diffArchitecture, ZoneRules } from "../src";
 import { fixtureRuns, loadFixtureRun } from "../../kernel/test/fixtures";
 
 const rules = (zones: { match: string; zone: string; reason: string; by: string }[]) => ZoneRules.parse(JSON.stringify({ version: 2, style: "hexagonal", zones }));

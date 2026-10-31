@@ -1,4 +1,4 @@
-import { ArchitectureCandidate, profileFor } from "@runshape/architecture";
+import { ArchitectureCandidate, StyleChoice } from "@runshape/kernel";
 
 export type ModelAdvice =
   | { kind: "idle" }
@@ -11,6 +11,8 @@ interface Props {
   candidates: ArchitectureCandidate[] | null;
   /** The style the canvas is drawn in, to mark the candidate being previewed. */
   drawnStyle: string;
+  /** Every style, to name the one a model proposes. */
+  styles: StyleChoice[];
   canAdopt: boolean;
   canAsk: boolean;
   advice: ModelAdvice;
@@ -21,7 +23,7 @@ interface Props {
 }
 
 /** The styles ranked against the recording, with the evidence for each; preview or adopt one. */
-export function ArchitecturePanel({ candidates, drawnStyle, canAdopt, canAsk, advice, onPreview, onAdopt, onAsk, onClose }: Props) {
+export function ArchitecturePanel({ candidates, drawnStyle, styles, canAdopt, canAsk, advice, onPreview, onAdopt, onAsk, onClose }: Props) {
   return (
     <section className="architecture-panel" aria-label="Detected architecture">
       <header>
@@ -61,7 +63,7 @@ export function ArchitecturePanel({ candidates, drawnStyle, canAdopt, canAsk, ad
           ))}
         </ol>
       )}
-      {canAsk && <ModelOpinion advice={advice} drawnStyle={drawnStyle} canAdopt={canAdopt} onAsk={onAsk} onPreview={onPreview} onAdopt={onAdopt} />}
+      {canAsk && <ModelOpinion styles={styles} advice={advice} drawnStyle={drawnStyle} canAdopt={canAdopt} onAsk={onAsk} onPreview={onPreview} onAdopt={onAdopt} />}
     </section>
   );
 }
@@ -70,11 +72,12 @@ export function ArchitecturePanel({ candidates, drawnStyle, canAdopt, canAsk, ad
 function ModelOpinion({
   advice,
   drawnStyle,
+  styles,
   canAdopt,
   onAsk,
   onPreview,
   onAdopt,
-}: Pick<Props, "advice" | "drawnStyle" | "canAdopt" | "onAsk" | "onPreview" | "onAdopt">) {
+}: Pick<Props, "advice" | "drawnStyle" | "styles" | "canAdopt" | "onAsk" | "onPreview" | "onAdopt">) {
   if (advice.kind === "idle") {
     return (
       <button type="button" onClick={onAsk}>
@@ -96,7 +99,7 @@ function ModelOpinion({
   return (
     <div className="proposal" role="region" aria-label="Model proposal">
       <p>
-        The model says <strong>{profileFor(advice.style)?.name ?? advice.style}</strong> <span className="muted">({advice.confidence} confidence)</span>
+        The model says <strong>{styles.find((choice) => choice.style === advice.style)?.name ?? advice.style}</strong> <span className="muted">({advice.confidence} confidence)</span>
       </p>
       <p>{advice.reason}</p>
       <ul className="evidence">

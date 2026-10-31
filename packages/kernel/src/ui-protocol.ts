@@ -1,13 +1,13 @@
 // Messages between the webview (UI adapter) and its host (the VS Code extension, or the
 // standalone demo). Plain JSON both ways: everything here must survive postMessage.
 import { Outcome, Phase } from "./trace/model/trace";
-import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } from "@runshape/architecture";
+import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } from "./architecture-views";
 import type { ArchitectureStyle } from "./trace/model/arch-trace";
 import type { Layout } from "./layout";
 import type { ComponentView } from "./trace/model/component-view";
 import type { Grouping } from "./trace/model/components";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/trace";
-import type { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
+import type { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "./recording-views";
 
 export interface ScenarioSummary {
   id: string;
@@ -37,6 +37,13 @@ export interface RunSummary {
   canAdviseZones: boolean;
   /** The module view's boxes, as dotted prefixes (Grouping.modules): regions, then packages. */
   modules: string[];
+  /** Every style the graph can be drawn in ("Draw as"), in the arch module's order. */
+  styles: StyleChoice[];
+}
+
+export interface StyleChoice {
+  style: ArchitectureStyle;
+  name: string;
 }
 
 export type UiRequest =

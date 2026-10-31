@@ -1,42 +1,6 @@
-import { byCodeUnit, ComponentKind, NO_RENAMING, QualifiedName, Renaming, ZoneSource } from "@runshape/kernel";
-import { flattenRegions, RegionSummary, ZoneRule } from "./zones";
-import { ArchitectureSnapshot, Placement } from "./placements";
-
-/** One component's place before and after; null on the side it doesn't exist. */
-export interface PlacementChange {
-  component: string;
-  kind: Placement["kind"];
-  before: Placement | null;
-  after: Placement | null;
-  /** Its name in the base, when it moved there from somewhere else. */
-  movedFrom: string | null;
-}
-
-/**
- * How the architecture moved between two commits, decisions apart from observations: see
- * the test (architecture-diff.test.ts) for why.
- */
-export interface ArchitectureDiff {
-  /** The styles the two commits' runshape.json declare; both are placed in the second. */
-  styleBefore: string;
-  styleAfter: string;
-  /** The zones placements name, in the style they're placed in. */
-  zones: { id: string; name: string }[];
-  /** Rules by their glob: added, removed, or kept with another zone, reason or decider. */
-  rules: { added: ZoneRule[]; removed: ZoneRule[]; changed: { before: ZoneRule; after: ZoneRule }[] };
-  /** Regions (runshape.json v3) by path: added, removed, or kept with another match, zone, style, reason, decider or rules. */
-  regions: { added: RegionSummary[]; removed: RegionSummary[]; changed: { before: RegionSummary; after: RegionSummary }[] };
-  /** Placements a rule made or unmade: someone decided these. */
-  decided: PlacementChange[];
-  /** Inferred zones that moved with the tests' behaviour, no rule on either side. */
-  observed: PlacementChange[];
-  /** New code no rule places: inferred for now, waiting for a decision. */
-  unplaced: Placement[];
-  /** Code head no longer has (or the tests no longer run). */
-  removed: Placement[];
-  /** Head's rules no recorded component matches. */
-  unusedRules: string[];
-}
+import { ArchitectureDiff, byCodeUnit, ComponentKind, NO_RENAMING, Placement, PlacementChange, QualifiedName, RegionSummary, Renaming, ZoneRule, ZoneSource } from "@runshape/kernel";
+import { flattenRegions } from "./zones";
+import { ArchitectureSnapshot } from "./placements";
 
 export function diffArchitecture(before: ArchitectureSnapshot, after: ArchitectureSnapshot, moves: Renaming = NO_RENAMING): ArchitectureDiff {
   // The base's components under head's names: a moved class is the same class.

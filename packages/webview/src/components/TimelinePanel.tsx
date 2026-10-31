@@ -1,8 +1,7 @@
 import { useState } from "react";
 
-import { FunctionRef } from "@runshape/kernel";
+import { FunctionRef, Timeline, TimelineBar } from "@runshape/kernel";
 import { formatMicros } from "@runshape/trace";
-import { Timeline, TimelineBar } from "@runshape/visualizer";
 
 interface Props {
   timeline: Timeline;

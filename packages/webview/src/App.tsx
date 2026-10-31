@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ArchitectureCandidate, ArchitectureDiff, PROFILES } from "@runshape/architecture";
-import { ArchitectureProfile, ArchitectureStyle, Change, ComponentView, FunctionRef, GraphNode, Grouping, groupingAt, Layout, LayoutNode, Phase, RunSummary, UiResponse } from "@runshape/kernel";
+import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, Change, ComponentView, ComponentWiring, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, ObjectGraph, Phase, RunSummary, Timeline, UiResponse } from "@runshape/kernel";
 import { CallStep, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/trace";
-import { ComponentWiring, FunctionView, ObjectGraph, Timeline } from "@runshape/visualizer";
 
 import { ComponentPanel } from "./components/ComponentPanel";
 import { AdviceState, ZoneControls } from "./components/ZoneControls";
@@ -481,7 +479,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
           <label className="style-picker">
             Draw as
             <select value={drawStyle ?? summary.style} onChange={(event) => changeStyle(event.target.value)}>
-              {PROFILES.map((profile) => (
+              {summary.styles.map((profile) => (
                 <option key={profile.style} value={profile.style}>
                   {profile.name}
                   {profile.style === summary.style ? " — runshape.json" : ""}
@@ -504,6 +502,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             <ArchitecturePanel
               candidates={detection.candidates}
               drawnStyle={drawStyle ?? summary.style}
+              styles={summary.styles}
               canAdopt={summary.canEditRules}
               canAsk={summary.canAdviseZones}
               advice={modelAdvice}

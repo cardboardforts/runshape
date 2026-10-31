@@ -1,6 +1,6 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { Change, Grouping, Phase, ReviewHighlights, Run } from "@runshape/kernel";
-import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, RegionSummary, ZoneRule, ZoneRules } from "@runshape/architecture";
+import { ArchitectureDiff, Change, Grouping, Phase, Placement, PlacementChange, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
+import { buildPlacements, comparedGraphs, diffArchitecture, ZoneRules } from "@runshape/architecture";
 import {
   buildReview,
   buildThreads,
