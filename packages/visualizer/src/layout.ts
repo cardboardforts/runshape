@@ -1,8 +1,11 @@
 // The visual model: one zoom level reduced to what's drawn, positions included, computed once
 // here and drawn as is by the 2D canvas and the 3D floor (and read by agents). Pure: no DOM.
-import { Change, ComponentKind, FlatPoint, GraphEdge, GraphNode, Grouping, Layout, LayoutEdge, LayoutNode, SystemGraph, ZoomLevel } from "@runshape/kernel";
+import { Change, ComponentKind, FlatPoint, GraphEdge, GraphNode, Grouping, Layout, LayoutEdge, LayoutNode, SystemGraph, ZoomLevel, zoomLevelKey } from "@runshape/kernel";
+
+import { applyArrangement, Arrangement } from "./arrangement";
 
 import { flowsDown, layoutGraph, NODE_HEIGHT, NODE_WIDTH } from "./flat-layout";
+import { TILE_GAP } from "./floor";
 import { layoutFloor } from "./layout-floor";
 
 /**
@@ -23,7 +26,12 @@ export interface LayoutView {
   /** The boxes the graph was cut into (groupingAt): a module box opens into its module. */
   grouping: Grouping;
   changes?: GraphChanges | null;
+  /** Where a person put boxes before: kept, and new boxes placed near their neighbours. */
+  arrangement?: Arrangement | null;
 }
+
+/** Room left around a box when a new one is placed beside it, in 2D pixels. */
+const FLAT_CLEARANCE = 24;
 
 /**
  * What the viewer draws at `view.level` of `graph` (already cut into that level's boxes): with
@@ -48,18 +56,45 @@ export async function layout(graph: SystemGraph, view: LayoutView): Promise<Layo
       placedNearNeighbours: false,
     }),
   );
+  const arranged = arrange(nodes, kept.edges, view.arrangement?.levels[zoomLevelKey(view.level, graph.profile.style)]);
   const edges = kept.edges.map((edge): LayoutEdge => ({ ...graphEdge(edge), change: changes === null ? null : (changes.edges.get(edge.id) ?? Change.Unchanged) }));
   return {
     level: view.level,
     grouping: view.grouping,
     profile: graph.profile,
     direction: flowsDown(kept) ? "down" : "right",
-    nodes,
+    nodes: arranged,
     edges,
     floor: { radius: floor.radius, pieces: floor.floor },
     hidden,
     flatProblem: problem,
   };
+}
+
+/** The saved spots put back, in 2D and on the 3D floor (whose saved y is the floor's z). */
+function arrange(nodes: LayoutNode[], edges: GraphEdge[], saved: Arrangement["levels"][string] | undefined): LayoutNode[] {
+  if (saved === undefined) return nodes;
+  const mark = (node: LayoutNode, how: "arranged" | "near-neighbours" | "computed") => ({
+    arranged: node.arranged || how === "arranged",
+    placedNearNeighbours: node.placedNearNeighbours || how === "near-neighbours",
+  });
+  const flat = applyArrangement(
+    nodes,
+    edges,
+    saved.flat,
+    (node) => node.flat,
+    (node, spot, how) => ({ ...node, flat: { x: spot.x, y: spot.y }, ...mark(node, how) }),
+    () => ({ width: NODE_WIDTH + FLAT_CLEARANCE, height: NODE_HEIGHT + FLAT_CLEARANCE }),
+  );
+  const floorSaved = Object.fromEntries(Object.entries(saved.floor).map(([name, spot]) => [name, { x: spot.x, y: spot.z }]));
+  return applyArrangement(
+    flat,
+    edges,
+    floorSaved,
+    (node) => ({ x: node.floor.x, y: node.floor.z }),
+    (node, spot, how) => ({ ...node, floor: { ...node.floor, x: spot.x, z: spot.y }, ...mark(node, how) }),
+    (node) => ({ width: node.floor.size + TILE_GAP, height: node.floor.size + TILE_GAP }),
+  );
 }
 
 /** A module's own boxes, and the ones they call or are called by: the rest belongs to other modules. */

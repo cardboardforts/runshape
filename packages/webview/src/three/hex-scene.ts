@@ -121,11 +121,15 @@ export class HexScene {
   private frame = 0;
   private framesDrawn = 0;
   private pointerDown: { x: number; y: number } | null = null;
+  /** A tile being dragged across the floor: orbiting is off until it's dropped. */
+  private dragged: { tile: TileParts; from: THREE.Vector3; to: THREE.Vector3; moved: boolean } | null = null;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly onPick: (node: LayoutNode) => void,
     background: string,
+    /** A tile dropped elsewhere on the floor (its x and z): the session keeps it there. */
+    private readonly onMove: (node: LayoutNode, to: { x: number; z: number }) => void,
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -156,6 +160,7 @@ export class HexScene {
     this.composer.addPass(new OutputPass());
 
     this.labels.domElement.addEventListener("pointerdown", this.handlePointerDown);
+    this.labels.domElement.addEventListener("pointermove", this.handlePointerMove);
     this.labels.domElement.addEventListener("pointerup", this.handlePointerUp);
     this.resize = new ResizeObserver(() => this.fitToContainer());
     this.resize.observe(container);
@@ -163,7 +168,8 @@ export class HexScene {
     this.frame = requestAnimationFrame(this.animate);
   }
 
-  setLayout(layout: Layout): void {
+  /** `reframe`: point the camera at the whole floor again (a new level), not just redraw (a moved tile). */
+  setLayout(layout: Layout, reframe = true): void {
     this.profile = layout.profile;
     this.clearWorld();
     this.addFloor(layout.floor);
@@ -190,7 +196,7 @@ export class HexScene {
       this.world.add(mesh);
       this.trunks.push({ mesh, edgeIds: trunk.edgeIds });
     }
-    this.frameCamera();
+    if (reframe) this.frameCamera();
   }
 
   /**
@@ -375,6 +381,7 @@ export class HexScene {
     cancelAnimationFrame(this.frame);
     this.resize.disconnect();
     this.labels.domElement.removeEventListener("pointerdown", this.handlePointerDown);
+    this.labels.domElement.removeEventListener("pointermove", this.handlePointerMove);
     this.labels.domElement.removeEventListener("pointerup", this.handlePointerUp);
     this.clearWorld();
     this.controls.dispose();
@@ -564,12 +571,41 @@ export class HexScene {
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     this.pointerDown = { x: event.clientX, y: event.clientY };
+    // On a tile, the drag moves the tile; anywhere else it orbits the camera.
+    const tile = this.tileAt(event);
+    if (tile === undefined) return;
+    this.controls.enabled = false;
+    this.dragged = { tile, from: tile.body.position.clone(), to: tile.body.position.clone(), moved: false };
+  };
+
+  /** The tile follows the pointer across the floor at its own elevation (a terrace stays a terrace). */
+  private readonly handlePointerMove = (event: PointerEvent): void => {
+    const drag = this.dragged;
+    const down = this.pointerDown;
+    if (drag === null || down === null) return;
+    if (!drag.moved && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= CLICK_TOLERANCE_PX) return;
+    const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -drag.from.y);
+    const hit = this.raycasterAt(event).ray.intersectPlane(floor, new THREE.Vector3());
+    if (hit === null) return;
+    drag.moved = true;
+    drag.to.set(hit.x, drag.from.y, hit.z);
+    drag.tile.body.position.copy(drag.to);
+    drag.tile.outline.position.copy(drag.to);
+    drag.tile.label.position.set(hit.x, drag.tile.label.position.y, hit.z);
   };
 
   /** A click (not the end of an orbit drag) on a tile opens that component. */
   private readonly handlePointerUp = (event: PointerEvent): void => {
     const down = this.pointerDown;
     this.pointerDown = null;
+    const drag = this.dragged;
+    this.dragged = null;
+    this.controls.enabled = true;
+    if (drag?.moved) {
+      // Dropped: the session saves it, and the layout that comes back routes the calls anew.
+      this.onMove(drag.tile.node, { x: drag.to.x, z: drag.to.z });
+      return;
+    }
     if (!down || Math.hypot(event.clientX - down.x, event.clientY - down.y) > CLICK_TOLERANCE_PX) return;
     const labelUnderPointer = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(".label3d");
     const labelled = labelUnderPointer?.dataset.nodeId ? this.tiles.get(labelUnderPointer.dataset.nodeId) : undefined;
@@ -577,15 +613,24 @@ export class HexScene {
       this.onPick(labelled.node);
       return;
     }
+    const tile = this.tileAt(event);
+    if (tile) this.onPick(tile.node);
+  };
+
+  private raycasterAt(event: PointerEvent): THREE.Raycaster {
     const bounds = this.renderer.domElement.getBoundingClientRect();
     const pointer = new THREE.Vector2(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -((event.clientY - bounds.top) / bounds.height) * 2 + 1);
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, this.camera);
-    const hit = raycaster.intersectObjects([...this.tiles.values()].map((tile) => tile.body))[0];
+    return raycaster;
+  }
+
+  /** The tile under the pointer, by its body (labels are looked up separately, as buttons). */
+  private tileAt(event: PointerEvent): TileParts | undefined {
+    const hit = this.raycasterAt(event).intersectObjects([...this.tiles.values()].map((tile) => tile.body))[0];
     const id = hit?.object.userData.nodeId as string | undefined;
-    const tile = id ? this.tiles.get(id) : undefined;
-    if (tile) this.onPick(tile.node);
-  };
+    return id ? this.tiles.get(id) : undefined;
+  }
 }
 
 function releaseResources(object: THREE.Object3D): void {

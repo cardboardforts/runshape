@@ -7,7 +7,7 @@ import { AgentLevel, layoutForAgents } from "@runshape/visualizer";
 
 import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown, reviewHighlights } from "./review-bundle";
 import { buildReviewPage } from "./review-page";
-import { ViewerSession } from "./session";
+import { ArrangementStore, ViewerSession } from "./session";
 import { stackOrder } from "./stacks";
 
 /** What the recordings workflow is given: its ports, and how to talk to the person. */
@@ -32,6 +32,8 @@ export interface RecordingsDependencies {
   pullRequests: PullRequests;
   /** Where a person can look at a comparison: a page to open, and how. */
   comparisonLink: (baseId: string, headId: string) => string;
+  /** The boxes a person moved in the viewer: `view` shows them where they were put. */
+  arrangements?: ArrangementStore | null;
 }
 
 const FAILING = new Set<string>([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
@@ -512,7 +514,7 @@ export class Recordings {
     if (chosen === undefined) throw new RecordingError("nothing is recorded yet: npm run runshape -- record working");
     const recording = await this.library.store.recording(chosen);
     if (recording === undefined) throw new RecordingError(`there's no recording ${chosen} (npm run runshape -- list shows what's kept)`);
-    const session = new ViewerSession(await this.runOf(chosen), { sources: { readLines: async () => null }, rules: (await this.rulesOf(chosen)) ?? undefined });
+    const session = new ViewerSession(await this.runOf(chosen), { sources: { readLines: async () => null }, rules: (await this.rulesOf(chosen)) ?? undefined, arrangements: this.dependencies.arrangements ?? null });
     const modules = session.modules();
     const grouping: Grouping = modules.length > 1 ? { collapseMiddleware: true, modules } : { collapseMiddleware: true };
     if (module !== null && !modules.includes(module)) {

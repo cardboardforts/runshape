@@ -22,7 +22,7 @@ import { describe, expect, test } from "vitest";
 
 import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/kernel";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
-import { assertPlainRecording, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
+import { ArrangementFile, assertPlainRecording, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
 import { LogfmtLogger, nodeHashing } from "@runshape/infra";
 import { runRecordings } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/adapters/test/repository";
@@ -89,7 +89,7 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests });
+  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests });
   return { code, lines, logs, recorder, model, chosen, sandbox, sandboxVersions };
 }
 
@@ -1252,6 +1252,21 @@ describe("runshape view", () => {
         "  example\\.com.shop.internal.web -> example\\.com.shop.internal.orders.Service (4)",
       ]
     `);
+  });
+
+  test("a box a person moved in the viewer is where they put it, and says so", async () => {
+    const { root } = repository();
+    await run(root, ["record", "main"]);
+    const storage = "example\\.com.shop.internal.storage";
+    const arrangement = { format: "runshape-arrangement", version: 1, levels: { "modules@hexagonal": { flat: { [storage]: { x: -400, y: 300 } }, floor: {} } } };
+    writeFileSync(join(root, ".runshape", "arrangement.json"), JSON.stringify(arrangement));
+
+    const { lines } = await run(root, ["view", "--json"]);
+
+    const boxes = JSON.parse(lines.join("\n")).levels[0].boxes as { name: string; at: { x: number; y: number }; arranged: boolean }[];
+    expect(boxes.filter((box) => box.arranged || box.name === storage).map((box) => `${box.name} at ${box.at.x},${box.at.y}${box.arranged ? " (arranged)" : ""}`)).toEqual([
+      `${storage} at -400,300 (arranged)`,
+    ]);
   });
 
   test("the same as text; a module that isn't one, a recording that isn't kept, and --json elsewhere are refused", async () => {

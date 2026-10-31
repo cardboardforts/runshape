@@ -190,3 +190,76 @@ describe("the canvas on the wire: a layout, placed once for 2D and 3D", () => {
     expect(response).toEqual({ type: "error", message: `"app.services" isn't one of this view's modules: open a module from the module view` });
   });
 });
+
+describe("moving a box on the wire", () => {
+  /** The arrangement file as the app keeps it: text in, text out. */
+  const memoryFile = (text: string | null = null) => ({
+    where: ".runshape/arrangement.json",
+    text,
+    async read() {
+      return this.text;
+    },
+    async write(next: string) {
+      this.text = next;
+    },
+  });
+
+  test("a box moved in 2D is saved, and the next session (the next recording, the next diff) draws it there", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const file = memoryFile();
+    const first = new ViewerSession(await runs.latest(), { sources: { readLines: async () => null }, arrangements: file });
+    const drawn = await first.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
+    if (drawn?.type !== "graph") throw new Error("expected a layout");
+    const repository = drawn.layout.nodes.find((node) => node.label === "UsersRepository")!;
+
+    const moved = await first.handle({ type: "arrange", level: drawn.layout.level, style: drawn.layout.profile.style, node: repository.id, to: { flat: { x: -500, y: 900 } } });
+    const base = new ViewerSession((await runs.previous())!, { sources: { readLines: async () => null }, arrangements: file });
+    const again = await base.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
+    if (again?.type !== "graph") throw new Error("expected a layout");
+
+    const there = again.layout.nodes.find((node) => node.label === "UsersRepository")!;
+    expect({
+      moved,
+      saved: Object.keys(JSON.parse(file.text!).levels),
+      there: { flat: there.flat, arranged: there.arranged },
+      notArranged: again.layout.nodes.filter((node) => !node.arranged).map((node) => `${node.label}${node.placedNearNeighbours ? " (placed near its neighbours)" : ""}`),
+    }).toMatchInlineSnapshot(`
+      {
+        "moved": null,
+        "notArranged": [],
+        "saved": [
+          "classes@hexagonal",
+        ],
+        "there": {
+          "arranged": true,
+          "flat": {
+            "x": -500,
+            "y": 900,
+          },
+        },
+      }
+    `);
+  });
+
+  test("a move that names no drawn box, or no spot, is refused; so is saving over a file that can't be read", async () => {
+    const run = await fixtureRuns("fastapi-slug-refactor").latest();
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, arrangements: memoryFile("{ not json") });
+    const drawn = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
+    if (drawn?.type !== "graph") throw new Error("expected a layout");
+    const at = { level: drawn.layout.level, style: drawn.layout.profile.style };
+
+    const answers = await Promise.all([
+      session.handle({ type: "arrange", ...at, node: "class:nowhere.Nothing", to: { flat: { x: 1, y: 2 } } }),
+      session.handle({ type: "arrange", ...at, node: drawn.layout.nodes[0]!.id, to: { flat: { x: "1", y: 2 } } } as never),
+      session.handle({ type: "arrange", ...at, node: drawn.layout.nodes[0]!.id, to: { floor: { x: 1, z: 2 } } }),
+    ]);
+
+    expect(answers.map((answer) => (answer?.type === "error" ? answer.message : answer))).toMatchInlineSnapshot(`
+      [
+        "That box isn't drawn at this level any more: nothing was moved.",
+        "Can't move that box: no spot: flat x and y, or floor x and z, as numbers",
+        "Fix .runshape/arrangement.json before moving boxes (it would be overwritten): not JSON: Expected property name or '}' in JSON at position 2 (line 1 column 3)",
+      ]
+    `);
+  });
+});

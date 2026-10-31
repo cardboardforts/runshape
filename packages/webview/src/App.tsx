@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, Change, ComponentView, ComponentWiring, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, ObjectGraph, Phase, RunSummary, Timeline, UiResponse } from "@runshape/kernel";
+import { ArchitectureCandidate, ArchitectureDiff, ArchitectureProfile, ArchitectureStyle, Change, ComponentView, ComponentWiring, FlatPoint, FunctionRef, FunctionView, GraphNode, Grouping, groupingAt, Layout, LayoutNode, ObjectGraph, Phase, RunSummary, Timeline, UiResponse, zoomLevelKey } from "@runshape/kernel";
 import { CallStep, describeGap, ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, Op, ReplayPace, ReplayStep, ReviewCategory, ReviewSummary, RouteMap, RouteMapDiff, RunDiff, stepDurationsMs } from "@runshape/trace";
 
 import { ComponentPanel } from "./components/ComponentPanel";
@@ -431,6 +431,18 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
   const componentNode = detail.component ? (displayed?.nodes.find((node) => node.id === detail.component?.id) ?? null) : null;
   const selectedDiff = compare && diff ? (diff.scenarios.find((scenario) => scenario.id === selected) ?? null) : null;
   const openComponent = (node: GraphNode) => host.post({ type: "component", id: node.id, grouping: drawnGrouping });
+  /**
+   * A box moved in 2D or 3D: the session saves it; both layouts drawn at that level take the
+   * new spot now, so switching between 2D, 3D and compare doesn't put it back.
+   */
+  const moveBox = (node: LayoutNode, to: { flat: FlatPoint } | { floor: { x: number; z: number } }) => {
+    if (displayed === null) return;
+    host.post({ type: "arrange", level: displayed.level, style: displayed.profile.style, node: node.id, to });
+    const level = zoomLevelKey(displayed.level, displayed.profile.style);
+    const moved = (shown: Layout | null) => (shown === null || zoomLevelKey(shown.level, shown.profile.style) !== level ? shown : withBoxAt(shown, node.id, to));
+    setGraphLayout(moved);
+    setDiffLayout(moved);
+  };
   const openFunction = (fn: { symbol: FunctionRef }) => host.post({ type: "function", symbol: fn.symbol.key });
   const openSource = (file: string, line: number) => host.post({ type: "openSource", file, line });
   const startReplay = (scenarioId: string) => host.post({ type: "replay", scenarioId, phases, grouping: drawnGrouping });
@@ -620,6 +632,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             clockUs={replayClock ? step!.tUs : null}
             focusObject={replayClock ? (step!.objectId ?? null) : null}
             onOpenComponent={openNode}
+            onMove={(node, to) => moveBox(node, { floor: to })}
           />
         ) : displayed === null ? (
           <p className="muted centered" role="status">
@@ -639,6 +652,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             stepIndex={replay?.index ?? 0}
             stepMs={stepMs[replayIndex] ?? 0}
             onOpenComponent={openNode}
+            onMove={(node, to) => moveBox(node, { flat: to })}
           />
         )}
         {replay && (
@@ -847,16 +861,21 @@ function changesOf<T extends { id: string; change: Layout["nodes"][number]["chan
   return new Map(items.map((item) => [item.id, item.change!]));
 }
 
-/** A key per layout received: the canvas remounts and fits each new one, not the viewport chosen for the last. */
-const layoutKeys = new WeakMap<Layout, number>();
-let nextLayoutKey = 0;
-function layoutKey(layout: Layout): number {
-  let key = layoutKeys.get(layout);
-  if (key === undefined) {
-    key = nextLayoutKey += 1;
-    layoutKeys.set(layout, key);
-  }
-  return key;
+/**
+ * The canvas remounts, and fits the view, for another set of boxes (another level, style, or
+ * comparison), not for the same boxes placed anew: a box moved keeps the viewport.
+ */
+function layoutKey(layout: Layout): string {
+  return `${zoomLevelKey(layout.level, layout.profile.style)} ${layout.nodes.map((node) => node.id).join(" ")}`;
+}
+
+/** The layout with one box at a new spot, in one view, marked as placed by the person. */
+function withBoxAt(layout: Layout, id: string, to: { flat: FlatPoint } | { floor: { x: number; z: number } }): Layout {
+  const nodes = layout.nodes.map((node) => {
+    if (node.id !== id) return node;
+    return "flat" in to ? { ...node, flat: to.flat, arranged: true } : { ...node, floor: { ...node.floor, x: to.floor.x, z: to.floor.z }, arranged: true };
+  });
+  return { ...layout, nodes };
 }
 
 /** What the layout couldn't draw as asked: boxes left out to keep the level readable, or a plain 2D fallback. */

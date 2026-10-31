@@ -6,6 +6,7 @@
 export * from "./git/git-cli";
 export * from "./git/git-repository";
 export * from "./github/pull-requests";
+export * from "./library/arrangement-file";
 export * from "./library/library";
 export * from "./library/recording-store";
 export * from "./library/review-store";

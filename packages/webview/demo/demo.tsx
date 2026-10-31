@@ -13,7 +13,7 @@ import "../src/styles.css";
 
 import { ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { Run, RunSource, TraceDirectory, UiRequest, UiResponse } from "@runshape/kernel";
-import { RuleChange, ViewerSession } from "@runshape/workflows";
+import { ArrangementStore, RuleChange, ViewerSession } from "@runshape/workflows";
 
 import { App } from "../src/App";
 import type { Host } from "../src/host";
@@ -101,6 +101,30 @@ async function recordingRules(id: string): Promise<ZoneRules | null> {
   }
 }
 
+/**
+ * The demo keeps moved boxes in this browser (the extension keeps them in
+ * .runshape/arrangement.json): the same file's text, so every recording and comparison opened
+ * here shares one arrangement. Storage can be off (a private window): then moves last the visit.
+ */
+const ARRANGEMENT_KEY = "runshape-arrangement";
+const browserArrangement: ArrangementStore = {
+  where: `this browser's storage (${ARRANGEMENT_KEY})`,
+  async read() {
+    try {
+      return window.localStorage.getItem(ARRANGEMENT_KEY);
+    } catch {
+      return null;
+    }
+  },
+  async write(text: string) {
+    try {
+      window.localStorage.setItem(ARRANGEMENT_KEY, text);
+    } catch (error) {
+      console.warn("demo: moved boxes can't be kept in this browser", error);
+    }
+  },
+};
+
 function demoHost(params: URLSearchParams): Host {
   const app = params.get("app") ?? "django";
   const listeners = new Set<(response: UiResponse) => void>();
@@ -136,7 +160,7 @@ function demoHost(params: URLSearchParams): Host {
   const session = Promise.all([latest, runs.previous(), rules, baselineRules]).then(
     // Head's rules unknown: then neither side's are, or the base's would all read as removed.
     ([run, baseline, headRules, baseRules]) =>
-      new ViewerSession(run, { sources, baseline, ruleStore, rules: headRules ?? undefined, baselineRules: headRules === null ? null : baseRules }),
+      new ViewerSession(run, { sources, baseline, ruleStore, arrangements: browserArrangement, rules: headRules ?? undefined, baselineRules: headRules === null ? null : baseRules }),
   );
 
   return {

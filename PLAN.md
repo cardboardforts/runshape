@@ -445,6 +445,19 @@ changed module is marked, and clicking down reaches a function's diff.
      it) and each call by name with its violation. Without `--json`, the same as text.
 3. **Saved arrangements:** moving a module in 2D or 3D is saved, keyed by region and module
    names so it survives between diffs. New things get a computed spot near their neighbours.
+   - **Done (2026-10-31).** Drag a box in 2D, or a tile across the 3D floor (at its own
+     elevation: a terrace stays a terrace), and the session saves it (`arrange`). The format and
+     its serializer are the visualizer's (`arrangement.ts`): per zoom level and style
+     (`modules@hexagonal`, `module:packages.trace@layered`), then per box name (the code's name,
+     or the id for the client and externals), sorted and rounded so the file diffs. A move writes
+     down every box drawn at that level where it stands (the person arranged against them),
+     keeping spots already saved. `layout` puts them back; a box new since goes to the middle of
+     the arranged boxes it calls or is called by, or the nearest free spot around it. Kept in
+     `.runshape/arrangement.json` (not committed: a reading aid, not a decision): VS Code's file
+     API in the extension, `ArrangementFile` (adapters) for `runshape view`, this browser's
+     storage in the demo. A file that can't be read is drawn around, never saved over. Checked
+     in headless Chromium (drag, reload, still there); the 3D drag needs WebGL, which headless
+     Chromium here doesn't have, so it's unchecked in a browser.
 
 All of this is the visualizer module: `layout(ArchTrace, PreviousLayout | null, LanguageModel)
 → Layout`. The arrangement file format and its serializer belong to the visualizer, not the kernel,

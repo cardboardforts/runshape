@@ -3,7 +3,7 @@
 import { Outcome, Phase } from "./trace/model/trace";
 import type { ArchitectureCandidate, ArchitectureDiff, ZoneAdvice, ZoneRule } from "./architecture-views";
 import type { ArchitectureStyle } from "./trace/model/arch-trace";
-import type { Layout } from "./layout";
+import type { FlatPoint, Layout, ZoomLevel } from "./layout";
 import type { ComponentView } from "./trace/model/component-view";
 import type { Grouping } from "./trace/model/components";
 import type { ExecutionDiff, FunctionExecutionDiff, MergedReplayStep, ReplayStep, ReviewSummary, RouteMap, RouteMapDiff, RunDiff } from "@runshape/trace";
@@ -77,7 +77,12 @@ export type UiRequest =
   | { type: "executionDiff"; scenarioId: string; phases: Phase[]; grouping: Grouping }
   | { type: "objects"; scenarioId: string }
   | { type: "functionExecutionDiff"; scenarioId: string; symbol: string; phases: Phase[] }
-  | { type: "openSource"; file: string; line: number };
+  | { type: "openSource"; file: string; line: number }
+  /**
+   * A person moved a box (a node of the layout drawn at `level` in `style`): in 2D to a canvas
+   * spot, or in 3D across the floor. Saved, so the next layout of that level keeps it there.
+   */
+  | { type: "arrange"; level: ZoomLevel; style: string; node: string; to: { flat: FlatPoint } | { floor: { x: number; z: number } } };
 
 export type UiResponse =
   | { type: "loading"; message: string }

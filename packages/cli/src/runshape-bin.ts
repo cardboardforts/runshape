@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { assertPlainRecording, DockerRecorder, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, sandboxVersion, ShellRecorder } from "@runshape/adapters";
+import { ArrangementFile, assertPlainRecording, DockerRecorder, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, sandboxVersion, ShellRecorder } from "@runshape/adapters";
 import { LogfmtLogger, nodeHashing } from "@runshape/infra";
 
 import { chooseModel } from "./choose-model";
@@ -33,6 +33,7 @@ process.exitCode = await runRecordings(process.argv.slice(2), {
   root,
   repository,
   library: projectLibrary(root, repository),
+  arrangements: new ArrangementFile(root),
   project: new NodeProjectFiles(root),
   hashing: nodeHashing,
   checkSandboxed: assertPlainRecording,

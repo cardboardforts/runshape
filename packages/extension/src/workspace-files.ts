@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { TraceFiles } from "@runshape/kernel";
-import { SourceReader } from "@runshape/workflows";
+import { ArrangementStore, SourceReader } from "@runshape/workflows";
 import { safeSegments } from "@runshape/infra";
 
 /** TraceFiles over a .runshape/traces directory, read through VS Code's file system API. */
@@ -24,6 +24,32 @@ export function sourceReaderAt(projectRoot: vscode.Uri): SourceReader {
       } catch {
         return null; // the function view still works without text
       }
+    },
+  };
+}
+
+/**
+ * The boxes a person moved, in .runshape/arrangement.json (the visualizer's format, as text),
+ * through VS Code's file system API like everything else the panel reads. Written beside it,
+ * then renamed over it, so a crash never leaves half a file.
+ */
+export function arrangementFileAt(projectRoot: vscode.Uri): ArrangementStore {
+  const file = childUri(projectRoot, ".runshape/arrangement.json");
+  const writing = childUri(projectRoot, ".runshape/arrangement.json.writing");
+  return {
+    where: ".runshape/arrangement.json",
+    async read(): Promise<string | null> {
+      try {
+        return new TextDecoder("utf-8").decode(await vscode.workspace.fs.readFile(file));
+      } catch (error) {
+        // None yet; anything else is the session's to report, not to save over.
+        if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") return null;
+        throw error;
+      }
+    },
+    async write(text: string): Promise<void> {
+      await vscode.workspace.fs.writeFile(writing, new TextEncoder().encode(text));
+      await vscode.workspace.fs.rename(writing, file, { overwrite: true });
     },
   };
 }

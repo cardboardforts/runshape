@@ -5,7 +5,7 @@ import { ViewerSession } from "@runshape/workflows";
 
 import type { Logger } from "./logger";
 import { confirmingRuleStore, languageModelAvailable, readRules, vscodeModelAdvisor } from "./zone-adapters";
-import { childUri, sourceReaderAt, traceFilesAt } from "./workspace-files";
+import { arrangementFileAt, childUri, sourceReaderAt, traceFilesAt } from "./workspace-files";
 
 const VIEW_TYPE = "runshape.runtime";
 
@@ -198,6 +198,7 @@ export class RuntimePanel {
       rulesProblem: problem,
       ruleStore: confirmingRuleStore(this.projectRoot, this.logger),
       advisor: vscodeModelAdvisor(this.logger, await languageModelAvailable()),
+      arrangements: arrangementFileAt(this.projectRoot),
     });
   }
 

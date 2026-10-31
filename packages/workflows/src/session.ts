@@ -1,7 +1,7 @@
-import { ArchitectureProfile, CodeSymbol, ComponentKind, Grouping, groupingAt, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse, zoomLevelOf } from "@runshape/kernel";
+import { ArchitectureProfile, CodeSymbol, ComponentKind, Grouping, groupingAt, Layout, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse, zoomLevelKey, zoomLevelOf } from "@runshape/kernel";
 import { ArchitectureAdvice, ArchitectureAdviceError, moduleRoots, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 import { buildReplay, buildReview, buildRouteMap, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves } from "@runshape/trace";
-import { aggregateWiring, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, layout, UnknownFunctionError } from "@runshape/visualizer";
+import { aggregateWiring, Arrangement, arrangeBox, ArrangementError, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, emptyArrangement, layout, parseArrangement, serializeArrangement, UnknownFunctionError } from "@runshape/visualizer";
 
 /** Port: source lines of a project file, by path relative to the recorded root. */
 export interface SourceReader {
@@ -20,6 +20,16 @@ export interface ZoneRuleStore {
   save(rules: ZoneRules, change: RuleChange): Promise<boolean>;
 }
 
+/**
+ * Port: the arrangement file, as text (the visualizer reads and writes the format). Where it is,
+ * for messages; null text when there's none yet.
+ */
+export interface ArrangementStore {
+  readonly where: string;
+  read(): Promise<string | null>;
+  write(text: string): Promise<void>;
+}
+
 export interface SessionDependencies {
   sources: SourceReader;
   /** The previous recording, to compare against. */
@@ -35,6 +45,8 @@ export interface SessionDependencies {
   rulesProblem?: string | null;
   ruleStore?: ZoneRuleStore | null;
   advisor?: ZoneAdvisor | null;
+  /** Where boxes a person moved are kept; without one, moves last as long as the view. */
+  arrangements?: ArrangementStore | null;
 }
 
 /**
@@ -56,6 +68,11 @@ export class ViewerSession {
   private architectureAdvice: ArchitectureAdvice | null = null;
   /** What moved since the baseline: the recordings never change, so it's worked out once. */
   private movesSinceBaseline: Moves | null = null;
+  private readonly arrangements: ArrangementStore | null;
+  /** Read once, on the first layout; `problem` when the file couldn't be read (then nothing's saved over it). */
+  private arranged: Promise<{ arrangement: Arrangement; problem: string | null }> | null = null;
+  /** The last layout drawn at each level and style: a move is saved against what the person saw. */
+  private readonly drawn = new Map<string, Layout>();
 
   constructor(
     private readonly run: Run,
@@ -68,6 +85,7 @@ export class ViewerSession {
     this.rulesProblem = dependencies.rulesProblem ?? null;
     this.ruleStore = dependencies.ruleStore ?? null;
     this.advisor = dependencies.advisor ?? null;
+    this.arrangements = dependencies.arrangements ?? null;
   }
 
   /** runshape.json changed on disk (edited by hand, or by another window). */
@@ -134,7 +152,7 @@ export class ViewerSession {
         return {
           type: "graph",
           phases: request.phases,
-          layout: await layout(graph, { level: zoomLevelOf(request.grouping, opened), grouping }),
+          layout: await this.laidOut(graph, { level: zoomLevelOf(request.grouping, opened), grouping }),
           wiring: aggregateWiring(this.run),
         };
       }
@@ -191,7 +209,7 @@ export class ViewerSession {
         return {
           type: "diff",
           diff: compared,
-          layout: await layout(both, { level: zoomLevelOf(request.grouping, opened), grouping, changes }),
+          layout: await this.laidOut(both, { level: zoomLevelOf(request.grouping, opened), grouping, changes }),
           review: buildReview(this.baseline, this.run, comparedGraphs(this.baseline, this.run, zones), drawing),
           // Both placed in head's style, so a style change doesn't read as every class moving.
           architecture: diffArchitecture(buildPlacements(this.baseline, baseRules, this.rules.profile), buildPlacements(this.run, this.rules), this.moves()),
@@ -257,10 +275,58 @@ export class ViewerSession {
         if (symbol === null) return { type: "error", message: "That function isn't in either recording." };
         return { type: "functionExecutionDiff", diff: diffFunctionExecution(this.baseline, this.run, request.scenarioId, symbol, request.phases, this.moves()) };
       }
+      case "arrange":
+        return this.arrange(request);
       case "openSource":
       case "reload":
         return null; // host concerns: the extension handles these itself
     }
+  }
+
+  /** The layout with the saved arrangement applied, kept as what the person now sees at its level. */
+  private async laidOut(graph: Parameters<typeof layout>[0], view: Omit<Parameters<typeof layout>[1], "arrangement">): Promise<Layout> {
+    const drawn = await layout(graph, { ...view, arrangement: (await this.savedArrangement()).arrangement });
+    this.drawn.set(zoomLevelKey(drawn.level, drawn.profile.style), drawn);
+    return drawn;
+  }
+
+  private savedArrangement(): Promise<{ arrangement: Arrangement; problem: string | null }> {
+    this.arranged ??= (async () => {
+      if (this.arrangements === null) return { arrangement: emptyArrangement(), problem: null };
+      let text: string | null;
+      try {
+        text = await this.arrangements.read();
+      } catch (error) {
+        // Unreadable: the canvas is still drawn, as computed, and nothing is saved over it.
+        return { arrangement: emptyArrangement(), problem: `can't be read: ${error instanceof Error ? error.message : String(error)}` };
+      }
+      if (text === null) return { arrangement: emptyArrangement(), problem: null };
+      try {
+        return { arrangement: parseArrangement(text), problem: null };
+      } catch (error) {
+        // Drawn as computed; saving would overwrite whatever the person meant to keep.
+        if (error instanceof ArrangementError) return { arrangement: emptyArrangement(), problem: error.message };
+        throw error;
+      }
+    })();
+    return this.arranged;
+  }
+
+  /** A box moved: saved against the layout the person saw at that level. */
+  private async arrange(request: Extract<UiRequest, { type: "arrange" }>): Promise<UiResponse | null> {
+    const invalid = invalidArrangeRequest(request);
+    if (invalid !== null) return { type: "error", message: invalid };
+    const seen = this.drawn.get(zoomLevelKey(request.level, request.style));
+    if (seen === undefined || !seen.nodes.some((node) => node.id === request.node)) return { type: "error", message: "That box isn't drawn at this level any more: nothing was moved." };
+    const saved = await this.savedArrangement();
+    if (saved.problem !== null && this.arrangements !== null) {
+      return { type: "error", message: `Fix ${this.arrangements.where} before moving boxes (it would be overwritten): ${saved.problem}` };
+    }
+    const move = "flat" in request.to ? { node: request.node, flat: request.to.flat } : { node: request.node, floor: request.to.floor };
+    const arrangement = arrangeBox(saved.arrangement, seen, move);
+    this.arranged = Promise.resolve({ arrangement, problem: null });
+    if (this.arrangements !== null) await this.arrangements.write(serializeArrangement(arrangement));
+    return null;
   }
 
   /** The style asked for, or the rules' own; null when asked for one that doesn't exist. */
@@ -393,6 +459,18 @@ export class ViewerSession {
     const last = Math.max(...ranges.map((fn) => fn.lastLine));
     return lines.slice(classStatementLine(lines, first, view.label) - 1, last);
   }
+}
+
+/** arrange arrives from the webview: a box, and a spot of finite numbers in one of the two views. */
+function invalidArrangeRequest(request: Extract<UiRequest, { type: "arrange" }>): string | null {
+  const finite = (...values: unknown[]) => values.every((value) => typeof value === "number" && Number.isFinite(value));
+  const to = request.to as { flat?: { x?: unknown; y?: unknown }; floor?: { x?: unknown; z?: unknown } } | undefined;
+  const problems: string[] = [];
+  if (typeof request.node !== "string") problems.push("no box");
+  if (typeof request.style !== "string" || typeof request.level?.kind !== "string") problems.push("no level");
+  const spotValid = to?.flat !== undefined ? finite(to.flat.x, to.flat.y) : to?.floor !== undefined ? finite(to.floor.x, to.floor.z) : false;
+  if (!spotValid) problems.push("no spot: flat x and y, or floor x and z, as numbers");
+  return problems.length > 0 ? `Can't move that box: ${problems.join("; ")}` : null;
 }
 
 /** A module opens only from a view that has it as a box: anything else would draw nothing, silently. */

@@ -71,9 +71,9 @@ export interface LayoutNode extends GraphNode {
   change: Change | null;
   /** The module clicking it opens (a module box at the modules level); null opens its panel. */
   opens: string | null;
-  /** Where a person put it (a saved arrangement), rather than where the layout would. */
+  /** Where a person put it, in 2D or 3D (a saved arrangement), rather than where the layout would. */
   arranged: boolean;
-  /** Arranged before, but new since: placed near the boxes it calls and is called by. */
+  /** New since the level was arranged: placed beside the arranged boxes it calls or is called by. */
   placedNearNeighbours: boolean;
 }
 

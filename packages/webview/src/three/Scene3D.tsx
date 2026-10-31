@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Change, ComponentWiring, Layout, LayoutNode, ObjectGraph } from "@runshape/kernel";
+import { Change, ComponentWiring, Layout, LayoutNode, ObjectGraph, zoomLevelKey } from "@runshape/kernel";
 import { Op, ReplayStep } from "@runshape/trace";
 
 import { Emphasis, HexScene } from "./hex-scene";
@@ -21,16 +21,22 @@ interface Props {
   clockUs: number | null;
   focusObject: number | null;
   onOpenComponent: (node: LayoutNode) => void;
+  /** A tile dropped elsewhere on the floor: kept there (saved by the session) from now on. */
+  onMove: (node: LayoutNode, to: { x: number; z: number }) => void;
 }
 
 /** The 3D renderer: the same layout as the 2D graph canvas, drawn on the style's floor. */
-export function Scene3D({ layout, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, clockUs, focusObject, onOpenComponent }: Props) {
+export function Scene3D({ layout, wiring, objects, nodeChanges, edgeChanges, selectedScenario, step, stepOp, stepIndex, stepMs, clockUs, focusObject, onOpenComponent, onMove }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const scene = useRef<HexScene | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   // The scene is created once; clicks must reach the latest callback, not the first one.
   const onOpen = useRef(onOpenComponent);
   onOpen.current = onOpenComponent;
+  const onMoved = useRef(onMove);
+  onMoved.current = onMove;
+  /** The level and boxes last drawn: a moved tile redraws in place; another level reframes the camera. */
+  const drawnBoxes = useRef<string | null>(null);
 
   // WebGL is an external system: create it once, dispose it on unmount.
   useEffect(() => {
@@ -38,7 +44,7 @@ export function Scene3D({ layout, wiring, objects, nodeChanges, edgeChanges, sel
     const background = getComputedStyle(container.current).getPropertyValue("--bg").trim() || "#1e1e1e";
     let created: HexScene;
     try {
-      created = new HexScene(container.current, (node) => onOpen.current(node), background);
+      created = new HexScene(container.current, (node) => onOpen.current(node), background, (node, to) => onMoved.current(node, to));
     } catch (error) {
       // No WebGL (disabled GPU, remote session): say so instead of blanking the view.
       setFailure(error instanceof Error ? error.message : String(error));
@@ -52,7 +58,9 @@ export function Scene3D({ layout, wiring, objects, nodeChanges, edgeChanges, sel
   }, []);
 
   useEffect(() => {
-    scene.current?.setLayout(layout);
+    const boxes = `${zoomLevelKey(layout.level, layout.profile.style)} ${layout.nodes.map((node) => node.id).join(" ")}`;
+    scene.current?.setLayout(layout, boxes !== drawnBoxes.current);
+    drawnBoxes.current = boxes;
   }, [layout]);
 
   useEffect(() => {
