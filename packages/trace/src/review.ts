@@ -157,7 +157,7 @@ export function describeChange(item: ReviewItem): string {
   return parts.join("; ") || "no difference";
 }
 
-const HEADINGS: Record<ReviewCategory, string> = {
+export const REVIEW_HEADINGS: Record<ReviewCategory, string> = {
   [ReviewCategory.NowFailing]: "Now failing",
   [ReviewCategory.SilentChange]: "Still passing, but now run differently",
   [ReviewCategory.NowPassing]: "Now passing",
@@ -216,14 +216,19 @@ function rowCells(row: ReviewRow): [string, string] {
 }
 
 /** The review as Markdown; with the threads, tests with one cause are one row. */
-export function reviewMarkdown(summary: ReviewSummary, threads?: Threads): string {
-  const out: string[] = ["## Behaviour changes (Runshape)", ""];
+/** "8 tests ran on both the base and this branch; 1 new on this branch." */
+export function reviewHeadline(summary: ReviewSummary): string {
   // Three counts that add up, so "N on both" isn't read as the total (a model read it so).
   const onBothSides = summary.items.filter((item) => item.category !== ReviewCategory.Removed && item.outcomeBefore !== null).length;
   const added = summary.items.filter((item) => item.category !== ReviewCategory.Removed && item.outcomeBefore === null).length;
   const removed = summary.counts[ReviewCategory.Removed];
   const extra = [added > 0 ? `${added} new on this branch` : "", removed > 0 ? `${removed} only on the base` : ""].filter(Boolean);
-  out.push(`${tests(onBothSides)} ran on both the base and this branch${extra.length ? `; ${extra.join(", ")}` : ""}.`, "");
+  return `${tests(onBothSides)} ran on both the base and this branch${extra.length ? `; ${extra.join(", ")}` : ""}.`;
+}
+
+export function reviewMarkdown(summary: ReviewSummary, threads?: Threads): string {
+  const out: string[] = ["## Behaviour changes (Runshape)", ""];
+  out.push(reviewHeadline(summary), "");
   const silent = summary.counts[ReviewCategory.SilentChange];
   if (silent > 0) {
     out.push(`**${silent} test${silent === 1 ? " still passes" : "s still pass"} but now ${silent === 1 ? "runs" : "run"} differently** — the changes a green CI won't show you.`, "");
@@ -235,7 +240,7 @@ export function reviewMarkdown(summary: ReviewSummary, threads?: Threads): strin
     if (category === ReviewCategory.Unchanged) continue;
     const items = summary.items.filter((item) => item.category === category);
     if (items.length === 0) continue;
-    out.push(`### ${HEADINGS[category]} (${items.length})`, "", "| Test | What changed |", "|---|---|");
+    out.push(`### ${REVIEW_HEADINGS[category]} (${items.length})`, "", "| Test | What changed |", "|---|---|");
     for (const row of reviewRows(items, threads)) out.push(`| ${rowCells(row).join(" | ")} |`);
     out.push("");
   }

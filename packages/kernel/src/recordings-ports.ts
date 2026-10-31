@@ -4,6 +4,7 @@
 import type { TraceFiles } from "./trace/data/trace-directory";
 
 import type { CommitMessage, CommitSummary, LibraryOverview, PullRequestSummary, RecordingMetadata, RequestedReviews } from "./recordings-model";
+import type { ReviewPage } from "./review-page";
 
 /** A path as a commit has it: nothing, a plain file's text, or something else (a folder, a link). */
 export type FileAtCommit = { kind: "none" } | { kind: "file"; text: string } | { kind: "other"; what: string };
@@ -131,7 +132,8 @@ export interface KeptRecordings {
 
 /** Port: the reviews kept beside the recordings (the library's ReviewStore). */
 export interface KeptReviews {
-  saveReview(name: string, bundle: unknown, markdown: string): Promise<void>;
+  /** The bundle (review.json), its Markdown (review.md), and the PR page's content (page.json). */
+  saveReview(name: string, bundle: unknown, markdown: string, page: ReviewPage): Promise<void>;
   /** The saved explanation; null when there's none or it can't be read. */
   explanation(name: string): Promise<unknown>;
   saveExplanation(name: string, explanation: unknown, markdown: string): Promise<void>;

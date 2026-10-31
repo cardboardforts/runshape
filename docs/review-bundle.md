@@ -5,6 +5,8 @@ writes it to `.runshape/reviews/<base id>..<head id>/`:
 
 - `review.json`: the bundle, for tools (a PR comment job, a morning page, a central store).
 - `review.md`: the same as Markdown, to read or to post as a PR comment.
+- `page.json`: the PR page's content (the kernel's `ReviewPage`), worked out from the bundle so the UI
+  draws kernel types only: callouts, the tests grouped by cause, the threads, each test by its id.
 
 Built by `buildReviewBundle` and `reviewBundleMarkdown` (packages/kernel/src/review-bundle.ts).
 The bundle holds names only: test, function, class and route names (patterns, never a

@@ -1,5 +1,5 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { Grouping, Phase, Run } from "@runshape/kernel";
+import { Grouping, Phase, ReviewHighlights, Run } from "@runshape/kernel";
 import { ArchitectureDiff, buildPlacements, comparedGraphs, diffArchitecture, Placement, PlacementChange, ZoneRule, ZoneRules } from "@runshape/architecture";
 import { buildReview, buildThreads, Change, detectMoves, diffRouteMaps, diffRuns, groupThreads, Op, reviewMarkdown, ReviewSummary, RouteMapDiff, ChangedFunction, ThreadKind, Threads } from "@runshape/trace";
 
@@ -282,3 +282,15 @@ const THREAD_WORDS: Record<ThreadKind, string> = {
   [ThreadKind.Gone]: "no longer run through it",
   [ThreadKind.Same]: "run as before",
 };
+
+/** What a morning's list shows of a review before it's opened, and the PR page's callouts. */
+export function reviewHighlights(bundle: ReviewBundle): ReviewHighlights {
+  return {
+    nowFailing: bundle.review.counts["now-failing"],
+    silentChanges: bundle.review.counts["silent-change"],
+    newTests: bundle.review.counts.added,
+    decided: bundle.architecture.decided.length + bundle.architecture.rules.added.length + bundle.architecture.rules.removed.length + bundle.architecture.rules.changed.length,
+    needsDecision: bundle.architecture.unplaced.length,
+    routesChanged: bundle.routes.routes.length,
+  };
+}

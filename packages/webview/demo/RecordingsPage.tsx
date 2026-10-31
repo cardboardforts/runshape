@@ -214,7 +214,7 @@ function PullRequestRow({ pr }: { pr: RequestedReview }) {
             {highlights.length === 0 ? <li className="muted">Behaves as before, architecture unchanged.</li> : highlights.map(([text, tone]) => <li key={text} className={tone}>{text}</li>)}
           </ul>
           <p className="pr-links">
-            <a href={`?base=${encodeURIComponent(base!)}&head=${encodeURIComponent(head!)}`}>Compare</a> ·{" "}
+            <a href={`?review=${encodeURIComponent(pr.review)}`}>Open</a> · <a href={`?base=${encodeURIComponent(base!)}&head=${encodeURIComponent(head!)}`}>Compare</a> ·{" "}
             <a href={reviewFile("review.md")} target="_blank" rel="noreferrer">
               review
             </a>

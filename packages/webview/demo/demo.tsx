@@ -1,7 +1,8 @@
 // Runs the webview in a plain browser, with no VS Code: `npm run dev -w packages/webview`, then
 // /demo/index.html lists what there is to look at (RecordingsPage). Also by URL:
 //   ?recording=<id>          one recording kept by `npm run runshape` (.runshape/recordings/<id>)
-//   ?base=<id>&head=<id>     two of them, compared
+//   ?base=<id>&head=<id>     two of them, compared (&scenario=<id>: opened at that test)
+//   ?review=<base>..<head>   a saved review's PR page (ReviewPageView)
 //   ?app=<example>           a checked-in example (django, fastapi-slug-refactor, …)
 //   ?app=self:<label>        a pair recorded by the old self-review (.runshape/self/<label>)
 // Never part of the extension bundle.
@@ -17,6 +18,7 @@ import { RuleChange, ViewerSession } from "@runshape/workflows";
 import { App } from "../src/App";
 import type { Host } from "../src/host";
 import { RecordingsPage } from "./RecordingsPage";
+import { ReviewPageView } from "./ReviewPageView";
 import "./recordings.css";
 
 const traceFiles = import.meta.glob("../../kernel/test/fixtures/*/**/*.json", { query: "?raw", import: "default" });
@@ -165,6 +167,8 @@ function comparedPair(params: URLSearchParams): { base: string; head: string } |
 /** What the URL asks to open; with nothing (or half a comparison) asked, the list of what there is. */
 function Demo() {
   const params = new URLSearchParams(location.search);
+  const review = params.get("review");
+  if (review !== null) return <ReviewPageView review={review} />;
   if (!params.has("app") && !params.has("recording") && comparedPair(params) === null) {
     const examples = Object.keys(traceFiles)
       .map((path) => path.match(/fixtures\/([^/]+)\/latest\.json$/)?.[1])
@@ -174,9 +178,10 @@ function Demo() {
       .filter((label) => label !== undefined);
     return <RecordingsPage examples={examples} olderPairs={olderPairs} />;
   }
+  const pair = comparedPair(params);
   return (
     <>
-      <App host={demoHost(params)} />
+      <App host={demoHost(params)} openAt={pair === null ? null : params.get("scenario")} />
       <a className="back-to-recordings" href="?">
         ← Recordings
       </a>

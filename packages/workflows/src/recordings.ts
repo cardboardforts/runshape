@@ -4,7 +4,8 @@ import { ArchitectureSummary, byCodeUnit, CommitSummary, GitError, Hashing, Inco
 import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, describeFolder, describeReadme, FolderGuide, folderGuideMarkdown, mergeIntoReadme, needsDescription, openingComment, RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
 import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
 
-import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown } from "./review-bundle";
+import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown, reviewHighlights } from "./review-bundle";
+import { buildReviewPage } from "./review-page";
 import { stackOrder } from "./stacks";
 
 /** What the recordings workflow is given: its ports, and how to talk to the person. */
@@ -201,7 +202,7 @@ export class Recordings {
         entry.head = compared.head.summary.commit;
         if (entry.head !== pr.headRefOid) this.dependencies.print(`${name}: its head moved since it was listed; reviewed ${entry.head.slice(0, 7)}`);
         entry.review = compared.review.name;
-        entry.summary = reviewSummary(compared.review.bundle);
+        entry.summary = reviewHighlights(compared.review.bundle);
         if (explain !== null) {
           try {
             await this.explain(compared.review, compared.base, compared.head, explain);
@@ -318,7 +319,7 @@ export class Recordings {
     });
     const reviews = this.library.reviews;
     const name = reviewName(base.plan.id, head.plan.id);
-    await reviews.saveReview(name, bundle, reviewBundleMarkdown(bundle));
+    await reviews.saveReview(name, bundle, reviewBundleMarkdown(bundle), buildReviewPage(bundle));
     // An explanation of an older review mustn't sit beside this one looking current.
     const explained = (await reviews.explanation(name)) as Explanation | null;
     if (explained !== null && explained.basedOn.review !== this.dependencies.hashing.sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
@@ -589,16 +590,6 @@ interface CommittedRules {
   problem: string | null;
 }
 
-function reviewSummary(bundle: ReviewBundle): ReviewHighlights {
-  return {
-    nowFailing: bundle.review.counts["now-failing"],
-    silentChanges: bundle.review.counts["silent-change"],
-    newTests: bundle.review.counts.added,
-    decided: bundle.architecture.decided.length + bundle.architecture.rules.added.length + bundle.architecture.rules.removed.length + bundle.architecture.rules.changed.length,
-    needsDecision: bundle.architecture.unplaced.length,
-    routesChanged: bundle.routes.routes.length,
-  };
-}
 
 interface Compared {
   review: SavedReview;

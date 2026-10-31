@@ -342,7 +342,7 @@ describe("runshape compare", () => {
     });
   });
 
-  test("a comparison is saved as a review: JSON for tools, Markdown to read or post", async () => {
+  test("a comparison is saved as a review: JSON for tools, Markdown to read or post, and the PR page's content", async () => {
     const { root, commits } = repository();
     const base = commits.second!.slice(0, 12);
 
@@ -350,12 +350,15 @@ describe("runshape compare", () => {
 
     const directory = join(root, ".runshape", "reviews", `${base}..working`);
     const bundle = JSON.parse(readFileSync(join(directory, "review.json"), "utf8"));
+    const page = JSON.parse(readFileSync(join(directory, "page.json"), "utf8"));
     expect({
       said: lines.at(-2),
+      page: `${page.format} v${page.version}: ${page.base.recording} -> ${page.head.recording}; ${page.headline}`,
       bundle: `${bundle.format} v${bundle.version}: ${bundle.base.asked} ${bundle.base.recording} -> ${bundle.head.asked} ${bundle.head.recording}, rules known ${bundle.baseRulesKnown}`,
       markdown: readFileSync(join(directory, "review.md"), "utf8").split("\n")[0],
     }).toEqual({
       said: `review: ${join(".runshape", "reviews", `${base}..working`, "review.md")}`,
+      page: `runshape-review-page v1: ${base} -> working; 5 tests ran on both the base and this branch.`,
       bundle: `runshape-review v1: main ${base} -> working working, rules known true`,
       markdown: "## Behaviour changes (Runshape)",
     });

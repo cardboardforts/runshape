@@ -332,7 +332,11 @@ decided.
    - **Stacks done (2026-10-26).** `review-requests` reviews a stack bottom first (`stackOrder`:
      a PR is on another when its base is that one's branch, ours, not a fork's) and writes
      `stackedOn` into `requested.json`; the morning list shows "on #7", indented under it.
-     The page itself is next.
+   - **Page done (2026-10-31).** `buildReviewPage` (workflows) saves `page.json` beside each review:
+     the kernel's `ReviewPage`, so the UI draws kernel types only, not the trace module's. The demo
+     opens it at `?review=<base>..<head>` ("Open" in the morning list): callouts, threads, the
+     tests grouped by cause, each test a link into the compared graph opened at it
+     (`&scenario=<id>`). Long lists show 6, the rest behind a disclosure.
 3. **Group by cause:** Runshape's review of its own PR 3a listed 66 "run differently" tests,
    every one because calls now go through `ReviewStore`. Threads with the same change
    collapse into one row ("66 tests: now save reviews through ReviewStore"), expandable.

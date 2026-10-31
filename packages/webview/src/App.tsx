@@ -50,7 +50,11 @@ const INITIAL_GROUPING: Grouping = { collapseMiddleware: true };
 /** How the header names the recording's language; others show as recorded. */
 const LANGUAGE_NAMES: Record<string, string> = { python: "Python", typescript: "TypeScript" };
 
-export function App({ host }: { host: Host }) {
+/**
+ * `openAt`: a test to open at, compared with the base (from the PR page's links): once the
+ * first recording loads, compare mode is on and that test is selected.
+ */
+export function App({ host, openAt = null }: { host: Host; openAt?: string | null }) {
   const [status, setStatus] = useState<Status>({ kind: "loading", message: "Loading the latest recording…" });
   const [notice, setNotice] = useState<string | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -81,6 +85,7 @@ export function App({ host }: { host: Host }) {
   // Read inside the host listener, which is subscribed once and would see stale state.
   const runLoaded = useRef(false);
   const loadFailed = useRef(false);
+  const pendingOpenAt = useRef(openAt);
   // The style to draw in when it isn't runshape.json's own; never saved.
   const [drawStyle, setDrawStyle] = useState<string | undefined>(undefined);
   // Closed: null. Open: the ranked candidates, or null inside while the session ranks them.
@@ -168,6 +173,21 @@ export function App({ host }: { host: Host }) {
               setCompare(false);
               // Its tab goes with compare mode; it mustn't be left showing "Comparing…".
               setListing((current) => (current === "architecture" ? "tests" : current));
+            }
+          }
+          if (pendingOpenAt.current !== null) {
+            const scenarioId = pendingOpenAt.current;
+            pendingOpenAt.current = null;
+            if (response.summary.baselineCreatedAt === null) setNotice("There's no base to compare with: opened the recording alone.");
+            else if (!response.summary.scenarios.some((scenario) => scenario.id === scenarioId)) setNotice(`This recording has no test ${scenarioId}.`);
+            else {
+              const { phases, grouping: currentGrouping, style } = viewOptions.current;
+              setCompare(true);
+              viewOptions.current.compare = true;
+              awaitingDiff.current = true;
+              host.post({ type: "diff", phases, grouping: currentGrouping, style });
+              setSelected(scenarioId);
+              host.post({ type: "executionDiff", scenarioId, phases, grouping: currentGrouping });
             }
           }
           runLoaded.current = true;

@@ -6,6 +6,7 @@ import { NodeFiles } from "@runshape/infra";
 export const REQUESTED_REVIEWS_FILE = "requested.json";
 const REVIEW_JSON = "review.json";
 const REVIEW_MARKDOWN = "review.md";
+const REVIEW_PAGE = "page.json";
 const EXPLANATION_JSON = "explanation.json";
 const EXPLANATION_MARKDOWN = "explanation.md";
 
@@ -34,9 +35,10 @@ export class ReviewStore implements KeptReviews {
   }
 
   /** review.json for tools, review.md to read or post. */
-  async saveReview(name: string, bundle: unknown, markdown: string): Promise<void> {
+  async saveReview(name: string, bundle: unknown, markdown: string, page: unknown): Promise<void> {
     await this.files.writeText(`${name}/${REVIEW_JSON}`, asJson(bundle));
     await this.files.writeText(`${name}/${REVIEW_MARKDOWN}`, markdown);
+    await this.files.writeText(`${name}/${REVIEW_PAGE}`, asJson(page));
   }
 
   /** The saved explanation; null when there's none, or it can't be read (it's asked again). */

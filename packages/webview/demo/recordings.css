@@ -185,3 +185,41 @@
   margin: 0;
   font-size: 13px;
 }
+
+/* The PR page (ReviewPageView). */
+.threads,
+.review-rows {
+  padding-left: 20px;
+}
+
+.threads > li,
+.review-rows > li {
+  margin-bottom: 12px;
+}
+
+.threads p,
+.review-rows p {
+  margin: 2px 0;
+}
+
+.thread-workflows {
+  font-size: 13px;
+  margin: 2px 0;
+}
+
+.review-rows .changes {
+  font-size: 13px;
+  margin: 2px 0;
+  padding-left: 18px;
+}
+
+.review-page .tests {
+  list-style: none;
+  margin: 2px 0 6px;
+  padding-left: 12px;
+  font-size: 13px;
+}
+
+.review-page .tests summary {
+  cursor: pointer;
+}

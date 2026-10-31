@@ -10,6 +10,7 @@ export * from "./trace/model/component-view";
 export * from "./trace/model/json-answer";
 export * from "./trace/model/language-model";
 export * from "./logger";
+export * from "./review-page";
 export * from "./trace/data/wire";
 export * from "./trace/data/parse";
 export * from "./trace/data/trace-directory";
