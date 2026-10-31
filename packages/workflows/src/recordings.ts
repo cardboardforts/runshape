@@ -382,15 +382,16 @@ export class Recordings {
   }
 
   /**
-   * Asks a language model why the change was made, from the review (names only) and the commit
-   * messages between the two sides; saved beside the review, which it doesn't change. Asked
-   * again only when the review or the commits changed (or with --again).
+   * Asks a language model why the change was made, from the review (names only), the commit
+   * messages between the two sides and the story (the PR, its tickets, the changed docs and
+   * comments); saved beside the review, which it doesn't change. Asked again only when one of
+   * those changed (or with --again).
    */
   async explain(review: SavedReview, base: Plan, head: Plan, choice: ModelChoice): Promise<void> {
     const where = this.library.reviews.shownExplanation(review.name);
     const { sha256 } = this.dependencies.hashing;
     try {
-      const context: ChangeContext = { commits: await this.repository.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty };
+      const context: ChangeContext = { commits: await this.repository.commitsBetween(base.summary.commit, head.summary.commit), uncommittedChanges: head.tree.dirty || base.tree.dirty, ...review.story };
       const reviewMarkdown = reviewBundleMarkdown(review.bundle);
       const inputs = explanationInputs(reviewMarkdown, context, sha256);
       const model = await this.dependencies.models(choice);

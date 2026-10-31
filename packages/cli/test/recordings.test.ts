@@ -57,7 +57,7 @@ class FakeModel implements LanguageModel {
   readonly name: string = "fake-model";
   readonly available = true;
   readonly prompts: string[] = [];
-  constructor(private readonly answer: string | Error = JSON.stringify({ summary: "Second, explained.", reasons: [], unexplained: [], questions: [] })) {}
+  constructor(private readonly answer: string | Error = JSON.stringify({ summary: "Second, explained.", purpose: "", reasons: [], unexplained: [], notInStory: [], questions: [] })) {}
   async complete(prompt: string): Promise<string> {
     this.prompts.push(prompt);
     if (this.answer instanceof Error) throw this.answer;
@@ -828,15 +828,29 @@ describe("runshape review-requests: every open PR that asks for your review", ()
     });
   });
 
-  test("with --explain each review is explained too; with no PRs asking, it says so", async () => {
+  test("with --explain each review is explained too, from the PR's description and its tickets' text; with no PRs asking, it says so", async () => {
     const { root, prHead, pr } = withPullRequests();
+    const story = (number: number): PullRequestStory => ({ number, title: "Teach orders to refuse", body: "Customers overspend. Fixes #12.", url: `https://github.com/example/shop/pull/${number}`, linkedIssues: ["#12"] });
+    const tickets: TicketSource = {
+      name: "GitHub Issues",
+      mentions: (text) => text.match(/#\d+/g) ?? [],
+      ticket: async (id) => ({ id, title: "Orders over the limit go through", body: "Refuse anything past the credit limit.", url: null, state: "open" }),
+    };
 
-    const explained = await run(root, ["review-requests", "--explain"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), [pr(7, prHead, "Teach orders to refuse")]);
+    const explained = await run(root, ["review-requests", "--explain"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), [pr(7, prHead, "Teach orders to refuse")], null, story, [tickets]);
     const none = await run(root, ["review-requests"]);
 
-    expect({ explained: explained.lines.filter((line) => line.startsWith("#")), asked: explained.model.prompts.length, none: none.lines }).toEqual({
+    const prompt = explained.model.prompts[0] ?? "";
+    expect({
+      explained: explained.lines.filter((line) => line.startsWith("#")),
+      asked: explained.model.prompts.length,
+      // The text the bundle doesn't keep reaches the model, below the line, as data.
+      told: [prompt.includes("--- pull request #7\nTeach orders to refuse\nCustomers overspend. Fixes #12."), prompt.includes("--- ticket #12 (GitHub Issues, open)\nOrders over the limit go through\nRefuse anything past the credit limit.")],
+      none: none.lines,
+    }).toEqual({
       explained: ["#7 Teach orders to refuse: reviewed and explained"],
       asked: 1,
+      told: [true, true],
       none: ["No open pull requests are asking for your review."],
     });
   });

@@ -55,4 +55,7 @@ the working tree; a commit-to-commit review is replaced only by comparing the sa
 - An explanation of *why* the code changed. `compare --explain` asks a language model and
   saves its answer beside the bundle (`explanation.json`, `explanation.md`). The answer is
   marked with the model that gave it and what it was based on (the review's Markdown hash and
-  the commits), and the bundle itself is left unchanged.
+  the commits, a digest of the story), and the bundle itself is left unchanged. It reads the
+  story's text too (the PR body, each ticket, the changed docs and comment lines), says what
+  the change is for (`purpose`), and lists behaviour the PR and tickets don't mention
+  (`notInStory`).
