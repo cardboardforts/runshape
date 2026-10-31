@@ -126,7 +126,7 @@ describe("drawing in another style", () => {
 });
 
 describe("detect and adopt", () => {
-  test("adopting a style rewrites the zones but keeps the taxonomy, and says which region switches it had to drop (second-model review)", async () => {
+  test("adopting a style rewrites the zones but keeps the taxonomy and the recorder's settings, and says which region switches it had to drop (second-model review)", async () => {
     const run = await loadFixtureRun("fastapi");
     const rules = ZoneRules.parse(
       JSON.stringify({
@@ -138,6 +138,7 @@ describe("detect and adopt", () => {
           roles: [{ match: "app.db.repositories.users.UsersRepository", role: "repository", reason: "named so", by: "user" }],
           rules: [{ id: "cqrs-no-mixed-callable", match: "app.**", off_in: ["services"] }],
         },
+        recorder: { language: "python", args: ["-n0"] },
       }),
     );
     const asked: string[] = [];
@@ -161,6 +162,7 @@ describe("detect and adopt", () => {
       roles: [{ match: "app.db.repositories.users.UsersRepository", role: "repository", reason: "named so", by: "user" }],
       rules: [{ id: "cqrs-no-mixed-callable", match: "app.**", off_in: [] }],
     });
+    expect(JSON.parse(saved!).recorder).toEqual({ language: "python", args: ["-n0"] });
   });
 
   test("the viewer ranks the styles, and adopting one rewrites runshape.json only once the person confirms", async () => {

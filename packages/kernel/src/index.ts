@@ -18,6 +18,7 @@ export * from "./trace/data/parse";
 export * from "./trace/data/trace-directory";
 export * from "./recordings-model";
 export * from "./recordings-ports";
+export * from "./test-config";
 export * from "./recording-views";
 export * from "./architecture-views";
 export * from "./layout";

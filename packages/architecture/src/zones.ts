@@ -17,6 +17,9 @@ const ROLES: ZoneRole[] = ["composition-root"];
 
 const DECIDERS: ZoneRule["by"][] = ["user", "llm", "detected"];
 
+/** The top-level keys of runshape.json this module reads; any other is another module's section. */
+const ZONE_SECTIONS = new Set(["version", "style", "zones", "regions", "taxonomy", "rings"]);
+
 export interface ZoneRulesFile {
   version: number;
   style: string;
@@ -96,6 +99,8 @@ export class ZoneRules {
     readonly regions: Region[] = [],
     /** The categorizer's vocabulary with the project's overrides; a region's rules carry the built-in one, unused. */
     readonly taxonomy: Taxonomy = Taxonomy.builtIn(),
+    /** runshape.json's sections this module doesn't read (the recorder's settings): written back as they were. */
+    readonly otherSections: Readonly<Record<string, unknown>> = {},
   ) {
     this.compiled = rules.map((rule) => ({ rule, glob: new Glob(rule.match) }));
     this.compiledRegions = regions.map((region) => ({ region, glob: new Glob(region.match) }));
@@ -125,7 +130,8 @@ export class ZoneRules {
     const regionNames = namedRegions(file.regions);
     const taxonomy = readTaxonomy(file.taxonomy, regionNames, problems);
     if (problems.length > 0) throw new ZoneRulesError(problems);
-    return new ZoneRules(area.rules, area.profile, area.regions, taxonomy);
+    const otherSections = Object.fromEntries(Object.entries(data).filter(([key]) => !ZONE_SECTIONS.has(key)));
+    return new ZoneRules(area.rules, area.profile, area.regions, taxonomy, otherSections);
   }
 
   /** Version 3 when there are regions; otherwise version 2, so a file without them doesn't churn. */
@@ -133,7 +139,7 @@ export class ZoneRules {
     const file: ZoneRulesFile = { version: this.regions.length > 0 ? REGIONS_VERSION : RULES_VERSION, style: this.profile.style, zones: this.rules };
     if (this.regions.length > 0) file.regions = this.regions.map(regionFile);
     if (this.taxonomy.file !== null) file.taxonomy = this.taxonomy.file;
-    return `${JSON.stringify(file, null, 2)}\n`;
+    return `${JSON.stringify({ ...file, ...this.otherSections }, null, 2)}\n`;
   }
 
   /** At this level: a name inside a region sits in the region's zone; otherwise the first rule that matches. */
@@ -167,19 +173,24 @@ export class ZoneRules {
 
   /** The same zones with another taxonomy: adopting a style rewrites the zones, not the project's vocabulary. */
   withTaxonomy(taxonomy: Taxonomy): ZoneRules {
-    return new ZoneRules(this.rules, this.profile, this.regions, taxonomy);
+    return new ZoneRules(this.rules, this.profile, this.regions, taxonomy, this.otherSections);
+  }
+
+  /** The same zones, keeping another file's other sections: adopting a style doesn't drop the recorder's settings. */
+  withOtherSections(otherSections: Readonly<Record<string, unknown>>): ZoneRules {
+    return new ZoneRules(this.rules, this.profile, this.regions, this.taxonomy, otherSections);
   }
 
   /** Roles proposed for approval (a model's "by": "llm"), added to the taxonomy section the host saves. */
   withRoles(declarations: RoleDeclaration[]): ZoneRules {
-    return new ZoneRules(this.rules, this.profile, this.regions, this.taxonomy.withRoles(declarations));
+    return new ZoneRules(this.rules, this.profile, this.regions, this.taxonomy.withRoles(declarations), this.otherSections);
   }
 
   private withRuleIn(qualifiedName: string, zone: string, reason: string, by: ZoneRule["by"], inRegion: string | null): ZoneRules {
     const region = this.regionContaining(QualifiedName.parse(qualifiedName));
     if (region !== null) {
       const regions = this.regions.map((candidate) => (candidate === region ? { ...region, rules: region.rules.withRuleIn(qualifiedName, zone, reason, by, region.name) } : candidate));
-      return new ZoneRules(this.rules, this.profile, regions, this.taxonomy);
+      return new ZoneRules(this.rules, this.profile, regions, this.taxonomy, this.otherSections);
     }
     if (inRegion !== null && !this.isZoneOfStyle(zone)) {
       const zones = this.profile.zones.map((candidate) => candidate.id).join(", ");
@@ -189,7 +200,7 @@ export class ZoneRules {
     const others = this.rules.filter((rule) => rule !== replaced);
     // Placing a composition root again keeps it one: the role is about what it does, not where it sits.
     const role = replaced?.role === undefined ? {} : { role: replaced.role };
-    return new ZoneRules([{ match: qualifiedName, zone, reason, by, ...role }, ...others], this.profile, this.regions, this.taxonomy);
+    return new ZoneRules([{ match: qualifiedName, zone, reason, by, ...role }, ...others], this.profile, this.regions, this.taxonomy, this.otherSections);
   }
 
   private regionContaining(name: QualifiedName): Region | null {

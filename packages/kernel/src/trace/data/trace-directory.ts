@@ -14,21 +14,26 @@ export interface TraceFiles {
 export const LATEST_POINTER = "latest.json";
 export const PREVIOUS_POINTER = "previous.json";
 
-export const HOW_TO_RECORD = "record one by running your tests with `pytest --runshape` (see the Runshape README)";
+/** Whichever recorder made it: each says how it's run (test-config.ts). */
+const ANY_RECORDER = `record one with \`npm run runshape -- record working\`, which picks the project's recorder (Python: \`pytest --runshape\`; Go: \`npm run record-go -- <module>\`)`;
 
 /**
  * A traces directory as the recorders write it (docs/trace-format.md): pointer files naming
  * the latest and previous run directories, each a manifest and one file per scenario.
  */
 export class TraceDirectory implements RunSource {
-  constructor(private readonly files: TraceFiles) {}
+  constructor(
+    private readonly files: TraceFiles,
+    /** What "no recording found" suggests: the project's own recorder's HOW_TO_RECORD, when it's known. */
+    private readonly howToRecord: string = ANY_RECORDER,
+  ) {}
 
   async latest(): Promise<Run> {
     let pointerText: string;
     try {
       pointerText = await this.files.readText(LATEST_POINTER);
     } catch (error) {
-      throw new TraceFormatError([`no recording found (${describe(error)}); ${HOW_TO_RECORD}`]);
+      throw new TraceFormatError([`no recording found (${describe(error)}); ${this.howToRecord}`]);
     }
     return this.load(runDirectoryIn(pointerText, LATEST_POINTER));
   }

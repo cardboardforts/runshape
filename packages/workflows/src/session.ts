@@ -382,6 +382,7 @@ export class ViewerSession {
     if (next.rules.length > MAX_LISTED_RULES) lines.push(`  …and ${next.rules.length - MAX_LISTED_RULES} more`);
     // The taxonomy is the project's vocabulary, not its zones: it's kept, minus switches for regions this discards.
     let taxonomyNote = "";
+    if (this.rulesProblem === null) next = next.withOtherSections(this.rules.otherSections);
     if (this.rulesProblem === null && this.rules.taxonomy.file !== null) {
       const kept = this.rules.taxonomy.keptWithRegions(next.regions.map((region) => region.name));
       next = next.withTaxonomy(kept.taxonomy);

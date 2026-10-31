@@ -5,7 +5,7 @@
 import { describe, expect, test } from "vitest";
 
 import { TraceDirectory, TraceFiles } from "../src";
-import { TraceFormatError } from "../src";
+import { HOW_TO_RECORD, TraceFormatError } from "../src";
 import { fixtureFiles, fixtureRuns } from "./fixtures";
 
 function filesWith(overrides: Record<string, string | Error>, fallback: TraceFiles): TraceFiles {
@@ -82,12 +82,13 @@ describe("TraceDirectory", () => {
     `);
   });
 
-  test("a missing traces folder explains what to run", async () => {
+  test("a missing traces folder explains what to run: the project's own recorder when it's known, else every one", async () => {
     const files: TraceFiles = { readText: async () => Promise.reject(new Error("ENOENT: no such file")) };
+    const reason = (directory: TraceDirectory) => directory.latest().catch((error: Error) => error.message.split("\n").pop());
 
-    await expect(new TraceDirectory(files).latest()).rejects.toThrowErrorMatchingInlineSnapshot(`
-      [Error: not a readable runshape trace:
-        - no recording found (ENOENT: no such file); record one by running your tests with \`pytest --runshape\` (see the Runshape README)]
-    `);
+    expect([await reason(new TraceDirectory(files)), await reason(new TraceDirectory(files, HOW_TO_RECORD.go))]).toEqual([
+      "  - no recording found (ENOENT: no such file); record one with `npm run runshape -- record working`, which picks the project's recorder (Python: `pytest --runshape`; Go: `npm run record-go -- <module>`)",
+      "  - no recording found (ENOENT: no such file); record one with `npm run record-go -- <module>` (or `npm run runshape -- record working`)",
+    ]);
   });
 });

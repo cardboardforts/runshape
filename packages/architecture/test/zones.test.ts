@@ -42,6 +42,15 @@ describe("ZoneRules", () => {
     expect(() => ZoneRules.parse(JSON.stringify({ version: 1, rings: [null] }))).toThrowError(ZoneRulesError);
   });
 
+  test("another module's section (the recorder's settings) survives a rule being added and the file saved back", () => {
+    const recorder = { language: "python", args: ["-n0"] };
+    const text = JSON.stringify({ version: 2, style: "hexagonal", zones: [], recorder });
+
+    const saved = ZoneRules.parse(text).withRuleFor("app.db", "outbound-adapter", "persistence", "user").serialize();
+
+    expect(JSON.parse(saved)).toEqual({ version: 2, style: "hexagonal", zones: [{ match: "app.db", zone: "outbound-adapter", reason: "persistence", by: "user" }], recorder });
+  });
+
   test("the file's style picks the zones its rules may use; an unknown style is reported", () => {
     const layered = ZoneRules.parse(JSON.stringify({ version: 2, style: "layered", zones: [{ match: "app.db.**", zone: "data", reason: "repositories" }] }));
     const wrongZone = JSON.stringify({ version: 2, style: "layered", zones: [{ match: "app.db.**", zone: "outbound-adapter", reason: "r" }] });
