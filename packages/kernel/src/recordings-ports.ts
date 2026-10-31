@@ -50,6 +50,12 @@ export interface TicketSource {
   readonly name: string;
   /** The ids of this source's tickets a text mentions, in its own syntax ("#12"; "PROJ-7"). */
   mentions(text: string): string[];
+  /**
+   * Whether an id names a project other than the change's own ("other-org/private#1"). The
+   * reviewer's login may read it, so it's read only when the PR itself links it: otherwise
+   * anyone writing a PR body could have a private ticket copied into the review.
+   */
+  elsewhere(id: string): boolean;
   /** The ticket; null when the source has none by that id (a pull request's number, say). */
   ticket(id: string): Promise<Ticket | null>;
 }

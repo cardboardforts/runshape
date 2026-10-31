@@ -272,6 +272,7 @@ describe("buildReviewBundle", () => {
     // Titles are the PR author's and ticket writers' text, and review.md may be posted as a PR
     // comment: an image there would load from anywhere, a tag would render. Escaped, they read
     // as typed. Ticket and PR bodies aren't here at all: they go to the explainer only.
+    // Every "#" before a number and every "://" carries an invisible zero-width space (plainMarkdown).
     const run = await fixtureRuns("go-shop").latest();
     const story: ReviewStory = {
       pullRequest: { number: 7, title: "Refuse orders ![x](https://evil.example/beacon.png) <img src=x>", url: "https://github.com/acme/shop/pull/7" },
@@ -293,14 +294,14 @@ describe("buildReviewBundle", () => {
     expect(section(reviewBundleMarkdown(bundle))).toMatchInlineSnapshot(`
       "### The story
 
-      Pull request [#7](https://github.com/acme/shop/pull/7): Refuse orders \\!\\[x\\](https://evil.example/beacon.png) \\<img src=x\\>
+      Pull request [#​7](https://github.com/acme/shop/pull/7): Refuse orders \\!\\[x\\](https:​//evil.example/beacon.png) \\<img src=x\\>
 
       Tickets:
 
-      - [#12](https://github.com/acme/shop/issues/12) Orders over the limit go \\*through\\* (GitHub Issues, open)
+      - [#​12](https://github.com/acme/shop/issues/12) Orders over the limit go \\*through\\* (GitHub Issues, open)
       - SHOP-7 Credit limits (Jira, In Progress)
 
-      Mentioned, not read: #30 (gh issue view: HTTP 401: Bad credentials)
+      Mentioned, not read: #​30 (gh issue view: HTTP 401: Bad credentials)
 
       Docs and comments changed:
 

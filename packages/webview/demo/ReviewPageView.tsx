@@ -184,7 +184,7 @@ function Story({ story }: { story: ReviewPageStory }) {
           <h3>Not in the pull request or tickets ({story.account.model}'s account)</h3>
           <ul>
             {story.account.notInStory.map((item) => (
-              <li key={item.behaviour}>
+              <li key={`${item.behaviour}\u0000${item.evidence}`}>
                 {item.behaviour} <span className="muted">(evidence: {item.evidence})</span>
               </li>
             ))}

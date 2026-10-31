@@ -13,7 +13,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { ChangedLines, Ticket, TicketSource } from "@runshape/kernel";
-import { gatherStory, MAX_STORY_TEXT, MAX_TICKETS, storyNotes } from "../src/story";
+import { gatherStory, MAX_REASON, MAX_STORY_TEXT, MAX_TICKETS, NOT_LINKED, storyNotes } from "../src/story";
 
 /** A ticket source answering from a list; "#"-ids like GitHub's, or KEY-n like Jira's. */
 class FakeTickets implements TicketSource {
@@ -23,6 +23,9 @@ class FakeTickets implements TicketSource {
     private readonly pattern: RegExp,
     private readonly tickets: Record<string, Omit<Ticket, "id"> | Error>,
   ) {}
+  elsewhere(id: string): boolean {
+    return id.includes("/");
+  }
   mentions(text: string): string[] {
     return [...new Set(text.match(this.pattern) ?? [])];
   }
@@ -106,12 +109,35 @@ describe("gatherStory", () => {
     });
   });
 
+  test("another repository's issue is read only when GitHub links it to the PR: a body naming victim-org/private#1 can't copy it into the review", async () => {
+    // The reviewer's gh login can read repositories the PR's author can't. Linked issues come
+    // from GitHub (closingIssuesReferences), so the PR's repository vouches for them; a
+    // mention is anyone's say-so. Not reading it also means the review doesn't say whether it
+    // exists. A long reason (a tool's whole stderr) is cut.
+    const issues = new FakeTickets("GitHub Issues", /(?:[\w-]+\/[\w-]+)?#\d+/g, {
+      "acme/billing#3": { title: "Invoice totals", body: "Linked, so read.", url: "https://github.com/acme/billing/issues/3", state: "open" },
+      "victim-org/private#1": { title: "Secret roadmap", body: "Never read.", url: "https://github.com/victim-org/private/issues/1", state: "open" },
+      "#5": new Error(`gh issue view: ${"x".repeat(MAX_REASON + 50)}`),
+    });
+
+    const { story, context } = await gatherStory(
+      { pullRequest: { number: 7, title: "Totals", body: "See victim-org/private#1 and #5.", url: "https://github.com/acme/shop/pull/7", linkedIssues: ["acme/billing#3"] }, commits: [], changed: [] },
+      [issues],
+    );
+
+    expect({ asked: issues.asked, read: context.tickets.map((t) => t.id), unread: story.unread.map((u) => `${u.id}: ${u.reason.length > MAX_REASON ? `${u.reason.slice(0, 20)}… (${u.reason.length})` : u.reason}`) }).toEqual({
+      asked: ["acme/billing#3", "#5"],
+      read: ["acme/billing#3"],
+      unread: [`victim-org/private#1: ${NOT_LINKED}`, `#5: gh issue view: xxxxx… (${MAX_REASON + 1})`],
+    });
+  });
+
   test("no sources and no PR: an empty story, with the changed docs and comments still in it", async () => {
     const { story, context } = await gatherStory({ pullRequest: null, commits: [], changed: [{ path: "README.md", added: ["Orders past the limit are refused."], removed: [] }] }, []);
 
     expect({ story, notes: context.notes }).toEqual({
       story: { pullRequest: null, tickets: [], unread: [], notes: [{ path: "README.md", kind: "doc", added: 1, removed: 0 }] },
-      notes: [{ path: "README.md", kind: "doc", added: ["Orders past the limit are refused."], removed: [] }],
+      notes: [{ path: "README.md", kind: "doc", added: ["Orders past the limit are refused."], removedCount: 0 }],
     });
   });
 });
@@ -119,7 +145,7 @@ describe("gatherStory", () => {
 describe("storyNotes", () => {
   test("docs: every said line; source: only comment lines, in the languages recorded; code, preprocessor lines and bare markers aren't the authors' words", () => {
     const changed: ChangedLines[] = [
-      { path: "src/orders.ts", added: ["  // Refuse past the limit: the bank charges us for overdrafts.", "  if (total > limit) throw new OrderRefused();", "  /**", "   * Why it's thrown here, not in the route.", "   */"], removed: ["  // TODO: limits"] },
+      { path: "src/orders.ts", added: ["  // Refuse past the limit: the bank charges us for overdrafts.", "  if (total > limit) throw new OrderRefused();", "  /**", "   * Why it's thrown here, not in the route.", "   */", "  *ptr = limit;"], removed: ["  // TODO: limits"] },
       { path: "app/orders.py", added: ['    """Refuses orders past the customer\'s limit."""', "    # noqa", "    x = 1  # not a comment line: it starts with code"], removed: [] },
       { path: "native/check.c", added: ["#include <stdio.h>", "#define LIMIT 10", "// The C side checks too."], removed: [] },
       { path: "lib.rs", added: ["#[derive(Debug)]", "#!/usr/bin/env"], removed: [] },

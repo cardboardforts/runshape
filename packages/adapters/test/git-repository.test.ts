@@ -103,6 +103,13 @@ describe("GitRepository", () => {
     });
   });
 
+  test("a git command that doesn't finish is stopped after the timeout, and says so", async () => {
+    const { root } = repository();
+
+    // hash-object --stdin waits for input that never comes: a stand-in for a hung remote.
+    await expect(new GitCli(root, 200).run(["hash-object", "--stdin"])).rejects.toThrowError("git hash-object --stdin: no answer in 200 ms");
+  });
+
   test("changed lines between two commits, or a commit and the working tree: added and removed per file, no context, no binaries", async () => {
     // The story reads docs and comments from these: a line that looks like a diff header
     // ("--- a/x", "diff --git") inside a file is still that file's line.

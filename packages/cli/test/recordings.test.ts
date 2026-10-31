@@ -781,6 +781,7 @@ describe("runshape review-requests: every open PR that asks for your review", ()
     const tickets: TicketSource = {
       name: "GitHub Issues",
       mentions: (text) => text.match(/#\d+/g) ?? [],
+      elsewhere: () => false,
       ticket: async (id) => (id === "#12" ? { id, title: "Orders over the limit go through", body: "Private detail the bundle mustn't keep.", url: "https://github.com/example/shop/issues/12", state: "open" } : null),
     };
     const story = (number: number): PullRequestStory => {
@@ -813,13 +814,13 @@ describe("runshape review-requests: every open PR that asks for your review", ()
       said: [
         "### The story",
         "",
-        "Pull request [#7](https://github.com/example/shop/pull/7): Teach orders to refuse",
+        "Pull request [#\u200b7](https://github.com/example/shop/pull/7): Teach orders to refuse",
         "",
         "Tickets:",
         "",
-        "- [#12](https://github.com/example/shop/issues/12) Orders over the limit go through (GitHub Issues, open)",
+        "- [#\u200b12](https://github.com/example/shop/issues/12) Orders over the limit go through (GitHub Issues, open)",
         "",
-        "Mentioned, not read: #13 (GitHub Issues has no such ticket)",
+        "Mentioned, not read: #\u200b13 (GitHub Issues has no such ticket)",
         "",
         "",
       ].join("\n"),
@@ -834,6 +835,7 @@ describe("runshape review-requests: every open PR that asks for your review", ()
     const tickets: TicketSource = {
       name: "GitHub Issues",
       mentions: (text) => text.match(/#\d+/g) ?? [],
+      elsewhere: () => false,
       ticket: async (id) => ({ id, title: "Orders over the limit go through", body: "Refuse anything past the credit limit.", url: null, state: "open" }),
     };
 
@@ -845,7 +847,7 @@ describe("runshape review-requests: every open PR that asks for your review", ()
       explained: explained.lines.filter((line) => line.startsWith("#")),
       asked: explained.model.prompts.length,
       // The text the bundle doesn't keep reaches the model, below the line, as data.
-      told: [prompt.includes("--- pull request #7\nTeach orders to refuse\nCustomers overspend. Fixes #12."), prompt.includes("--- ticket #12 (GitHub Issues, open)\nOrders over the limit go through\nRefuse anything past the credit limit.")],
+      told: [/--- [0-9a-f]{16} pull request #7\nTeach orders to refuse\nCustomers overspend. Fixes #12./.test(prompt), /--- [0-9a-f]{16} ticket #12 \(GitHub Issues, open\)\nOrders over the limit go through\nRefuse anything past the credit limit./.test(prompt)],
       none: none.lines,
     }).toEqual({
       explained: ["#7 Teach orders to refuse: reviewed and explained"],

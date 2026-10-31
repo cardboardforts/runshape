@@ -1,5 +1,5 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { ArchitectureDiff, Change, Grouping, Phase, Placement, PlacementChange, QualifiedName, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
+import { ArchitectureDiff, Change, Grouping, Phase, Placement, plainMarkdown, PlacementChange, QualifiedName, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildPlacements, CategorizedItem, categorize, checkTagRules, claimText, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
 import {
   buildReview,
@@ -382,10 +382,10 @@ function storyMarkdown(story: ReviewStory | undefined): string[] {
   if (story === undefined) return [];
   const out = ["### The story", ""];
   if (storyIsEmpty(story)) return [...out, "No pull request, ticket, doc or comment says what this change is for: its commit messages are all there is.", ""];
-  const linked = (id: string, url: string | null) => (url === null ? inline(id) : `[${inline(id)}](${url})`);
-  if (story.pullRequest !== null) out.push(`Pull request ${linked(`#${story.pullRequest.number}`, story.pullRequest.url)}: ${inline(story.pullRequest.title)}`, "");
-  if (story.tickets.length > 0) out.push("Tickets:", "", ...story.tickets.map((t) => `- ${linked(t.id, t.url)} ${inline(t.title)} (${inline(t.source)}, ${inline(t.state)})`), "");
-  if (story.unread.length > 0) out.push(`Mentioned, not read: ${story.unread.map((u) => `${inline(u.id)} (${inline(u.reason)})`).join("; ")}`, "");
+  const linked = (id: string, url: string | null) => (url === null ? plainMarkdown(id) : `[${plainMarkdown(id)}](${url})`);
+  if (story.pullRequest !== null) out.push(`Pull request ${linked(`#${story.pullRequest.number}`, story.pullRequest.url)}: ${plainMarkdown(story.pullRequest.title)}`, "");
+  if (story.tickets.length > 0) out.push("Tickets:", "", ...story.tickets.map((t) => `- ${linked(t.id, t.url)} ${plainMarkdown(t.title)} (${plainMarkdown(t.source)}, ${plainMarkdown(t.state)})`), "");
+  if (story.unread.length > 0) out.push(`Mentioned, not read: ${story.unread.map((u) => `${plainMarkdown(u.id)} (${plainMarkdown(u.reason)})`).join("; ")}`, "");
   if (story.notes.length > 0) {
     const counts = (n: ReviewStory["notes"][number]) => [n.added > 0 ? `+${n.added}` : "", n.removed > 0 ? `−${n.removed}` : ""].filter(Boolean).join(" ");
     out.push("Docs and comments changed:", "", ...story.notes.slice(0, SHOWN_FUNCTIONS).map((n) => `- ${code(n.path.replace(/\s+/g, " "))}: ${n.kind === NoteKind.Doc ? "doc" : "comments"}, ${counts(n)} lines`));
@@ -393,11 +393,6 @@ function storyMarkdown(story: ReviewStory | undefined): string[] {
     out.push("");
   }
   return out;
-}
-
-/** Someone else's text as one line of plain Markdown: whitespace collapsed, every character Markdown or HTML would act on escaped. */
-function inline(text: string): string {
-  return text.replace(/\s+/g, " ").trim().replace(/[\\`*_[\]<>!|~&]/g, (c) => `\\${c}`);
 }
 
 /** A name containing a backtick needs a longer fence, or it ends the span early. */

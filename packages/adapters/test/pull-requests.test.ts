@@ -67,9 +67,29 @@ describe("GhIssues: GitHub Issues as tickets", () => {
     const issues = new GhIssues("/nowhere");
 
     expect(issues.mentions("Fixes #12, see acme/billing#3 and #12 again.\nNot page#4, /docs#5, &#39; or ##6; (#7) is.")).toEqual(["#12", "acme/billing#3", "#7"]);
+    // Colours in a PR about styling: no issue number starts with 0, and one after "color:" is a colour.
+    expect(issues.mentions("Set color: #333, background-color:#123456 and fill: #999; was #000 or #000000. Closes #45.")).toEqual(["#45"]);
   });
 
-  test("reads an issue (in another repository with --repo); a PR's number or a missing issue is no ticket; anything else gh says is an error", async () => {
+  test("another repository's issue is elsewhere unless the person allowed that repository", () => {
+    const issues = new GhIssues("/nowhere", "gh", ["Acme/Billing"]);
+
+    expect(["#12", "acme/billing#3", "victim-org/private#1"].map((id) => `${id}: ${issues.elsewhere(id)}`)).toEqual(["#12: false", "acme/billing#3: false", "victim-org/private#1: true"]);
+  });
+
+  test("a gh that doesn't answer is stopped after the timeout, and says so", async () => {
+    const gh = fakeGh("sleep 5");
+    const started = Date.now();
+
+    const failed = await new GhIssues(gh.directory, gh.command, [], 200).ticket("#12").then(
+      () => "answered",
+      (error: Error) => error.message,
+    );
+
+    expect({ failed, quick: Date.now() - started < 3000 }).toEqual({ failed: "gh issue view: no answer in 200 ms", quick: true });
+  });
+
+  test("reads an issue (in another repository with --repo); a PR's number or gh's no-issue-by-that-number is no ticket; anything else, a bare Not Found too, is an error", async () => {
     const gh = fakeGh(
       [
         'case "$3" in',
@@ -77,7 +97,7 @@ describe("GhIssues: GitHub Issues as tickets", () => {
         `  3) echo '${JSON.stringify({ number: 3, title: "Invoice totals", body: null, url: "https://github.com/acme/billing/issues/3", state: "CLOSED" })}' ;;`,
         `  7) echo '${JSON.stringify({ number: 7, title: "The PR", body: "", url: "https://github.com/acme/shop/pull/7", state: "OPEN" })}' ;;`,
         '  404) echo "GraphQL: Could not resolve to an issue or pull request with the number of 404." >&2; exit 1 ;;',
-        '  *) echo "HTTP 401: Bad credentials" >&2; exit 1 ;;',
+        '  *) echo "HTTP 404: Not Found (https://api.github.com/graphql)" >&2; exit 1 ;;',
         "esac",
       ].join("\n"),
     );
@@ -99,7 +119,7 @@ describe("GhIssues: GitHub Issues as tickets", () => {
         // Not an id at all: never handed to gh.
         null,
       ],
-      failed: "gh issue view: HTTP 401: Bad credentials",
+      failed: "gh issue view: HTTP 404: Not Found (https://api.github.com/graphql)",
       asked: [
         "issue view 12 --json number,title,body,url,state",
         "issue view 3 --json number,title,body,url,state --repo acme/billing",

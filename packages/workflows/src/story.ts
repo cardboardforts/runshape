@@ -48,6 +48,13 @@ export const MAX_STORY_TEXT = 4000;
 export const MAX_NOTE_FILES = 20;
 export const MAX_NOTE_LINES = 40;
 const MAX_NOTE_LINE = 300;
+/** A reason past this is a tool's stderr in full: the start says what failed. */
+export const MAX_REASON = 200;
+export const NOT_LINKED = "another repository's issue, not linked by the PR";
+
+function shortReason(reason: string): string {
+  return reason.length > MAX_REASON ? `${reason.slice(0, MAX_REASON)}…` : reason;
+}
 
 /**
  * Reads the story: the PR's linked issues and every ticket its text and the commit messages
@@ -66,7 +73,7 @@ export async function gatherStory(sources: StorySources, ticketSources: TicketSo
     unread: [],
     notes: [],
   };
-  if (sources.pullRequestProblem !== undefined) story.unread.push({ id: `#${sources.pullRequestProblem.number}`, source: "the pull request", reason: sources.pullRequestProblem.reason });
+  if (sources.pullRequestProblem !== undefined) story.unread.push({ id: `#${sources.pullRequestProblem.number}`, source: "the pull request", reason: shortReason(sources.pullRequestProblem.reason) });
   const context: StoryContext = {
     pullRequest: pullRequest === null ? null : { number: pullRequest.number, title: pullRequest.title, body: cut(pullRequest.body) },
     tickets: [],
@@ -74,10 +81,16 @@ export async function gatherStory(sources: StorySources, ticketSources: TicketSo
   };
   // The PR mentioning its own number isn't a ticket.
   const own = pullRequest === null ? null : `#${pullRequest.number}`;
+  const linked = new Set(pullRequest?.linkedIssues ?? []);
   let tried = 0;
   for (const source of ticketSources) {
     // Each once, whatever the source returns: the linked issue is usually in the body too.
     for (const id of new Set(source.mentions(text).filter((mentioned) => mentioned !== own))) {
+      // Linked by GitHub itself, it's the PR's; only mentioned, it's anyone's say-so.
+      if (source.elsewhere(id) && !linked.has(id)) {
+        story.unread.push({ id, source: source.name, reason: NOT_LINKED });
+        continue;
+      }
       if (tried >= MAX_TICKETS) {
         story.unread.push({ id, source: source.name, reason: `more than ${MAX_TICKETS} tickets mentioned: not read` });
         continue;
@@ -92,13 +105,15 @@ export async function gatherStory(sources: StorySources, ticketSources: TicketSo
         story.tickets.push({ id, source: source.name, title: ticket.title, url: ticket.url === null ? null : webLink(ticket.url), state: ticket.state });
         context.tickets.push({ id, source: source.name, title: ticket.title, state: ticket.state, body: cut(ticket.body) });
       } catch (error) {
-        story.unread.push({ id, source: source.name, reason: error instanceof Error ? error.message : String(error) });
+        story.unread.push({ id, source: source.name, reason: shortReason(error instanceof Error ? error.message : String(error)) });
       }
     }
   }
   const notes = storyNotes(sources.changed);
   story.notes = notes.map(({ path, kind, added, removed }) => ({ path, kind, added: added.length, removed: removed.length }));
-  context.notes = notes.slice(0, MAX_NOTE_FILES).map(({ path, kind, added, removed }) => ({ path, kind, added: capped(added), removed: capped(removed) }));
+  // Removed lines are counted, never sent: a deleted line is where a leaked key goes when
+  // someone cleans it up, and the model is a third party.
+  context.notes = notes.slice(0, MAX_NOTE_FILES).map(({ path, kind, added, removed }) => ({ path, kind, added: capped(added), removedCount: removed.length }));
   return { story, context };
 }
 
@@ -110,10 +125,11 @@ export function storyIsEmpty(story: ReviewStory): boolean {
 /** Prose files: every changed line in them is the authors saying something. */
 const DOC_FILE = /\.(md|mdx|markdown|rst|adoc)$/i;
 /**
- * A line that's a comment in the languages recorded and their neighbours: //, /*, a block's *,
- * #, and docstring quotes. Not C's preprocessor (#include), a shebang, or Rust's #[attribute].
+ * A line that's a comment in the languages recorded and their neighbours: //, /*, a block's *
+ * (then a space: `*ptr = x;` is code), #, and docstring quotes. Not C's preprocessor
+ * (#include), a shebang, or Rust's #[attribute].
  */
-const COMMENT_LINE = /^(\/\/|\/\*|\*|#(?!(include|define|undef|if|ifdef|ifndef|elif|else|endif|pragma)\b|!|\[)|"""|''')/;
+const COMMENT_LINE = /^(\/\/|\/\*|\*(\s|\/|$)|#(?!(include|define|undef|if|ifdef|ifndef|elif|else|endif|pragma)\b|!|\[)|"""|''')/;
 /** What's left of a comment line once its markers go: a line of only markers says nothing. */
 const COMMENT_MARKERS = /^(\/\/+|\/\*+|\*+\/?|#+|"""|''')|(\*\/|"""|''')$/g;
 

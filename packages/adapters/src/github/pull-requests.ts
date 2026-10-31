@@ -1,7 +1,7 @@
 // The pull requests asking for the person's review, through their own `gh` login: read only.
 import type { PullRequests, PullRequestStory, PullRequestSummary } from "@runshape/kernel";
 
-import { ghJson, runGh } from "./gh";
+import { GH_TIMEOUT_MS, ghJson, runGh } from "./gh";
 
 const FIELDS = "number,title,url,author,baseRefName,headRefName,headRefOid,isCrossRepository,updatedAt";
 const STORY_FIELDS = "number,title,body,url,closingIssuesReferences";
@@ -10,16 +10,17 @@ export class GhPullRequests implements PullRequests {
   constructor(
     private readonly root: string,
     private readonly command = "gh",
+    private readonly timeoutMs = GH_TIMEOUT_MS,
   ) {}
 
   /** The repository gh lists from (its default for this checkout), as a URL git can fetch. */
   async repository(): Promise<string> {
-    return `${(await runGh(this.command, this.root, ["repo", "view", "--json", "url", "--jq", ".url"])).trim()}.git`;
+    return `${(await runGh(this.command, this.root, ["repo", "view", "--json", "url", "--jq", ".url"], this.timeoutMs)).trim()}.git`;
   }
 
   async requestingMyReview(limit: number): Promise<PullRequestSummary[]> {
     const args = ["pr", "list", "--search", "review-requested:@me", "--state", "open", "--limit", String(limit), "--json", FIELDS];
-    const listed = await ghJson<(Omit<PullRequestSummary, "author"> & { author: { login: string } | null })[]>(this.command, this.root, args);
+    const listed = await ghJson<(Omit<PullRequestSummary, "author"> & { author: { login: string } | null })[]>(this.command, this.root, args, this.timeoutMs);
     return listed.map((pr) => ({ ...pr, author: pr.author?.login ?? "unknown" }));
   }
 
@@ -34,7 +35,7 @@ export class GhPullRequests implements PullRequests {
       String(number),
       "--json",
       STORY_FIELDS,
-    ]);
+    ], this.timeoutMs);
     const repository = repositoryOf(pr.url);
     const linkedIssues = (pr.closingIssuesReferences ?? []).map((issue) => {
       const elsewhere = repositoryOf(issue.url);

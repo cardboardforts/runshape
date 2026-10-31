@@ -524,10 +524,11 @@ that pays. A no-op change has no time callout.
 
 - **Done (2026-10-31), first cut.** The workflow gathers the story (packages/workflows/src/story.ts)
   for every review: for a PR, its title, body and the issues it closes (`gh pr view`); every
-  ticket the PR's text and the commit messages mention, from each `TicketSource` (the kernel's
-  port, beside the workflow's other ports in recordings-ports.ts, since adapters see only the
-  kernel); and the docs (Markdown, rST, AsciiDoc) and comment lines the diff changed
-  (`Repository.changedLines`, `git diff -U0`). GitHub Issues through gh (`GhIssues`: `#N`,
+  ticket the PR's text and the commit messages mention, from each `TicketSource`; and the docs
+  (Markdown, rST, AsciiDoc) and comment lines the diff changed (`Repository.changedLines`,
+  `git diff -U0`). `TicketSource` lives in the kernel with the workflow's other ports
+  (recordings-ports.ts): the boundary rules require it, since adapters import only the kernel.
+  GitHub Issues through gh (`GhIssues`: `#N`,
   `owner/repo#N`) is the adapter written; Jira is a port away, shown by a fake Jira in
   story.test.ts. review.json keeps `story` (titles, https links, counts: never bodies, ticket
   text or changed lines, since a bundle may be posted or stored centrally), review.md has a
@@ -540,11 +541,21 @@ that pays. A no-op change has no time callout.
   or PR gh can't read is listed with gh's reason and logged (`story.unread`, ids and reasons,
   never text), never fatal; at most 8 tickets are read. Threat model: three rows new or widened
   (mentions → gh, story → review.md/page, story → model).
+  Second-model review fixes (2026-10-31): another repository's issue is read only when GitHub
+  links it to the PR (or the person allows that repository in `GhIssues`), so a PR body naming
+  `victim-org/private#1` can't copy a private ticket into the review through the reviewer's
+  login, nor say whether it exists; gh calls time out after 30 s (`GH_PROMPT_DISABLED=1`), git's
+  after 120 s; the prompt's headings carry a marker that is a digest of all the untrusted text,
+  so a PR body can't forge `=== Tickets ===`; removed doc and comment lines are counted, never
+  sent to the model; explanation.md escapes every model line as review.md does, and both break
+  @mentions, URLs and #refs with a zero-width space (`plainMarkdown`, kernel); gh's own "no
+  such issue" message, not any "not found"; `*ptr = x;` isn't a comment, and `#000` or a colour
+  after `color:` isn't an issue; unread reasons are cut at 200 characters.
   Not yet: a Jira (or Confluence) adapter, which needs credentials and a decision on which
   project keys count as mentions ("UTF-8" isn't a ticket); `compare` outside a PR doesn't look
   up the branch's PR (only `review-requests` knows the number); comment detection is by line
-  prefix (`//`, `#`, `/*`, `*`, docstring quotes), so a comment after code on the same line,
-  or a docstring's middle lines, aren't read; the second-model review of this phase.
+  prefix (`//`, `#`, `/*`, `* `, docstring quotes), so a comment after code on the same line,
+  or a docstring's middle lines, aren't read; added lines aren't scanned for secrets.
 
 ### Phase 6: The review module (4–5 PRs)
 
