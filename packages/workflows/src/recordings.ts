@@ -590,7 +590,6 @@ interface CommittedRules {
   problem: string | null;
 }
 
-
 interface Compared {
   review: SavedReview;
   base: Plan;

@@ -50,6 +50,8 @@ export interface ReviewPageTest {
   /** The scenario's id in head (the base's, when it's gone): what the viewer selects. */
   id: string;
   name: string;
+  /** False for a test only the base has: there's nothing in head's graph to open it at. */
+  inHead: boolean;
 }
 
 export interface ReviewPageFunction {

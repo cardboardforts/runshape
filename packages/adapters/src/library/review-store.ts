@@ -36,9 +36,11 @@ export class ReviewStore implements KeptReviews {
 
   /** review.json for tools, review.md to read or post. */
   async saveReview(name: string, bundle: unknown, markdown: string, page: unknown): Promise<void> {
-    await this.files.writeText(`${name}/${REVIEW_JSON}`, asJson(bundle));
-    await this.files.writeText(`${name}/${REVIEW_MARKDOWN}`, markdown);
+    // The bundle last: cut short, the files beside an older review.json are newer than it, never a
+    // new review beside an older page that would read as its own.
     await this.files.writeText(`${name}/${REVIEW_PAGE}`, asJson(page));
+    await this.files.writeText(`${name}/${REVIEW_MARKDOWN}`, markdown);
+    await this.files.writeText(`${name}/${REVIEW_JSON}`, asJson(bundle));
   }
 
   /** The saved explanation; null when there's none, or it can't be read (it's asked again). */

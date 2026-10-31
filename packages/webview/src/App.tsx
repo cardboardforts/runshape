@@ -179,7 +179,7 @@ export function App({ host, openAt = null }: { host: Host; openAt?: string | nul
             const scenarioId = pendingOpenAt.current;
             pendingOpenAt.current = null;
             if (response.summary.baselineCreatedAt === null) setNotice("There's no base to compare with: opened the recording alone.");
-            else if (!response.summary.scenarios.some((scenario) => scenario.id === scenarioId)) setNotice(`This recording has no test ${scenarioId}.`);
+            else if (!response.summary.scenarios.some((scenario) => scenario.id === scenarioId)) setNotice(`The test asked for isn't in this recording (it may be only on the base): ${scenarioId.split("::").at(-1)}`);
             else {
               const { phases, grouping: currentGrouping, style } = viewOptions.current;
               setCompare(true);

@@ -47,8 +47,8 @@ describe("buildReviewPage", () => {
           rows: [
             {
               tests: [
-                { id: DUPLICATE, name: "test_user_can_not_create_article_with_duplicated_slug" },
-                { id: CREATE, name: "test_user_can_create_article" },
+                { id: DUPLICATE, name: "test_user_can_not_create_article_with_duplicated_slug", inHead: true },
+                { id: CREATE, name: "test_user_can_create_article", inHead: true },
               ],
               cause: [
                 { name: "_normalize_title", namespace: "app.services.articles", change: "added" },
@@ -68,7 +68,7 @@ describe("buildReviewPage", () => {
             { name: "_normalize_title", namespace: "app.services.articles", change: "added" },
             { name: "ensure_slug_available", namespace: "app.services.articles", change: "added" },
           ],
-          workflows: [{ kind: "new", tests: [{ id: CREATE, name: "test_user_can_create_article" }, { id: DUPLICATE, name: "test_user_can_not_create_article_with_duplicated_slug" }] }],
+          workflows: [{ kind: "new", tests: [{ id: CREATE, name: "test_user_can_create_article", inHead: true }, { id: DUPLICATE, name: "test_user_can_not_create_article_with_duplicated_slug", inHead: true }] }],
           routes: [{ label: "POST /api/articles", on: "head" }],
         },
         {
@@ -76,10 +76,23 @@ describe("buildReviewPage", () => {
             { name: "create_new_article", namespace: "app.api.routes.articles.articles_resource", change: "edited" },
             { name: "get_slug_for_article", namespace: "app.services.articles", change: "edited" },
           ],
-          workflows: [{ kind: "different", tests: [{ id: CREATE, name: "test_user_can_create_article" }, { id: DUPLICATE, name: "test_user_can_not_create_article_with_duplicated_slug" }] }],
+          workflows: [{ kind: "different", tests: [{ id: CREATE, name: "test_user_can_create_article", inHead: true }, { id: DUPLICATE, name: "test_user_can_not_create_article_with_duplicated_slug", inHead: true }] }],
           routes: [{ label: "POST /api/articles", on: "both" }],
         },
       ],
     });
+  });
+
+  test("a test only the base has is named, not linked: head's graph has nothing to open it at (second-model review)", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const head = await runs.latest();
+    const dropped = head.scenarios[0]!;
+    // As if head's branch had deleted that test.
+    (head as { scenarios: unknown }).scenarios = head.scenarios.filter((scenario) => scenario.nodeid !== dropped.nodeid);
+    const bundle = buildReviewBundle({ base: (await runs.previous())!, head, baseSide: side("main", "a"), headSide: side("head", "b"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: "2026-10-16T09:00:00Z" });
+
+    const removed = buildReviewPage(bundle).sections.find((section) => section.heading === "Removed tests");
+
+    expect(removed?.rows.flatMap((row) => row.tests)).toEqual([{ id: dropped.nodeid, name: dropped.name, inHead: false }]);
   });
 });

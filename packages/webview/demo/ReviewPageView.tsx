@@ -19,10 +19,11 @@ const WORKFLOW_WORDS: Record<ReviewPageThread["workflows"][number]["kind"], stri
  */
 export function ReviewPageView({ review }: { review: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
-  const file = (name: string) => `/__runshape/reviews/${encodeURIComponent(review)}/${name}`;
+  const file = (name: string) => reviewFile(review, name);
 
   // The dev server is the outside world: ask it once per review.
   useEffect(() => {
+    const file = (name: string) => reviewFile(review, name);
     let cancelled = false;
     const explained = fetch(file("explanation.md")).then((response) => response.ok, () => false);
     fetch(file("page.json"))
@@ -56,6 +57,10 @@ export function ReviewPageView({ review }: { review: string }) {
       {state.kind === "ready" && <Page page={state.page} explained={state.explained} file={file} />}
     </main>
   );
+}
+
+function reviewFile(review: string, name: string): string {
+  return `/__runshape/reviews/${encodeURIComponent(review)}/${name}`;
 }
 
 function Page({ page, explained, file }: { page: ReviewPage; explained: boolean; file: (name: string) => string }) {
@@ -167,11 +172,8 @@ const SHOWN_TESTS = 6;
 
 /** Each test a link into the compared graph, opened at it, one per line; past the first few, behind "N more". */
 function Tests({ tests, into }: { tests: ReviewPageTest[]; into: (test: ReviewPageTest) => string }) {
-  const item = (test: ReviewPageTest) => (
-    <li key={test.id}>
-      <a href={into(test)}>{test.name}</a>
-    </li>
-  );
+  // A test only the base has isn't in head's graph: named, not linked.
+  const item = (test: ReviewPageTest) => <li key={test.id}>{test.inHead ? <a href={into(test)}>{test.name}</a> : <span title="only on the base">{test.name} (base only)</span>}</li>;
   return (
     <ul className="tests">
       {tests.slice(0, SHOWN_TESTS).map(item)}

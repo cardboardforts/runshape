@@ -215,7 +215,6 @@ function rowCells(row: ReviewRow): [string, string] {
   return [`${row.items.length} tests: ${names.join(", ")}${more}`, `through changed code: ${cause.join(", ")}${moreCause}; ${ways}`];
 }
 
-/** The review as Markdown; with the threads, tests with one cause are one row. */
 /** "8 tests ran on both the base and this branch; 1 new on this branch." */
 export function reviewHeadline(summary: ReviewSummary): string {
   // Three counts that add up, so "N on both" isn't read as the total (a model read it so).
@@ -226,6 +225,7 @@ export function reviewHeadline(summary: ReviewSummary): string {
   return `${tests(onBothSides)} ran on both the base and this branch${extra.length ? `; ${extra.join(", ")}` : ""}.`;
 }
 
+/** The review as Markdown; with the threads, tests with one cause are one row. */
 export function reviewMarkdown(summary: ReviewSummary, threads?: Threads): string {
   const out: string[] = ["## Behaviour changes (Runshape)", ""];
   out.push(reviewHeadline(summary), "");

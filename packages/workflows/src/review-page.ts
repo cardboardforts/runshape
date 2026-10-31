@@ -6,11 +6,13 @@ import { ChangedFunction, describeChange, groupThreads, REVIEW_HEADINGS, REVIEW_
 import { ReviewBundle, ReviewSide, reviewHighlights } from "./review-bundle";
 
 export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
+  const onlyInBase = new Set(bundle.review.items.filter((item) => item.category === ReviewCategory.Removed).map((item) => item.scenarioId));
+  const test = (id: string, name: string) => ({ id, name, inHead: !onlyInBase.has(id) });
   const sections = REVIEW_ORDER.filter((category) => category !== ReviewCategory.Unchanged).flatMap((category) => {
     const items = bundle.review.items.filter((item) => item.category === category);
     if (items.length === 0) return [];
     const rows = reviewRows(items, bundle.threads).map((row) => ({
-      tests: row.items.map((item) => ({ id: item.scenarioId, name: item.name })),
+      tests: row.items.map((item) => test(item.scenarioId, item.name)),
       cause: row.cause.map(pageFunction),
       changes: [...new Set(row.items.map(describeChange))],
     }));
@@ -18,7 +20,7 @@ export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
   });
   const threads = groupThreads(bundle.threads).map((group) => ({
     functions: group.functions.map(pageFunction),
-    workflows: THREAD_KINDS.map((kind) => ({ kind, tests: group.threads.filter((thread) => thread.kind === kind).map((thread) => ({ id: thread.scenarioId, name: thread.name })) })).filter(
+    workflows: THREAD_KINDS.map((kind) => ({ kind, tests: group.threads.filter((thread) => thread.kind === kind).map((thread) => test(thread.scenarioId, thread.name)) })).filter(
       (workflows) => workflows.tests.length > 0,
     ),
     routes: group.routes,
