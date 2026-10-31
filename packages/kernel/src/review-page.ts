@@ -19,6 +19,17 @@ export interface ReviewPage {
   threads: ReviewPageThread[];
   /** What the change costs at run time; absent from pages saved before it was measured. */
   cost?: ReviewPageCost;
+  /** The categorizer's view of the change; absent in pages saved before it. */
+  categories?: ReviewPageCategories;
+}
+
+/** What the changed code is, what the change newly breaks, and zones proposed for new code. */
+export interface ReviewPageCategories {
+  /** One per changed callable, its type, and new code: tags as "lens: id". */
+  items: { name: string; kind: string; zone: string | null; tags: string[] }[];
+  findings: { severity: "error" | "warn" | "info"; rule: string; item: string; message: string; evidence: string[] }[];
+  /** For runshape.json, for a person to approve: never applied by Runshape. */
+  proposals: { match: string; zone: string; reason: string }[];
 }
 
 /** One number on each side; null on a side that doesn't have it. */

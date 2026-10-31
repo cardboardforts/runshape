@@ -91,6 +91,13 @@ describe("buildReviewBundle", () => {
 
       No architecture changes.
 
+      ### What the changed code is
+
+      - \`app.api.routes.articles.articles_resource.create_new_article\` (callable, inbound-adapter): primary-adapter; effect: reads-state, writes-state; cqs: both; failure: can-fail
+      - \`app.services.articles._normalize_title\` (callable, core): effect: pure; cqs: query
+      - \`app.services.articles.ensure_slug_available\` (callable, core): effect: reads-state; cqs: query; failure: can-fail
+      - \`app.services.articles.get_slug_for_article\` (callable, core): effect: pure; cqs: query
+
       ### Routes
 
       - \`POST /api/articles\`: 2 ways changed
@@ -142,6 +149,66 @@ describe("buildReviewBundle", () => {
       - Rule added: \`example\\.com.shop.internal.storage.**\` → Outbound adapters (a model): stores orders
       - \`example\\.com.shop.internal.storage\`: Core (inferred) → Outbound adapters (a model)
       - \`example\\.com.shop.internal.storage.MemoryRepository\`: Core (inferred) → Outbound adapters (a model)
+      "
+    `);
+  });
+
+  test("the categorizer in review: only findings the branch adds, and a zone proposed for new code, never applied", async () => {
+    // A project rule: the slug refactor's core helpers may compute, not query. Helpers that
+    // already queried on main aren't news; the one the branch adds is.
+    const slugRules = ZoneRules.parse(
+      JSON.stringify({
+        version: 2,
+        style: "hexagonal",
+        zones: [{ match: "app.services.**", zone: "core", reason: "services", by: "user" }],
+        taxonomy: { rules: [{ id: "services-compute-only", message: "a service helper that queries", match: "app.services.**", when: ["kind=callable"], flag: ["effect=reads-state"], severity: "info" }] },
+      }),
+    );
+    const slugs = fixtureRuns("fastapi-slug-refactor");
+    const slugBundle = buildReviewBundle({ base: (await slugs.previous())!, head: await slugs.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: slugRules, rules: slugRules, createdAt: CREATED });
+    // The feed fix adds a view no rule places: its route makes it a primary adapter.
+    const feed = fixtureRuns("django-feed-fix");
+    const feedBundle = buildReviewBundle({ base: (await feed.previous())!, head: await feed.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
+    const feedMarkdown = reviewBundleMarkdown(feedBundle);
+
+    expect({
+      newFindings: slugBundle.categories.newFindings.map((finding) => `${finding.severity} ${finding.rule}: ${finding.item}`),
+      proposals: feedBundle.categories.proposals,
+    }).toMatchInlineSnapshot(`
+      {
+        "newFindings": [
+          "info services-compute-only: app.services.articles.ensure_slug_available",
+        ],
+        "proposals": [
+          {
+            "by": "detected",
+            "match": "conduit.apps.articles.views.ArticlesFeedAPIView",
+            "reason": "its role: primary-adapter (the framework routes GET /api/^articles/feed/? to it)",
+            "zone": "inbound-adapter",
+          },
+        ],
+      }
+    `);
+    expect(feedMarkdown.slice(feedMarkdown.indexOf("### What the changed code is"), feedMarkdown.indexOf("### Routes"))).toMatchInlineSnapshot(`
+      "### What the changed code is
+
+      - \`conduit.apps.articles.views.ArticlesFeedAPIView\` (type, inbound-adapter): primary-adapter
+      - \`conduit.apps.articles.views.ArticlesFeedAPIView.get_queryset\` (callable, inbound-adapter): effect: reads-state; io: direct-io
+      - \`conduit.apps.articles.views.ArticlesFeedAPIView.list\` (callable, inbound-adapter): effect: reads-state; io: direct-io
+      - \`conduit.apps.core.exceptions.core_exception_handler\` (callable, inbound-adapter): effect: pure
+      - \`conduit.apps.core.renderers.ConduitJSONRenderer.render\` (callable, inbound-adapter): effect: pure
+
+      New findings (2):
+
+      - **warn** \`io-outside-allowed-zones\`: \`conduit.apps.articles.views.ArticlesFeedAPIView.get_queryset\` does I/O itself in a zone its style keeps free of it (direct-io: sqlite: SELECT)
+      - **warn** \`io-outside-allowed-zones\`: \`conduit.apps.articles.views.ArticlesFeedAPIView.list\` does I/O itself in a zone its style keeps free of it (direct-io: sqlite: SELECT)
+
+      Proposed zones for new code: add them to runshape.json to approve them in this diff (nothing is applied):
+
+      \`\`\`json
+      {"match":"conduit.apps.articles.views.ArticlesFeedAPIView","zone":"inbound-adapter","reason":"its role: primary-adapter (the framework routes GET /api/^articles/feed/? to it)","by":"detected"}
+      \`\`\`
+
       "
     `);
   });

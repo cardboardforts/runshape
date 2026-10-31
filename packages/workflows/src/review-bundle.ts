@@ -1,6 +1,6 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { ArchitectureDiff, Change, Grouping, Phase, Placement, PlacementChange, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
-import { buildPlacements, comparedGraphs, diffArchitecture, ZoneRules } from "@runshape/architecture";
+import { ArchitectureDiff, Change, Grouping, Phase, Placement, PlacementChange, QualifiedName, RegionSummary, ReviewHighlights, Run, ZoneRule } from "@runshape/kernel";
+import { buildPlacements, CategorizedItem, categorize, checkTagRules, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
 import {
   buildReview,
   buildThreads,
@@ -11,6 +11,7 @@ import {
   diffRuns,
   groupThreads,
   Measure,
+  Moves,
   Op,
   reviewMarkdown,
   ReviewSummary,
@@ -82,6 +83,20 @@ export interface ReviewBundle {
   threads: Threads;
   /** What the change costs at run time; absent from bundles saved before it was measured. */
   cost?: CostDiff;
+  /** The categorizer on head: the changed code's tags, the findings head adds, proposed zones for new code. */
+  categories: BundleCategories;
+}
+
+/** Added after version 1's first release: readers treat it as optional. */
+export interface BundleCategories {
+  /** What the trace can't support, so no tag says it (docs/categorizer.md). */
+  missing: string[];
+  /** Head's changed callables, the types that hold them, and new types and modules no rule places. */
+  items: CategorizedItem[];
+  /** Findings head has that the base didn't (renames recognised), on any code. */
+  newFindings: Finding[];
+  /** A zone for each new class or module no rule places, from its roles: to add to runshape.json for approval, never applied. */
+  proposals: ZoneRule[];
 }
 
 export const REVIEW_FORMAT = "runshape-review";
@@ -105,6 +120,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
   const baseRules = input.baseRules ?? rules;
   const moves = detectMoves(base, head);
   const graphs = comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules });
+  const architecture = diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves);
   const threads = buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves });
   return {
     format: REVIEW_FORMAT,
@@ -116,11 +132,44 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     baseRulesKnown: input.baseRules !== null,
     review: withoutQueryText(buildReview(base, head, graphs, { ...BUNDLE_OPTIONS, moves })),
     // Both placed in head's style: a style change is one change, not every class moving.
-    architecture: diffArchitecture(buildPlacements(base, baseRules, rules.profile), buildPlacements(head, rules), moves),
+    architecture,
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),
     threads,
     cost: diffCost(base, head, threads, { phases: BUNDLE_OPTIONS.phases, moves }),
+    categories: bundleCategories(input, baseRules, architecture, threads, moves),
   };
+}
+
+function bundleCategories(input: BundleInput, baseRules: ZoneRules, architecture: ArchitectureDiff, threads: Threads, moves: Moves): BundleCategories {
+  const { base, head, rules } = input;
+  const after = categorize(head, rules);
+  const fresh = newFindings(checkTagRules(categorize(base, baseRules), baseRules.taxonomy), checkTagRules(after, rules.taxonomy), {
+    module: moves.module,
+    type: moves.type,
+    functionKey: moves.headKey,
+  });
+  const changedKeys = new Set(threads.functions.filter((fn) => fn.change !== "removed").map((fn) => fn.symbol.key));
+  const changed = after.items.filter((item) => item.key !== null && changedKeys.has(item.key));
+  const holders = after.items.filter((item) => item.kind === Kind.Type && changed.some((fn) => QualifiedName.parse(item.name).holds(QualifiedName.parse(fn.name))));
+  const unplacedNames = new Set(architecture.unplaced.map((placement) => placement.component));
+  const unplaced = after.items.filter((item) => (item.kind === Kind.Type || item.kind === Kind.Container) && unplacedNames.has(item.name));
+  const items = after.items.filter((item) => changed.includes(item) || holders.includes(item) || unplaced.includes(item));
+  return { missing: after.missing, items, newFindings: fresh, proposals: architecture.unplaced.map((placement) => proposal(placement, after.items, rules)) };
+}
+
+/**
+ * Where new code no rule places should go: the zone its strongest role belongs in, when that
+ * role names exactly one of the style's zones; otherwise where its behaviour put it. "detected":
+ * the deterministic categorizer proposed it; a model's proposals say "llm".
+ */
+function proposal(placement: Placement, items: CategorizedItem[], rules: ZoneRules): ZoneRule {
+  const item = items.find((candidate) => candidate.name === placement.component);
+  for (const tag of (item?.tags ?? []).filter((candidate) => ROLE_LENSES.includes(candidate.lens)).sort((a, b) => b.confidence - a.confidence)) {
+    const definition = rules.taxonomy.definition(tag.lens, tag.id);
+    const zones = definition === undefined ? [] : expectedZonesIn(definition, rules.profile.style);
+    if (zones.length === 1) return { match: placement.component, zone: zones[0]!, reason: `its role: ${tag.id} (${tag.evidence[0]})`, by: "detected" };
+  }
+  return { match: placement.component, zone: placement.zone, reason: `its behaviour: ${placement.reason}`, by: "detected" };
 }
 
 /**
@@ -176,9 +225,40 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
     ...costMarkdown(bundle.cost),
     ...threadsMarkdown(bundle.threads),
     ...architectureMarkdown(bundle.architecture, bundle.baseRulesKnown),
+    ...categoriesMarkdown(bundle.categories),
     ...routesMarkdown(bundle.routes),
   ];
   return `${out.join("\n").trimEnd()}\n`;
+}
+
+/** "primary-adapter; effect: reads-state, writes-state; cqs: both": roles by id, traits by lens. */
+function tagsText(item: CategorizedItem): string {
+  const byLens = new Map<string, string[]>();
+  for (const tag of item.tags) byLens.set(tag.lens, [...(byLens.get(tag.lens) ?? []), tag.id + (tag.by === "detected" ? "" : ` (${tag.by})`)]);
+  const parts = [...byLens].map(([lens, ids]) => (ROLE_LENSES.includes(lens) ? ids.join(", ") : `${lens}: ${ids.join(", ")}`));
+  return parts.length > 0 ? parts.join("; ") : "no tags";
+}
+
+/**
+ * "What the changed code is": the categorizer's tags for it, the findings this change adds,
+ * and zones proposed for new code. Absent from bundles saved before the categorizer.
+ */
+function categoriesMarkdown(categories: BundleCategories | undefined): string[] {
+  if (categories === undefined || (categories.items.length === 0 && categories.newFindings.length === 0)) return [];
+  const out = ["### What the changed code is", ""];
+  for (const item of categories.items.slice(0, SHOWN_FUNCTIONS)) out.push(`- ${code(item.name)} (${item.kind}, ${item.zone ?? "not placed"}): ${tagsText(item)}`);
+  if (categories.items.length > SHOWN_FUNCTIONS) out.push(`- and ${categories.items.length - SHOWN_FUNCTIONS} more (review.json lists every claim with its evidence)`);
+  if (categories.items.length > 0) out.push("");
+  if (categories.newFindings.length > 0) {
+    out.push(`New findings (${categories.newFindings.length}):`, "");
+    for (const finding of categories.newFindings) out.push(`- **${finding.severity}** ${code(finding.rule)}: ${code(finding.item)} ${finding.message}${finding.evidence.length > 0 ? ` (${finding.evidence[0]})` : ""}`);
+    out.push("");
+  }
+  if (categories.proposals.length > 0) {
+    out.push("Proposed zones for new code: add them to runshape.json to approve them in this diff (nothing is applied):", "", "```json");
+    out.push(...categories.proposals.map((rule, i) => `${JSON.stringify(rule)}${i < categories.proposals.length - 1 ? "," : ""}`), "```", "");
+  }
+  return out;
 }
 
 function sideText(side: ReviewSide): string {

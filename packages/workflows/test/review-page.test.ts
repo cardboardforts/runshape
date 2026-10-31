@@ -85,6 +85,58 @@ describe("buildReviewPage", () => {
           routes: [{ label: "POST /api/articles", on: "both" }],
         },
       ],
+      // The changed functions as the categorizer sees them; no rules, so nothing to find and no new class to place.
+      categories: {
+        items: [
+          {
+            name: "app.api.routes.articles.articles_resource.create_new_article",
+            kind: "callable",
+            zone: "inbound-adapter",
+            tags: ["ports-and-adapters: primary-adapter", "effect: reads-state", "effect: writes-state", "cqs: both", "failure: can-fail"],
+          },
+          { name: "app.services.articles._normalize_title", kind: "callable", zone: "core", tags: ["effect: pure", "cqs: query"] },
+          { name: "app.services.articles.ensure_slug_available", kind: "callable", zone: "core", tags: ["effect: reads-state", "cqs: query", "failure: can-fail"] },
+          { name: "app.services.articles.get_slug_for_article", kind: "callable", zone: "core", tags: ["effect: pure", "cqs: query"] },
+        ],
+        findings: [],
+        proposals: [],
+      },
+    });
+  });
+
+  test("new architecture findings are a callout, red when a rule says error", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const rules = ZoneRules.parse(
+      JSON.stringify({
+        version: 2,
+        style: "hexagonal",
+        zones: [{ match: "app.services.**", zone: "core", reason: "services", by: "user" }],
+        taxonomy: { rules: [{ id: "services-compute-only", message: "a service helper that queries", match: "app.services.**", when: ["kind=callable"], flag: ["effect=reads-state"], severity: "error" }] },
+      }),
+    );
+    const bundle = buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("#7", "bbbbbbbbbbbb"), baseRules: rules, rules, createdAt: "2026-10-16T09:00:00Z" });
+
+    const page = buildReviewPage(bundle);
+
+    expect({ callouts: page.callouts, findings: page.categories?.findings }).toEqual({
+      // Worst first: an error rule's finding leads, next to the cost callouts.
+      callouts: [
+        { text: "1 new architecture finding", tone: "failed" },
+        { text: "2 still passing, run differently", tone: "warn" },
+        { text: "1 route takes a new way", tone: "info" },
+        { text: "1 workflow slower past the noise bands (one recording each side)", tone: "info" },
+      ],
+      findings: [
+        {
+          severity: "error",
+          rule: "services-compute-only",
+          item: "app.services.articles.ensure_slug_available",
+          message: "a service helper that queries",
+          evidence: [
+            "reads-state: postgres: SELECT through app.db.repositories.articles.ArticlesRepository.get_article_by_slug; postgres: SELECT through app.db.repositories.articles.ArticlesRepository.get_favorites_count_for_article_by_slug; postgres: SELECT through app.db.repositories.articles.ArticlesRepository.get_tags_for_article_by_slug; postgres: SELECT through app.db.repositories.users.UsersRepository.get_user_by_username",
+          ],
+        },
+      ],
     });
   });
 
@@ -109,6 +161,7 @@ describe("buildReviewPage", () => {
       {
         "callouts": [
           "warn: 1 needs a zone decision",
+          "warn: 2 new architecture findings",
           "warn: 1 workflow makes more external calls",
           "info: 2 routes take a new way",
         ],

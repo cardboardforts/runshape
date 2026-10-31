@@ -6,7 +6,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { CategorizedItem, Categorization, categorize, checkTagRules, Finding, ZoneRules } from "../src";
+import { QualifiedName } from "@runshape/kernel";
+import { CategorizedItem, Categorization, categorize, checkTagRules, Finding, newFindings, ZoneRules } from "../src";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 /** One line per item: kind/subkind name [region|style|zone] then lens=role(by confidence: evidence). */
@@ -142,6 +143,20 @@ describe("categorize", () => {
         "relaxedForAHandler": [],
       }
     `);
+  });
+
+  test("a finding the base already had under an old name isn't new: renames are recognised, so a rename doesn't read as fresh drift", async () => {
+    const run = await fixtureRuns("go-shop").latest();
+    const rules = ZoneRules.parse(JSON.stringify({ ...GO_SHOP_RULES, taxonomy: { rules: [{ id: "cqrs-no-mixed-callable", match: "example\\.com.shop.**" }] } }));
+    const [place] = checkTagRules(categorize(run, rules), rules.taxonomy);
+    // As the base had it: the same finding on the function before it was renamed.
+    const before = { ...place!, item: "example\\.com.shop.internal.orders.Service.PlaceOrder", key: "old-key" };
+    const renaming = { module: (name: QualifiedName) => name, type: (name: QualifiedName) => name, functionKey: (key: string) => (key === "old-key" ? place!.key! : key) };
+
+    expect({
+      withTheRename: newFindings([before], [place!], renaming).length,
+      withoutIt: newFindings([before], [place!], { ...renaming, functionKey: (key: string) => key }).map((finding) => finding.item),
+    }).toEqual({ withTheRename: 0, withoutIt: ["example\\.com.shop.internal.orders.Service.Place"] });
   });
 
   test("fastapi: repositories forced into the core are flagged by role and by I/O; the routed function is a primary adapter", async () => {

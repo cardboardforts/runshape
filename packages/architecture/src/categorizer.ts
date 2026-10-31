@@ -1,11 +1,11 @@
 // The deterministic categorizer (docs/categorizer.md): each piece of code the recording knows,
 // its kind (a parser fact), the roles its region's style gives it, and what it does when it
 // runs. Every role and trait is a claim with evidence; nothing here asks a model.
-import { BoundaryCall, byCodeUnit, CodeSymbol, ComponentKind, QualifiedName, Role, Run, Span, SymbolKind, ZoneSource } from "@runshape/kernel";
-import { buildPlacements, Placement } from "./placements";
+import { BoundaryCall, byCodeUnit, CodeSymbol, ComponentKind, Placement, QualifiedName, Role, Run, Span, SymbolKind, ZoneRule, ZoneSource } from "@runshape/kernel";
+import { buildPlacements } from "./placements";
 import { profileFor } from "./profiles";
 import { Claim, ClaimSource, Definition, Kind, Lens, matchingName, RoleDeclaration, ROLE_LENSES, STYLE_LENSES, Taxonomy } from "./taxonomy";
-import { ZoneRule, ZoneRules } from "./zones";
+import { ZoneRules } from "./zones";
 
 /** One piece of code, what it is, where it sits, and what's claimed about it. */
 export interface CategorizedItem {
@@ -176,11 +176,12 @@ export function categorize(run: Run, rules: ZoneRules): Categorization {
   const where = (name: QualifiedName, kind: ComponentKind.Class | ComponentKind.Module) => placementOf(name, rules, placements.get(`${kind} ${name.text}`) ?? null);
 
   const items: CategorizedItem[] = [];
-  const callableItems = new Map<string, CategorizedItem>();
   const transitive = transitiveEffects(facts, source);
   for (const fact of facts.values()) {
     if (fact.spans.every((span) => span.fn.role !== Role.Source)) continue;
-    const owner = fact.symbol.owner;
+    // A base class's method that only ran on subclasses is drawn in the receiver's box (componentOf): placed there too.
+    const definedIn = fact.symbol.ownerType === null ? null : fact.symbol.owner;
+    const owner = definedIn !== null && !placements.has(`${ComponentKind.Class} ${definedIn.text}`) ? (fact.spans.find((span) => span.obj !== null)?.obj?.type ?? definedIn) : fact.symbol.owner;
     const at = where(owner, fact.symbol.ownerType === null ? ComponentKind.Module : ComponentKind.Class);
     const lenses = STYLE_LENSES[at.place.style] ?? [];
     const tags: Claim[] = [...callableTraits(fact, transitive, source)];
@@ -190,7 +191,6 @@ export function categorize(run: Run, rules: ZoneRules): Categorization {
     roles.push(...namedClaims(taxonomy, Kind.Callable, lenses, fact.symbol.name), ...declaredClaims(taxonomy, Kind.Callable, fact.symbol.path));
     const item = { name: fact.symbol.path.text, kind: Kind.Callable, subkind: CALLABLE_SUBKINDS[fact.symbol.kind], key: fact.symbol.key, ...at.place, tags: [...resolveRoles(roles), ...tags] };
     items.push(item);
-    callableItems.set(fact.symbol.key, item);
   }
 
   const wires = wiresByTarget(run);

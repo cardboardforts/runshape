@@ -1,6 +1,6 @@
 // The PR page's content (page.json), from a saved review: what the UI draws, worked out here so
 // the UI reads kernel types only.
-import { ReviewCallout, ReviewHighlights, ReviewPage, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
+import { ReviewCallout, ReviewHighlights, ReviewPage, ReviewPageCategories, ReviewPageCost, ReviewPageFunction, ReviewPageMs, ReviewPageSide, ReviewPageTest, ReviewPageTime } from "@runshape/kernel";
 import {
   ChangedFunction,
   CostDiff,
@@ -20,7 +20,7 @@ import {
   WorkflowSides,
 } from "@runshape/trace";
 
-import { ReviewBundle, ReviewSide, reviewHighlights, routeExternalCallText } from "./review-bundle";
+import { BundleCategories, ReviewBundle, ReviewSide, reviewHighlights, routeExternalCallText } from "./review-bundle";
 
 export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
   const onlyInBase = new Set(bundle.review.items.filter((item) => item.category === ReviewCategory.Removed).map((item) => item.scenarioId));
@@ -48,13 +48,14 @@ export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
     base: side(bundle.base),
     head: side(bundle.head),
     headline: reviewHeadline(bundle.review),
-    // Worst first across both lists: a sort keeps each list's own order within a tone.
-    callouts: [...callouts(reviewHighlights(bundle)), ...costCallouts(bundle.cost)].sort((a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone)),
+    // Worst first across the lists: a sort keeps each list's own order within a tone.
+    callouts: [...callouts(reviewHighlights(bundle)), ...findingCallouts(bundle), ...costCallouts(bundle.cost)].sort((a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone)),
     moved: bundle.review.moved,
     sections,
     threadsBasis: bundle.threads.basis,
     threads,
     ...(bundle.cost === undefined ? {} : { cost: pageCost(bundle.cost, test) }),
+    ...(bundle.categories === undefined ? {} : { categories: pageCategories(bundle.categories) }),
   };
 }
 
@@ -111,6 +112,22 @@ function costCallouts(cost: CostDiff | undefined): ReviewCallout[] {
 }
 
 const TONE_ORDER: ReviewCallout["tone"][] = ["failed", "warn", "info"];
+
+function pageCategories(categories: BundleCategories): ReviewPageCategories {
+  return {
+    items: categories.items.map((item) => ({ name: item.name, kind: item.kind, zone: item.zone, tags: item.tags.map((tag) => `${tag.lens}: ${tag.id}`) })),
+    findings: categories.newFindings.map(({ severity, rule, item, message, evidence }) => ({ severity, rule, item, message, evidence })),
+    proposals: categories.proposals.map(({ match, zone, reason }) => ({ match, zone, reason })),
+  };
+}
+
+/** New findings the change adds, after the decisions: rules a person set are worth a look, not a red light. */
+function findingCallouts(bundle: ReviewBundle): ReviewCallout[] {
+  const count = bundle.categories?.newFindings.length ?? 0;
+  if (count === 0) return [];
+  const worst = bundle.categories!.newFindings.some((finding) => finding.severity === "error") ? "failed" : "warn";
+  return [{ text: `${count} new architecture finding${count === 1 ? "" : "s"}`, tone: worst }];
+}
 
 /** The order a thread's workflows are listed in: the ones to look at first. */
 const THREAD_KINDS = [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone, ThreadKind.Same];

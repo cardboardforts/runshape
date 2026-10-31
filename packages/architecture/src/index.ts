@@ -19,3 +19,4 @@ export * from "./zone-advice";
 export * from "./taxonomy";
 export * from "./categorizer";
 export * from "./tag-rules";
+export * from "./role-advice";

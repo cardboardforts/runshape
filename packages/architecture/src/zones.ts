@@ -5,7 +5,7 @@
 import { ArchitectureProfile, QualifiedName, RegionSummary, splitDotted, ZoneRole, ZoneRule } from "@runshape/kernel";
 import { Glob } from "./glob";
 import { HEXAGONAL, PROFILES, profileFor } from "./profiles";
-import { readTaxonomy, Taxonomy, TaxonomyFile } from "./taxonomy";
+import { readTaxonomy, RoleDeclaration, Taxonomy, TaxonomyFile } from "./taxonomy";
 
 export const RULES_FILE = "runshape.json";
 /** Version 2 says "zones" and names the style; version 1 said "rings" and is still read. */
@@ -163,6 +163,11 @@ export class ZoneRules {
    */
   withRuleFor(qualifiedName: string, zone: string, reason: string, by: ZoneRule["by"]): ZoneRules {
     return this.withRuleIn(qualifiedName, zone, reason, by, null);
+  }
+
+  /** Roles proposed for approval (a model's "by": "llm"), added to the taxonomy section the host saves. */
+  withRoles(declarations: RoleDeclaration[]): ZoneRules {
+    return new ZoneRules(this.rules, this.profile, this.regions, this.taxonomy.withRoles(declarations));
   }
 
   private withRuleIn(qualifiedName: string, zone: string, reason: string, by: ZoneRule["by"], inRegion: string | null): ZoneRules {
