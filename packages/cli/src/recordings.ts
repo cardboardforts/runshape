@@ -1,7 +1,7 @@
 // npm run runshape -- list | record | compare | review-requests | readmes | view | schedule | forget:
 // the command line. Each command is a call on the workflows' Recordings (packages/workflows).
 import { RULES_FILE } from "@runshape/architecture";
-import { ArchitectureSummary, GitError, LibraryOverview, ModelChoice, WORKING_TREE_ID } from "@runshape/kernel";
+import { ArchitectureSummary, GitError, LibraryOverview, ModelChoice, TestConfigError, WORKING_TREE_ID } from "@runshape/kernel";
 import { RecordingError, Recordings, RecordingsDependencies, RecordingView } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";
@@ -16,6 +16,34 @@ export interface CommandDependencies extends Omit<RecordingsDependencies, "compa
 export const DEMO_URL = "http://localhost:5173/demo/index.html";
 
 class UsageError extends Error {}
+
+/** What the composition root reads before anything's built: which project, and which recorder. */
+export interface ProjectChoice {
+  /** The project's folder as given (--project=), relative to where the command was typed; null: there. */
+  project: string | null;
+  /** --recorder=: the language whose recorder records it, over runshape.json and the project's files. */
+  recorder: string | null;
+  /** The rest, for runRecordings. */
+  argv: string[];
+}
+
+export function projectChoice(argv: string[]): ProjectChoice {
+  const valueOf = (flag: string): string | null => {
+    const given = argv.filter((arg) => arg === flag || arg.startsWith(`${flag}=`));
+    if (given.length === 0) return null;
+    const value = given.at(-1)!.slice(flag.length + 1);
+    if (value === "") throw new UsageError(`${flag} takes a value: ${flag}=<${flag === "--project" ? "folder" : "typescript|python|go"}>`);
+    return value;
+  };
+  const project = valueOf("--project");
+  const recorder = valueOf("--recorder");
+  return { project, recorder, argv: argv.filter((arg) => !/^--(project|recorder)(=|$)/.test(arg)) };
+}
+
+/** projectChoice's refusal, as the command line prints it; null when it's something else. */
+export function usageProblem(error: unknown): string | null {
+  return error instanceof UsageError ? `runshape: ${error.message}\n${USAGE}` : null;
+}
 
 /**
  * A command, logged at its edges: what was asked, how it ended and how long it took, and the
@@ -146,7 +174,7 @@ async function runCommand(given: string[], dependencies: CommandDependencies): P
         throw new UsageError(`unknown command ${command}\n${USAGE}`);
     }
   } catch (error) {
-    if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError) {
+    if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError || error instanceof TestConfigError) {
       dependencies.print(`runshape: ${error.message}`);
       dependencies.logger.log("warn", "command.refused", { command, error: error.message });
       return 1;
@@ -162,7 +190,7 @@ const DEFAULT_SCHEDULE_TIME = "03:00";
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
 const USAGE =
-  "usage: npm run runshape -- list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | schedule [--at=HH:MM] | forget <id>";
+  "usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | schedule [--at=HH:MM] | forget <id>";
 
 /** The view command's text: each level's boxes in reading order, then its calls. --json has everything. */
 function viewText(view: RecordingView): string[] {

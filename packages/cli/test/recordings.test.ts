@@ -20,17 +20,20 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import type { LanguageModel, PullRequestStory, PullRequestSummary, Recorder, RecordTarget, TicketSource } from "@runshape/kernel";
+import { TestConfigError } from "@runshape/kernel";
+import type { LanguageModel, PullRequestStory, PullRequestSummary, Recorder, RecordTarget, TestConfig, TicketSource } from "@runshape/kernel";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
-import { ArrangementFile, assertPlainRecording, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
+import { ArrangementFile, assertPlainRecording, NodeProjectFiles, sandboxVersion, typescriptSandbox, UnchosenRecorder } from "@runshape/adapters";
 import { LogfmtLogger, nodeHashing } from "@runshape/infra";
-import { runRecordings } from "../src/recordings";
+import { projectChoice, runRecordings, usageProblem } from "../src/recordings";
 import { commitIn, gitIn, repository } from "@runshape/adapters/test/repository";
 
 const FIXTURE = join(import.meta.dirname, "..", "..", "kernel", "test", "fixtures", "go-shop");
 const NOW = new Date("2026-10-14T12:00:00Z");
 /** Above any pid the OS hands out (macOS and Linux cap well below it). */
 const DEAD_PID = 99_999_999;
+/** The sandbox the CLI builds for Runshape's own repository: TypeScript, nothing set. */
+const RUNSHAPE_CONFIG: TestConfig = { language: "typescript", chosenBy: "package.json", source: [], tests: [], args: [], interpreter: null };
 
 class FixtureRecorder implements Recorder {
   readonly recorded: string[] = [];
@@ -92,11 +95,38 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin", story: async (number: number) => story(number) };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets });
+  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing, typescriptSandbox(RUNSHAPE_CONFIG))), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets });
   return { code, lines, logs, recorder, model, chosen, sandbox, sandboxVersions };
 }
 
 const metadataOf = (root: string, id: string) => JSON.parse(readFileSync(join(root, ".runshape", "recordings", id, "recording.json"), "utf8"));
+
+describe("which project, and which recorder", () => {
+  test("--project and --recorder are the composition root's, read before anything's built; the rest go on to the command", () => {
+    expect([projectChoice(["record", "working", "--project=examples/django-realworld", "--recorder=python"]), projectChoice(["list"])]).toEqual([
+      { project: "examples/django-realworld", recorder: "python", argv: ["record", "working"] },
+      { project: null, recorder: null, argv: ["list"] },
+    ]);
+    expect(usageProblem((() => { try { projectChoice(["--project", "list"]); } catch (error) { return error; } })())?.split("\n")[0]).toBe("runshape: --project takes a value: --project=<folder>");
+  });
+
+  test("a project whose recorder can't be chosen still lists; recording it says why, and nothing is kept", async () => {
+    const { root, commits } = repository();
+    const unchosen = new UnchosenRecorder(new TestConfigError(["its root looks like more than one language, typescript (package.json), go (go.mod): set recorder.language in runshape.json, or pass --recorder=<typescript|python|go>"]));
+
+    const listed = await run(root, ["list"], unchosen as unknown as FixtureRecorder);
+    const recorded = await run(root, ["record", "main"], unchosen as unknown as FixtureRecorder);
+
+    expect({ listed: listed.code, recorded: { code: recorded.code, said: recorded.lines.at(-1) }, kept: readdirSync(join(root, ".runshape", "recordings")).filter((name) => !name.startsWith(".")) }).toEqual({
+      listed: 0,
+      recorded: {
+        code: 1,
+        said: `runshape: recording main (${commits.second!.slice(0, 12)} Second) failed: can't tell how to record this project:\n  - its root looks like more than one language, typescript (package.json), go (go.mod): set recorder.language in runshape.json, or pass --recorder=<typescript|python|go>`,
+      },
+      kept: [],
+    });
+  });
+});
 
 describe("runshape record", () => {
   test("records a commit once, under its hash, with what it recorded; again, it's already there", async () => {

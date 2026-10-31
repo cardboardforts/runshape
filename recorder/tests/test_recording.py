@@ -192,3 +192,17 @@ def test_misconfiguration_reports_every_problem_at_once(shop):
             "*runshape_boundaries entry 'nonsense' must look like 'module.prefix = system' or*",
         ]
     )
+
+
+def test_runshape_run_records_whether_or_not_the_plugin_is_installed(shop, monkeypatch):
+    # Runshape's CLI runs `python -m runshape_recorder.run` with the recorder on PYTHONPATH and
+    # the project's own interpreter, where the plugin may or may not be installed. Here it is
+    # installed; PYTEST_DISABLE_PLUGIN_AUTOLOAD stands in for a venv where it isn't.
+    installed = shop.run(sys.executable, "-m", "runshape_recorder.run", "--runshape-run-name=installed", "-p", "no:cacheprovider")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    not_installed = shop.run(sys.executable, "-m", "runshape_recorder.run", "--runshape-run-name=not-installed", "-p", "no:cacheprovider")
+
+    traces = shop.path / ".runshape" / "traces"
+    assert [installed.ret, not_installed.ret] == [0, 0]
+    assert sorted(path.name for path in traces.iterdir()) == ["installed", "latest.json", "not-installed", "previous.json"]
+    assert len(json.loads((traces / "not-installed" / "manifest.json").read_text())["scenarios"]) == 5

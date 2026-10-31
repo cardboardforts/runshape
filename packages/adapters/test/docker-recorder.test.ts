@@ -13,7 +13,14 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { removeAnyway } from "@runshape/infra";
-import { CommandResult, CommandRunner, DockerRecorder } from "../src/recorders/docker-recorder";
+import { TestConfig } from "@runshape/kernel";
+import { CommandResult, CommandRunner, DockerRecorder, SandboxRecipe } from "../src/recorders/docker-recorder";
+import { goSandbox } from "../src/recorders/go/go-sandbox";
+import { pythonSandbox } from "../src/recorders/python/python-sandbox";
+import { typescriptSandbox } from "../src/recorders/typescript/typescript-sandbox";
+
+/** Runshape recording itself: nothing set, so its own packages. */
+const RUNSHAPE: TestConfig = { language: "typescript", chosenBy: "package.json", source: [], tests: [], args: [], interpreter: null };
 
 // npm's own shape: a registry package, and a workspace (its link, and its folder, which has no resolved).
 const REGISTRY_LOCK = JSON.stringify({
@@ -60,11 +67,12 @@ function setup({ lock = REGISTRY_LOCK, shrinkwrap, leaves, answer }: Options = {
     if (command === "docker" && args[0] === "run" && args.includes("none")) {
       mkdirSync(join(out, "run"), { recursive: true });
       writeFileSync(join(out, "run", "manifest.json"), "{}");
+      writeFileSync(join(out, "latest.json"), '{"run":"run"}');
       leaves?.(out);
     }
     return answer?.(command, args);
   });
-  return { root, out, worktree, commands, recorder: new DockerRecorder(root, "0123456789abcdef", commands, "501:20") };
+  return { root, out, worktree, commands, recorder: new DockerRecorder(root, root, typescriptSandbox(RUNSHAPE), "0123456789abcdef", commands, "501:20") };
 }
 
 const relative = (root: string) => (call: string[]) => call.map((arg) => arg.split(root).join("<root>"));
@@ -92,7 +100,7 @@ describe("DockerRecorder", () => {
       calls: [
         ["docker", "image", "inspect", "runshape-recorder:0123456789abcdef"],
         // Only what HEAD commits goes into the image: nothing untracked, nothing uncommitted.
-        ["sh", "-c", 'git -C "$1" archive --format=tar HEAD | docker build --tag "$2" --file recorder-ts/sandbox/Dockerfile -', "sh", "<root>", "runshape-recorder:0123456789abcdef"],
+        ["sh", "-c", 'git -C "$1" archive --format=tar HEAD | docker build --tag "$2" --file "$3" -', "sh", "<root>", "runshape-recorder:0123456789abcdef", "recorder-ts/sandbox/Dockerfile"],
         // Leftovers of a run killed outright: none here (the fake docker lists nothing).
         ["docker", "ps", "--all", "--format", "{{.Names}}"],
         ["docker", "network", "ls", "--format", "{{.Name}}"],
@@ -284,7 +292,7 @@ describe("DockerRecorder", () => {
   test("a host user that's root still records as an unprivileged one", () => {
     const root = mkdtempSync(join(tmpdir(), "runshape-docker-"));
 
-    expect(new DockerRecorder(root, "v", new FakeCommands(() => undefined), "0:0").user).toBe("1000:1000");
+    expect(new DockerRecorder(root, root, typescriptSandbox(RUNSHAPE), "v", new FakeCommands(() => undefined), "0:0").user).toBe("1000:1000");
   });
 
   test("a recording that runs out of time is killed, its worktree removed even if its .git was broken, and the timeout is what's reported", async () => {
@@ -307,5 +315,86 @@ describe("DockerRecorder", () => {
 
     await expect(recorder.record({ kind: "working" }, out)).rejects.toThrowError("--sandbox records commits; the working tree is yours, recorded on this machine without it");
     expect(recorder.environment).toBe("docker:runshape-recorder:0123456789abcdef");
+  });
+});
+
+describe("a sandbox per language: the same container, network and checks; the image, install and test run the recorder's own", () => {
+  /** Every step gets these, pinned flag by flag in the TypeScript test above: left out here so each language's own options show. */
+  const HARDENING = new Set(["--rm", "--user", "--cap-drop", "--security-opt", "--read-only", "--tmpfs", "--memory", "--pids-limit", "--ulimit"]);
+  const PYTHON: TestConfig = { language: "python", chosenBy: "pytest.ini", source: ["conduit"], tests: ["tests"], args: ["-k", "journey"], interpreter: null };
+  const GO: TestConfig = { language: "go", chosenBy: "go.mod", source: [], tests: ["./..."], args: [], interpreter: null };
+
+  /** The commit checked out with these files; the record step leaves a recording. */
+  function sandboxFor(recipe: SandboxRecipe, files: Record<string, string>) {
+    const root = mkdtempSync(join(tmpdir(), "runshape-docker-"));
+    const out = join(root, ".runshape", "recordings", ".incoming-abc");
+    const worktree = join(root, ".runshape", "worktrees", "sandbox-.incoming-abc");
+    mkdirSync(out, { recursive: true });
+    const commands = new FakeCommands((command, args) => {
+      if (command === "git" && args.includes("add")) {
+        mkdirSync(worktree, { recursive: true });
+        for (const [path, text] of Object.entries(files)) writeFileSync(join(worktree, path), text);
+      }
+      if (command === "docker" && args[0] === "run" && args.includes("none")) {
+        mkdirSync(join(out, "run"), { recursive: true });
+        writeFileSync(join(out, "run", "manifest.json"), "{}");
+        writeFileSync(join(out, "latest.json"), '{"run":"run"}');
+      }
+      return undefined;
+    });
+    const recorder = new DockerRecorder(root, root, recipe, "0123456789abcdef", commands, "501:20");
+    const withoutHardening = (call: string[]) => {
+      const kept: string[] = [];
+      for (let i = call.indexOf("--name") + 1; i < call.length; i += 1) {
+        if (HARDENING.has(call[i]!)) i += call[i] === "--rm" || call[i] === "--read-only" ? 0 : 1;
+        else kept.push(call[i]!);
+      }
+      return kept.join(" ").split(root).join("<root>");
+    };
+    const steps = () => commands.calls.filter((call) => call[0] === "docker" && call[1] === "run").map(withoutHardening);
+    return { steps, record: () => recorder.record({ kind: "commit", commit: "c0ffee" }, out).then(() => "recorded", (error: Error) => error.message) };
+  }
+
+  test("Python: wheels only, from PyPI only, into the commit's own venv; pytest with the recorder on PYTHONPATH and runshape.json's settings as arguments, never spliced into the shell line", async () => {
+    const { steps, record } = sandboxFor(pythonSandbox(PYTHON), { "requirements.txt": '# pinned\nDjango==5.2.7\npytest==8.4.2 ; python_version >= "3.9"\n' });
+
+    expect({ outcome: await record(), steps: steps() }).toEqual({
+      outcome: "recorded",
+      steps: [
+        "runshape-proxy-.incoming-abc -e HOME=/tmp --network bridge -e RUNSHAPE_PROXY_ALLOW=pypi.org:443,files.pythonhosted.org:443 --workdir /runshape runshape-recorder-python:0123456789abcdef node recorder-ts/sandbox/registry-proxy.mjs",
+        "runshape-install-.incoming-abc -e HOME=/tmp --network runshape-install-.incoming-abc -e PIP_CONFIG_FILE=/dev/null -e HTTPS_PROXY=http://runshape-proxy-.incoming-abc:3128 -e HTTP_PROXY=http://runshape-proxy-.incoming-abc:3128 -e https_proxy=http://runshape-proxy-.incoming-abc:3128 -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target --workdir /target runshape-recorder-python:0123456789abcdef sh -c python -m venv --system-site-packages /target/.runshape-venv && /target/.runshape-venv/bin/pip install --no-input --disable-pip-version-check --no-cache-dir --only-binary=:all: --index-url https://pypi.org/simple/ -r requirements.txt",
+        'runshape-record-.incoming-abc -e HOME=/tmp --network none -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target:ro -v <root>/.runshape/recordings/.incoming-abc:/out -e PYTHONPATH=/runshape/recorder/src -e PYTHONDONTWRITEBYTECODE=1 --workdir /target runshape-recorder-python:0123456789abcdef sh -c /target/.runshape-venv/bin/python -m runshape_recorder.run --runshape-out=/out --runshape-run-name=run -p no:cacheprovider "$@" > /out/run.log 2>&1 || true sh -o runshape_source=conduit tests -k journey',
+      ],
+    });
+  });
+
+  test("Python: a requirements.txt naming another index, a URL, an editable, another file or an unpinned version isn't installed at all; nor is a commit without one", async () => {
+    const lines = ["Django==5.2.7", "--extra-index-url https://evil.example/simple", "evil @ https://evil.example/evil.whl", "-e .", "-r more.txt", "requests>=2"].join("\n");
+    const refused = sandboxFor(pythonSandbox(PYTHON), { "requirements.txt": lines });
+    const missing = sandboxFor(pythonSandbox(PYTHON), {});
+
+    expect({ refused: await refused.record(), installed: refused.steps().some((step) => step.startsWith("runshape-install-")), missing: await missing.record() }).toEqual({
+      refused: "its requirements.txt has lines that aren't a pinned release (name==version), which could install from elsewhere or build from source: --extra-index-url https://evil.example/simple, evil @ https://evil.example/evil.whl, -e .",
+      installed: false,
+      missing: "the commit has no requirements.txt: its dependencies can't be installed as pinned (a lockfile of poetry's or uv's isn't read yet)",
+    });
+  });
+
+  test("Go: modules from the Go proxy only, checked against the checksum database, one toolchain; runshape-go records from the module cache with no network", async () => {
+    const { steps, record } = sandboxFor(goSandbox(GO), { "go.mod": "module example.com/shop\n\ngo 1.22\n" });
+    const pinned = "-e GOTOOLCHAIN=local -e GOWORK=off -e GOENV=off -e GOCACHE=/tmp/go-cache -e GOPATH=/tmp/go -e GOMODCACHE=/target/.runshape-gomod -e GOPRIVATE= -e GONOPROXY= -e GONOSUMDB= -e GOINSECURE= -e GOVCS=*:off";
+
+    expect({ outcome: await record(), steps: steps() }).toEqual({
+      outcome: "recorded",
+      steps: [
+        "runshape-proxy-.incoming-abc -e HOME=/tmp --network bridge -e RUNSHAPE_PROXY_ALLOW=proxy.golang.org:443,sum.golang.org:443 --workdir /runshape runshape-recorder-go:0123456789abcdef node recorder-ts/sandbox/registry-proxy.mjs",
+        `runshape-install-.incoming-abc -e HOME=/tmp --network runshape-install-.incoming-abc ${pinned} -e GOPROXY=https://proxy.golang.org -e GOSUMDB=sum.golang.org -e GOFLAGS=-mod=readonly -e HTTPS_PROXY=http://runshape-proxy-.incoming-abc:3128 -e HTTP_PROXY=http://runshape-proxy-.incoming-abc:3128 -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target --workdir /target runshape-recorder-go:0123456789abcdef go mod download`,
+        `runshape-record-.incoming-abc -e HOME=/tmp --network none -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target:ro -v <root>/.runshape/recordings/.incoming-abc:/out ${pinned} -e GOPROXY=off -e GOSUMDB=off -e GOFLAGS=-mod=mod --workdir /runshape runshape-recorder-go:0123456789abcdef sh -c /runshape/bin/runshape-go record -out /out -run run /target "$@" > /out/run.log 2>&1 || true sh ./...`,
+      ],
+    });
+  });
+
+  test("Go: a commit with no go.mod at its root has no module to record", async () => {
+    expect(await sandboxFor(goSandbox(GO), {}).record()).toBe("the commit has no go.mod at its root: there's no module to record");
   });
 });
