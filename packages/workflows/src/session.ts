@@ -1,4 +1,4 @@
-import { ArchitectureProfile, CodeSymbol, ComponentKind, Grouping, groupingAt, Layout, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse, zoomLevelKey, zoomLevelOf } from "@runshape/kernel";
+import { ArchitectureProfile, CodeSymbol, ComponentKind, GraphNode, Grouping, groupingAt, Layout, Phase, QualifiedName, Run, RunSummary, ScenarioSummary, UiRequest, UiResponse, zoomLevelKey, zoomLevelOf } from "@runshape/kernel";
 import { ArchitectureAdvice, ArchitectureAdviceError, moduleRoots, architecturePrompt, buildPlacements, buildSystemGraph, comparedGraphs, detectArchitecture, diffArchitecture, parseArchitectureAdvice, parseZoneAdvice, profileFor, PROFILES, projectPackages, proposedRules, RULES_FILE, ZoneAdviceError, zoneAdvicePrompt, ZoneAdvisor, zoneFacts, ZoneRules } from "@runshape/architecture";
 import { buildReplay, buildReview, buildRouteMap, detectMoves, diffExecution, diffFunctionExecution, diffRouteMaps, diffRuns, mergeReplays, Moves } from "@runshape/trace";
 import { aggregateWiring, Arrangement, arrangeBox, ArrangementError, buildComponentView, buildFunctionView, buildObjectGraph, buildTimeline, emptyArrangement, layout, parseArrangement, serializeArrangement, UnknownFunctionError } from "@runshape/visualizer";
@@ -96,6 +96,15 @@ export class ViewerSession {
 
   currentRules(): ZoneRules {
     return this.rules;
+  }
+
+  /**
+   * Every box the tests' own calls reach, cut by `grouping`, none left out: the canvas's layout
+   * caps detail, but a list to pick a component from (the extension's "place with a model")
+   * must offer all of them.
+   */
+  components(grouping: Grouping): GraphNode[] {
+    return buildSystemGraph(this.run, { phases: [Phase.Call], grouping, rules: this.rules }).nodes;
   }
 
   /**
