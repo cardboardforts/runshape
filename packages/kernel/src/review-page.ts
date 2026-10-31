@@ -40,13 +40,17 @@ export interface ReviewPageTime extends ReviewPageMs {
 export interface ReviewPageCost {
   /** What the numbers can't show: one recording each side, the recorder's overhead included. */
   caveats: string[];
-  /** "`GET /api/articles/feed` newly requested: makes 10 queries": routes whose queries changed. */
-  routes: { label: string; text: string; queries: ReviewPageCount; tests: ReviewPageTest[] }[];
-  /** Workflows whose calls, queries or time changed; the rest are counted in `unchanged`. */
-  workflows: { test: ReviewPageTest; time: ReviewPageTime; calls: ReviewPageCount; queries: ReviewPageCount }[];
+  /** "`GET /api/articles/feed` newly requested: makes 10 external calls": routes whose external calls changed. */
+  routes: { label: string; text: string; externalCalls: ReviewPageCount; tests: ReviewPageTest[] }[];
+  /** Workflows on both sides whose calls, external calls or time changed; the rest of both sides' are counted in `unchanged`. */
+  workflows: { test: ReviewPageTest; time: ReviewPageTime; calls: ReviewPageCount; externalCalls: ReviewPageCount }[];
+  /** Workflows only head has: nothing to compare, but what they cost is still news. */
+  newWorkflows: { test: ReviewPageTest; calls: number; externalCalls: number }[];
+  /** Workflows only the base has. */
+  goneWorkflows: ReviewPageTest[];
   unchanged: number;
-  /** Each changed function over every workflow; `paths` are the distinct paths that ran through it. */
-  functions: { function: ReviewPageFunction; calls: ReviewPageCount; paths: ReviewPageCount; queries: ReviewPageCount; time: ReviewPageTime; selfTime: ReviewPageMs }[];
+  /** Each changed function over every workflow; `paths` are the distinct paths that ran through it; times are per call. */
+  functions: { function: ReviewPageFunction; calls: ReviewPageCount; paths: ReviewPageCount; externalCalls: ReviewPageCount; timePerCall: ReviewPageTime; selfTimePerCall: ReviewPageMs }[];
 }
 
 export interface ReviewPageSide {

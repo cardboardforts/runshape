@@ -16,6 +16,8 @@ import {
   reviewMarkdown,
   ReviewSummary,
   routeCostChanges,
+  WorkflowCost,
+  WorkflowSides,
   RouteMapDiff,
   ChangedFunction,
   ThreadKind,
@@ -326,31 +328,43 @@ const THREAD_WORDS: Record<ThreadKind, string> = {
 };
 
 /**
- * "Cost": the routes whose queries changed (the route that pays), the workflows whose calls,
- * queries or time changed, and each changed function's calls, paths and time. The caveats come
- * first: one recording each side is the reader's first fact about every time below.
+ * "Cost": the routes whose external calls changed (the route that pays), the workflows whose
+ * calls, external calls or time changed, the workflows only one side has, and each changed
+ * function's calls, paths and time per call. The caveats come first: one recording each side
+ * is the reader's first fact about every time below.
  */
 function costMarkdown(cost: CostDiff | undefined): string[] {
   if (cost === undefined) return [];
   const out = ["### Cost", "", ...cost.caveats.map((caveat) => `> ${caveat}`), ""];
   const changed = cost.workflows.filter(workflowCostChanged);
-  const routes = routeQueryChanges(changed);
-  if (routes.length > 0) out.push("Queries by route:", "", ...routes, "");
+  const routes = routeExternalCallChanges(changed);
+  if (routes.length > 0) out.push("External calls by route:", "", ...routes, "");
   if (changed.length > 0) {
-    out.push("| Workflow | Time (ms) | Calls | Queries |", "|---|---|---|---|");
+    out.push("| Workflow | Time (ms) | Calls | External calls |", "|---|---|---|---|");
     for (const workflow of changed.slice(0, SHOWN_FUNCTIONS)) {
-      out.push(`| ${code(workflow.name)} | ${timeText(workflow.timeUs, workflow.time)} | ${countText(workflow.calls)} | ${countText(workflow.queries)} |`);
+      out.push(`| ${code(workflow.name)} | ${timeText(workflow.timeUs, workflow.time)} | ${countText(workflow.calls)} | ${countText(workflow.externalCalls)} |`);
     }
     if (changed.length > SHOWN_FUNCTIONS) out.push(`| and ${changed.length - SHOWN_FUNCTIONS} more (review.json lists every workflow) | | | |`);
     out.push("");
   }
-  const same = cost.workflows.length - changed.length;
-  if (same > 0) out.push(`${same} workflow${same === 1 ? "" : "s"} cost the same: the same calls and queries, and no time change past the noise bands.`, "");
+  const added = cost.workflows.filter((w) => w.sides === WorkflowSides.New);
+  const gone = cost.workflows.filter((w) => w.sides === WorkflowSides.Gone);
+  const names = (workflows: WorkflowCost[], detail: (w: WorkflowCost) => string) =>
+    `${workflows.slice(0, SHOWN_NAMES).map((w) => `${code(w.name)}${detail(w)}`).join(", ")}${workflows.length > SHOWN_NAMES ? ` and ${workflows.length - SHOWN_NAMES} more` : ""}`;
+  if (added.length > 0) out.push(`New on this branch, not compared (${added.length}): ${names(added, (w) => ` (${externalCallsText(w.externalCalls.after!)})`)}.`, "");
+  if (gone.length > 0) out.push(`Only on the base, not compared (${gone.length}): ${names(gone, () => "")}.`, "");
+  const same = cost.workflows.length - changed.length - added.length - gone.length;
+  if (same > 0) out.push(`${same} workflow${same === 1 ? "" : "s"} on both sides cost the same: the same calls and external calls, and no time change past the noise bands.`, "");
   if (cost.functions.length > 0) {
-    out.push("Changed functions, over every workflow:", "", "| Function | Calls | Paths that ran | Queries under it | Time (ms) | Its own lines (ms) |", "|---|---|---|---|---|---|");
+    out.push(
+      "Changed functions, over every workflow (time per call, so more callers isn't slower):",
+      "",
+      "| Function | Calls | Paths that ran | External calls under it | Time per call (ms) | Its own lines per call (ms) |",
+      "|---|---|---|---|---|---|",
+    );
     for (const fn of cost.functions.slice(0, SHOWN_FUNCTIONS)) {
       const name = `${code(fn.symbol.path)} (${fn.symbol.namespace}), ${fn.change}`;
-      out.push(`| ${name} | ${countText(fn.calls)} | ${countText(fn.paths)} | ${countText(fn.queries)} | ${timeText(fn.timeUs, fn.time)} | ${msText(fn.selfTimeUs)} |`);
+      out.push(`| ${name} | ${countText(fn.calls)} | ${countText(fn.paths)} | ${countText(fn.externalCalls)} | ${timeText(fn.timePerCallUs, fn.time)} | ${msText(fn.selfTimePerCallUs)} |`);
     }
     if (cost.functions.length > SHOWN_FUNCTIONS) out.push(`| and ${cost.functions.length - SHOWN_FUNCTIONS} more (review.json lists every function) | | | | | |`);
     out.push("");
@@ -358,21 +372,25 @@ function costMarkdown(cost: CostDiff | undefined): string[] {
   return out;
 }
 
-/** "`GET /feed` now makes 10 queries, up from 0 (`test_a`)": workflows whose route changed alike are one line. */
-function routeQueryChanges(workflows: CostDiff["workflows"]): string[] {
+/** "`GET /feed` now makes 10 external calls, up from 3 (`test_a`)": workflows whose route changed alike are one line. */
+function routeExternalCallChanges(workflows: CostDiff["workflows"]): string[] {
   return routeCostChanges(workflows).map((route) => {
     const names = route.workflows.map((workflow) => workflow.name);
-    return `- ${code(route.label)} ${routeQueryText(route)} (${names.slice(0, SHOWN_NAMES).map(code).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""})`;
+    return `- ${code(route.label)} ${routeExternalCallText(route)} (${names.slice(0, SHOWN_NAMES).map(code).join(", ")}${names.length > SHOWN_NAMES ? ` and ${names.length - SHOWN_NAMES} more` : ""})`;
   });
 }
 
-/** "now makes 12 queries, up from 3"; a route only one side requested didn't get cheaper or dearer: the request went elsewhere. */
-export function routeQueryText(route: { requests: Measure; queries: Measure }): string {
-  const [before, after] = [route.queries.before ?? 0, route.queries.after ?? 0];
-  const queries = (n: number) => `${n} quer${n === 1 ? "y" : "ies"}`;
-  if (route.requests.before === 0) return `newly requested: makes ${queries(after)}`;
-  if (route.requests.after === 0) return `no longer requested: it made ${queries(before)}`;
-  return `now makes ${queries(after)}, ${after > before ? "up" : "down"} from ${before}`;
+/** "now makes 12 external calls, up from 3"; a route only one side requested didn't get cheaper or dearer: the request went elsewhere. */
+export function routeExternalCallText(route: { requests: Measure; externalCalls: Measure }): string {
+  const [before, after] = [route.externalCalls.before ?? 0, route.externalCalls.after ?? 0];
+  if (route.requests.before === 0) return `newly requested: makes ${externalCallsText(after)}`;
+  if (route.requests.after === 0) return `no longer requested: it made ${externalCallsText(before)}`;
+  return `now makes ${externalCallsText(after)}, ${after > before ? "up" : "down"} from ${before}`;
+}
+
+/** SQL, HTTP or any other system the recorder saw at a boundary: not every one is a query. */
+function externalCallsText(n: number): string {
+  return `${n} external call${n === 1 ? "" : "s"}`;
 }
 
 function countText({ before, after }: Measure): string {

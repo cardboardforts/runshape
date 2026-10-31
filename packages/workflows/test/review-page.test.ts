@@ -95,38 +95,68 @@ describe("buildReviewPage", () => {
     const page = buildReviewPage(bundle);
 
     const count = ({ before, after }: { before: number | null; after: number | null }) => `${before}→${after}`;
-    const time = (t: { beforeMs: number | null; afterMs: number | null; verdict?: string }) => `${t.beforeMs?.toFixed(1)}→${t.afterMs?.toFixed(1)}ms${t.verdict ? ` ${t.verdict}` : ""}`;
+    const time = (t: { beforeMs: number | null; afterMs: number | null; verdict?: string }) => `${t.beforeMs?.toFixed(1) ?? "—"}→${t.afterMs?.toFixed(1) ?? "—"}ms${t.verdict ? ` ${t.verdict}` : ""}`;
     const cost = page.cost!;
     expect({
       callouts: page.callouts.map((callout) => `${callout.tone}: ${callout.text}`),
       routes: cost.routes.map((route) => `${route.label} ${route.text} (${route.tests.map((t) => t.name).join(", ")})`),
-      workflows: cost.workflows.map((w) => `${w.test.name}: ${time(w.time)} | calls ${count(w.calls)} | q ${count(w.queries)}`),
+      workflows: cost.workflows.map((w) => `${w.test.name}: ${time(w.time)} | calls ${count(w.calls)} | ext ${count(w.externalCalls)}`),
       unchanged: cost.unchanged,
-      functions: cost.functions.map((fn) => `${fn.function.name}: calls ${count(fn.calls)} | paths ${count(fn.paths)} | q ${count(fn.queries)} | ${time(fn.time)} (self ${time(fn.selfTime)})`),
+      newWorkflows: cost.newWorkflows.map((w) => `${w.test.name}: calls ${w.calls}, ext ${w.externalCalls}`),
+      goneWorkflows: cost.goneWorkflows.map((t) => t.name),
+      functions: cost.functions.map((fn) => `${fn.function.name}: calls ${count(fn.calls)} | paths ${count(fn.paths)} | ext ${count(fn.externalCalls)} | per call ${time(fn.timePerCall)} (self ${time(fn.selfTimePerCall)})`),
     }).toMatchInlineSnapshot(`
       {
         "callouts": [
           "warn: 1 needs a zone decision",
-          "warn: 1 workflow makes more queries",
+          "warn: 1 workflow makes more external calls",
           "info: 2 routes take a new way",
         ],
         "functions": [
-          "ConduitJSONRenderer.render: calls 24→24 | paths 3→2 | q 0→0 | 0.3→0.2ms within-noise (self 0.3→0.2ms)",
-          "core_exception_handler: calls 2→1 | paths 2→1 | q 0→0 | 0.2→0.2ms within-noise (self 0.2→0.2ms)",
-          "_handle_not_found_error: calls 1→0 | paths 1→0 | q 0→0 | 0.0→0.0ms within-noise (self 0.0→0.0ms)",
-          "ArticlesFeedAPIView.get_queryset: calls 0→1 | paths 0→1 | q 0→1 | 0.0→0.9ms within-noise (self 0.0→0.9ms)",
-          "ArticlesFeedAPIView.list: calls 0→1 | paths 0→1 | q 0→9 | 0.0→2.7ms within-noise (self 0.0→1.3ms)",
-          "ArticleViewSet.retrieve: calls 1→0 | paths 1→0 | q 1→0 | 0.8→0.0ms within-noise (self 0.8→0.0ms)",
+          "ConduitJSONRenderer.render: calls 24→24 | paths 3→2 | ext 0→0 | per call 0.0→0.0ms within-noise (self 0.0→0.0ms)",
+          "core_exception_handler: calls 2→1 | paths 2→1 | ext 0→0 | per call 0.1→0.2ms within-noise (self 0.1→0.2ms)",
+          "_handle_not_found_error: calls 1→0 | paths 1→0 | ext 0→0 | per call 0.0→—ms one-side (self 0.0→—ms)",
+          "ArticlesFeedAPIView.get_queryset: calls 0→1 | paths 0→1 | ext 0→1 | per call —→0.9ms one-side (self —→0.9ms)",
+          "ArticlesFeedAPIView.list: calls 0→1 | paths 0→1 | ext 0→9 | per call —→2.7ms one-side (self —→1.3ms)",
+          "ArticleViewSet.retrieve: calls 1→0 | paths 1→0 | ext 1→0 | per call 0.8→—ms one-side (self 0.8→—ms)",
         ],
+        "goneWorkflows": [],
+        "newWorkflows": [],
         "routes": [
-          "GET /api/articles/feed newly requested: makes 10 queries (test_follower_sees_followed_authors_in_their_feed)",
-          "GET /api/articles/{slug} no longer requested: it made 2 queries (test_follower_sees_followed_authors_in_their_feed)",
+          "GET /api/articles/feed newly requested: makes 10 external calls (test_follower_sees_followed_authors_in_their_feed)",
+          "GET /api/articles/{slug} no longer requested: it made 2 external calls (test_follower_sees_followed_authors_in_their_feed)",
         ],
         "unchanged": 6,
         "workflows": [
-          "test_follower_sees_followed_authors_in_their_feed: 377.5→378.7ms within-noise | calls 51→58 | q 28→36",
-          "test_anonymous_visitor_cannot_publish: 2.2→4.5ms within-noise | calls 3→4 | q 0→0",
+          "test_follower_sees_followed_authors_in_their_feed: 377.5→378.7ms within-noise | calls 51→58 | ext 28→36",
+          "test_anonymous_visitor_cannot_publish: 2.2→4.5ms within-noise | calls 3→4 | ext 0→0",
         ],
+      }
+    `);
+  });
+
+  test("a new test's external calls are a callout and a list of their own, not 'the same' (second-model review)", async () => {
+    const runs = fixtureRuns("fastapi-slug-refactor");
+    const base = (await runs.previous())!;
+    // As if this branch added the article-creating test: the base never ran it.
+    (base as { scenarios: unknown }).scenarios = base.scenarios.filter((scenario) => scenario.name !== "test_user_can_create_article");
+    const bundle = buildReviewBundle({ base, head: await runs.latest(), baseSide: side("main", "a"), headSide: side("head", "b"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: "2026-10-16T09:00:00Z" });
+
+    const page = buildReviewPage(bundle);
+
+    expect({
+      callouts: page.callouts.filter((callout) => callout.text.includes("external")).map((callout) => `${callout.tone}: ${callout.text}`),
+      newWorkflows: page.cost!.newWorkflows.map((w) => `${w.test.name}: ${w.externalCalls} external calls`),
+      unchanged: page.cost!.unchanged,
+    }).toMatchInlineSnapshot(`
+      {
+        "callouts": [
+          "warn: 1 new workflow makes external calls",
+        ],
+        "newWorkflows": [
+          "test_user_can_create_article: 10 external calls",
+        ],
+        "unchanged": 2,
       }
     `);
   });

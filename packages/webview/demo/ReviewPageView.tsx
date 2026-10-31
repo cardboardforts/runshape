@@ -144,7 +144,7 @@ function Page({ page, explained, file }: { page: ReviewPage; explained: boolean;
 
 /**
  * What the change costs at run time, caveats first: every time on it is one recording each
- * side. The routes whose queries changed lead, since they say who waits.
+ * side. The routes whose external calls changed lead, since they say who waits.
  */
 function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTest) => string }) {
   return (
@@ -156,7 +156,7 @@ function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTes
         </p>
       ))}
       {cost.routes.length > 0 && (
-        <ul aria-label="Queries by route">
+        <ul aria-label="External calls by route">
           {cost.routes.map((route) => (
             <li key={`${route.label} ${route.text}`}>
               <code>{route.label}</code> {route.text}
@@ -173,7 +173,7 @@ function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTes
               <th scope="col">Workflow</th>
               <th scope="col">Time (ms)</th>
               <th scope="col">Calls</th>
-              <th scope="col">Queries</th>
+              <th scope="col">External calls</th>
             </tr>
           </thead>
           <tbody>
@@ -182,15 +182,33 @@ function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTes
                 <th scope="row">{workflow.test.inHead ? <a href={into(workflow.test)}>{workflow.test.name}</a> : workflow.test.name}</th>
                 <td>{timeText(workflow.time)}</td>
                 <td>{countText(workflow.calls)}</td>
-                <td>{countText(workflow.queries)}</td>
+                <td>{countText(workflow.externalCalls)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {cost.newWorkflows.length > 0 && (
+        <div>
+          <p>New on this branch, not compared ({cost.newWorkflows.length}):</p>
+          <ul className="tests">
+            {cost.newWorkflows.map(({ test, externalCalls }) => (
+              <li key={test.id}>
+                <a href={into(test)}>{test.name}</a> ({externalCalls} external {externalCalls === 1 ? "call" : "calls"})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {cost.goneWorkflows.length > 0 && (
+        <div>
+          <p className="muted">Only on the base, not compared ({cost.goneWorkflows.length}):</p>
+          <Tests tests={cost.goneWorkflows} into={into} />
+        </div>
+      )}
       {cost.unchanged > 0 && (
         <p className="muted">
-          {cost.unchanged} {cost.unchanged === 1 ? "workflow costs" : "workflows cost"} the same: the same calls and queries, no time change past the noise bands.
+          {cost.unchanged} {cost.unchanged === 1 ? "workflow on both sides costs" : "workflows on both sides cost"} the same: the same calls and external calls, no time change past the noise bands.
         </p>
       )}
       {cost.functions.length > 0 && (
@@ -201,9 +219,9 @@ function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTes
               <th scope="col">Function</th>
               <th scope="col">Calls</th>
               <th scope="col">Paths that ran</th>
-              <th scope="col">Queries under it</th>
-              <th scope="col">Time (ms)</th>
-              <th scope="col">Its own lines (ms)</th>
+              <th scope="col">External calls under it</th>
+              <th scope="col">Time per call (ms)</th>
+              <th scope="col">Its own lines per call (ms)</th>
             </tr>
           </thead>
           <tbody>
@@ -212,9 +230,9 @@ function Cost({ cost, into }: { cost: ReviewPageCost; into: (test: ReviewPageTes
                 <th scope="row">{functionsText([fn.function])}</th>
                 <td>{countText(fn.calls)}</td>
                 <td>{countText(fn.paths)}</td>
-                <td>{countText(fn.queries)}</td>
-                <td>{timeText(fn.time)}</td>
-                <td>{msText(fn.selfTime)}</td>
+                <td>{countText(fn.externalCalls)}</td>
+                <td>{timeText(fn.timePerCall)}</td>
+                <td>{msText(fn.selfTimePerCall)}</td>
               </tr>
             ))}
           </tbody>

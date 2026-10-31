@@ -15,10 +15,12 @@ import {
   routeCostChanges,
   ThreadKind,
   TimeVerdict,
+  moreExternalCalls,
   workflowCostChanged,
+  WorkflowSides,
 } from "@runshape/trace";
 
-import { ReviewBundle, ReviewSide, reviewHighlights, routeQueryText } from "./review-bundle";
+import { ReviewBundle, ReviewSide, reviewHighlights, routeExternalCallText } from "./review-bundle";
 
 export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
   const onlyInBase = new Set(bundle.review.items.filter((item) => item.category === ReviewCategory.Removed).map((item) => item.scenarioId));
@@ -58,18 +60,27 @@ export function buildReviewPage(bundle: ReviewBundle): ReviewPage {
 
 function pageCost(cost: CostDiff, test: (id: string, name: string) => ReviewPageTest): ReviewPageCost {
   const changed = cost.workflows.filter(workflowCostChanged);
+  const added = cost.workflows.filter((w) => w.sides === WorkflowSides.New);
+  const gone = cost.workflows.filter((w) => w.sides === WorkflowSides.Gone);
   return {
     caveats: cost.caveats,
-    routes: routeCostChanges(changed).map((route) => ({ label: route.label, text: routeQueryText(route), queries: route.queries, tests: route.workflows.map((w) => test(w.scenarioId, w.name)) })),
-    workflows: changed.map((w) => ({ test: test(w.scenarioId, w.name), time: pageTime(w.timeUs, w.time), calls: w.calls, queries: w.queries })),
-    unchanged: cost.workflows.length - changed.length,
+    routes: routeCostChanges(changed).map((route) => ({
+      label: route.label,
+      text: routeExternalCallText(route),
+      externalCalls: route.externalCalls,
+      tests: route.workflows.map((w) => test(w.scenarioId, w.name)),
+    })),
+    workflows: changed.map((w) => ({ test: test(w.scenarioId, w.name), time: pageTime(w.timeUs, w.time), calls: w.calls, externalCalls: w.externalCalls })),
+    newWorkflows: added.map((w) => ({ test: test(w.scenarioId, w.name), calls: w.calls.after!, externalCalls: w.externalCalls.after! })),
+    goneWorkflows: gone.map((w) => test(w.scenarioId, w.name)),
+    unchanged: cost.workflows.length - changed.length - added.length - gone.length,
     functions: cost.functions.map((fn) => ({
       function: pageFunction(fn),
       calls: fn.calls,
       paths: fn.paths,
-      queries: fn.queries,
-      time: pageTime(fn.timeUs, fn.time),
-      selfTime: pageMs(fn.selfTimeUs),
+      externalCalls: fn.externalCalls,
+      timePerCall: pageTime(fn.timePerCallUs, fn.time),
+      selfTimePerCall: pageMs(fn.selfTimePerCallUs),
     })),
   };
 }
@@ -83,16 +94,18 @@ function pageTime(timeUs: Measure, verdict: TimeVerdict): ReviewPageTime {
 }
 
 /**
- * More queries is a cost a green CI never shows: a warning. A time past the noise bands is
- * from one recording each side: worth knowing, not yet a finding.
+ * More external calls is a cost a green CI never shows: a warning, new workflows included (a
+ * new test through a new N+1 has no base to compare). A time past the noise bands is from one
+ * recording each side: worth knowing, not yet a finding.
  */
 function costCallouts(cost: CostDiff | undefined): ReviewCallout[] {
   if (cost === undefined) return [];
-  const more = (m: Measure) => m.before !== null && m.after !== null && m.after > m.before;
-  const moreQueries = cost.workflows.filter((w) => more(w.queries)).length;
+  const more = moreExternalCalls(cost.workflows);
   const slower = cost.workflows.filter((w) => w.time === TimeVerdict.Slower).length;
   const out: ReviewCallout[] = [];
-  if (moreQueries > 0) out.push({ text: `${moreQueries} ${moreQueries === 1 ? "workflow makes" : "workflows make"} more queries`, tone: "warn" });
+  const workflows = (n: number) => `${n} ${n === 1 ? "workflow makes" : "workflows make"}`;
+  if (more.compared > 0) out.push({ text: `${workflows(more.compared)} more external calls`, tone: "warn" });
+  if (more.new > 0) out.push({ text: `${more.new} new ${more.new === 1 ? "workflow makes" : "workflows make"} external calls`, tone: "warn" });
   if (slower > 0) out.push({ text: `${slower} ${slower === 1 ? "workflow" : "workflows"} slower past the noise bands (one recording each side)`, tone: "info" });
   return out;
 }

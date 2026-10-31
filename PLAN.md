@@ -16,7 +16,7 @@ Checked against the code on `runshape-zones` (7ce69c5). 286 vitest tests and the
 | A shape per area, seams, a module-level view that drills down | **Gap**: one `style` per repo; the graph opens at classes | No regions, no module view with dependency lines, no "this module glows". |
 | Arrange the diagram and have it stick between diffs | **Gap**: layout is computed fresh each time (ELK, floor layouts) | No saved arrangement. |
 | UI lag on big diagrams | **Gap**: the webview gets full graphs | No pre-visualization step that reduces what's drawn. |
-| Performance impact up front | **Partial**: review.md, review.json and the PR page carry a cost diff (time, calls, queries by route) | One recording each side; overhead not subtracted; no loop callout. |
+| Performance impact up front | **Partial**: review.md, review.json and the PR page carry a cost diff (time, calls, external calls by route) | One recording each side; overhead not subtracted; no loop callout. |
 | Complexity | **Partial**: distinct paths that ran, per changed function | Not per route. |
 | The ticket story | **Partial**: commit messages only | No PR body, linked issues, docs or Jira. |
 | Categorizer: places new code, spots renames, and "now does another zone's job" | **Partial**: zone advice on click, `moves.ts` renames, architecture diff "moved with behaviour" | Not automatic for new or changed code in a branch. No callout for a function drifting into another zone. |
@@ -431,18 +431,28 @@ because only the visualizer reads it. The app loads and saves the file.
 that pays. A no-op change has no time callout.
 
 - **Done (2026-10-31), first cut.** `diffCost` (packages/trace/src/cost.ts) compares, per
-  workflow, call-phase time, project calls, external calls (queries) and each route's queries;
-  per changed function (the threads'), calls, time with and without what it calls, queries
+  workflow, call-phase time, project calls, external calls and each route's external calls;
+  per changed function (the threads'), calls, time with and without what it calls, external calls
   under it, and the distinct paths that ran (sets of line-to-line steps, so loop iterations
-  aren't paths). review.md has a Cost section after the comparison line (routes whose queries
-  changed first: "`GET /api/articles/feed` newly requested: makes 10 queries"), review.json
-  keeps `cost`, and the PR page draws it with two callouts (more queries: warn; slower: info).
+  aren't paths). review.md has a Cost section after the comparison line (routes whose external calls
+  changed first: "`GET /api/articles/feed` newly requested: makes 10 external calls"), review.json
+  keeps `cost`, and the PR page draws it with two callouts (more external calls: warn; slower: info).
   Time, honestly: one recording each side, recorder overhead included and not subtracted, said
   in the caveats. A time is named slower or faster only past both 10 ms and 50%
   (`TIME_NOISE_FLOOR_US`, `TIME_NOISE_RATIO`), and never across recordings made by another
   recorder, backend or runtime. On the real fixtures: the Django feed fix has no time callout
   (one change is 10.9 ms but 3%, another doubles but by 2.3 ms); the slug refactor's one callout
   is a database wait inside unchanged code, and own-lines time shows it isn't the edit.
+  Second-model review fixes (2026-10-31): new and gone workflows are reported apart, not as
+  "the same", and a new one's external calls are a callout; a function's verdict is on time per
+  call, and a side that never ran it has no time (one-sided, not slower); "queries" became
+  "external calls" (a boundary call may be HTTP); path lines are named by offset in the
+  function, plus text only when both sides kept source; retries count the last attempt
+  everywhere; a runtime's patch release doesn't make times incomparable, and the caveats say the
+  recordings don't name their machine. Known limits: own-lines time for a coroutine subtracts
+  children that may overlap its own waits (clamped at zero, so it can read low); finding the
+  functions above each span and external call walks its ancestors every time (0.2 to 0.6 s on
+  Runshape's own 1.88M-span recordings, so not worth caching yet).
   Not yet: the noise band measured by recording twice (needs a second recording per side);
   overhead subtraction (needs the recorder to measure its own per-event cost); "a query newly
   inside a loop" as its own callout (today it shows as the route's query count going up);

@@ -59,23 +59,24 @@ describe("buildReviewBundle", () => {
       ### Cost
 
       > Each side was recorded once, so a time difference may be noise: one is called out only past both 10 ms and 50%, and even then a second recording is what confirms it.
-      > Times include the recorder's own overhead (settrace), which isn't subtracted: code that makes many calls looks slower than it runs untraced. Call and query counts don't depend on timing.
+      > Times include the recorder's own overhead (settrace), which isn't subtracted: code that makes many calls looks slower than it runs untraced. Call counts don't depend on timing.
+      > The recordings don't say which machine made them: if the two sides were recorded on different machines, their times differ for that reason alone.
 
-      | Workflow | Time (ms) | Calls | Queries |
+      | Workflow | Time (ms) | Calls | External calls |
       |---|---|---|---|
       | \`test_user_can_create_article\` | 10.6 → 25.3, **slower** (+14.7, +138%) | 52 → 54 | 10 |
       | \`test_user_can_not_create_article_with_duplicated_slug\` | 20.8 → 20.0, within noise | 38 → 40 | 5 |
 
-      2 workflows cost the same: the same calls and queries, and no time change past the noise bands.
+      2 workflows on both sides cost the same: the same calls and external calls, and no time change past the noise bands.
 
-      Changed functions, over every workflow:
+      Changed functions, over every workflow (time per call, so more callers isn't slower):
 
-      | Function | Calls | Paths that ran | Queries under it | Time (ms) | Its own lines (ms) |
+      | Function | Calls | Paths that ran | External calls under it | Time per call (ms) | Its own lines per call (ms) |
       |---|---|---|---|---|---|
-      | \`_normalize_title\` (app.services.articles), added | 0 → 2 | 0 → 1 | 0 | 0.0 → 0.0, within noise | 0.0 → 0.0 |
-      | \`create_new_article\` (app.api.routes.articles.articles_resource), edited | 2 | 2 | 13 | 7.2 → 21.9, **slower** (+14.7, +203%) | 1.4 → 0.5 |
-      | \`ensure_slug_available\` (app.services.articles), added | 0 → 2 | 0 → 2 | 0 → 5 | 0.0 → 2.4, within noise | 0.0 → 0.2 |
-      | \`get_slug_for_article\` (app.services.articles), edited | 2 | 1 | 0 | 0.1 → 0.2, within noise | 0.1 → 0.2 |
+      | \`_normalize_title\` (app.services.articles), added | 0 → 2 | 0 → 1 | 0 | — → 0.0 | — → 0.0 |
+      | \`create_new_article\` (app.api.routes.articles.articles_resource), edited | 2 | 2 | 13 | 3.6 → 11.0, within noise | 0.7 → 0.2 |
+      | \`ensure_slug_available\` (app.services.articles), added | 0 → 2 | 0 → 2 | 0 → 5 | — → 1.2 | — → 0.1 |
+      | \`get_slug_for_article\` (app.services.articles), edited | 2 | 1 | 0 | 0.1 → 0.1, within noise | 0.1 → 0.1 |
 
       ### Threads to follow (4 changed functions)
 
@@ -107,18 +108,18 @@ describe("buildReviewBundle", () => {
     const bundle = buildReviewBundle({ base: (await runs.previous())!, head: await runs.latest(), baseSide: side("main", "aaaaaaaaaaaa"), headSide: side("working", "working"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED });
 
     const markdown = reviewBundleMarkdown(bundle);
-    expect(markdown.slice(markdown.indexOf("Queries by route"), markdown.indexOf("Changed functions"))).toMatchInlineSnapshot(`
-      "Queries by route:
+    expect(markdown.slice(markdown.indexOf("External calls by route"), markdown.indexOf("Changed functions"))).toMatchInlineSnapshot(`
+      "External calls by route:
 
-      - \`GET /api/articles/feed\` newly requested: makes 10 queries (\`test_follower_sees_followed_authors_in_their_feed\`)
-      - \`GET /api/articles/{slug}\` no longer requested: it made 2 queries (\`test_follower_sees_followed_authors_in_their_feed\`)
+      - \`GET /api/articles/feed\` newly requested: makes 10 external calls (\`test_follower_sees_followed_authors_in_their_feed\`)
+      - \`GET /api/articles/{slug}\` no longer requested: it made 2 external calls (\`test_follower_sees_followed_authors_in_their_feed\`)
 
-      | Workflow | Time (ms) | Calls | Queries |
+      | Workflow | Time (ms) | Calls | External calls |
       |---|---|---|---|
       | \`test_follower_sees_followed_authors_in_their_feed\` | 377.5 → 378.7, within noise | 51 → 58 | 28 → 36 |
       | \`test_anonymous_visitor_cannot_publish\` | 2.2 → 4.5, within noise | 3 → 4 | 0 |
 
-      6 workflows cost the same: the same calls and queries, and no time change past the noise bands.
+      6 workflows on both sides cost the same: the same calls and external calls, and no time change past the noise bands.
 
       "
     `);
