@@ -5,6 +5,7 @@
 // the kernel declares, and is wired in by an app.
 export * from "./git/git-cli";
 export * from "./git/git-repository";
+export * from "./github/issues";
 export * from "./github/pull-requests";
 export * from "./library/arrangement-file";
 export * from "./library/library";

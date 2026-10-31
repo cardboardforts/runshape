@@ -1,27 +1,112 @@
 /**
- * The pull requests asking for the person's review, through their own `gh`: what's asked of it
- * (read only: a list, as JSON) and how its answer is read, against a stand-in script.
+ * GitHub through the person's own `gh`: the pull requests asking for their review, one PR's
+ * story (title, body, the issues it closes), and issues as tickets. Read only. What's asked of
+ * gh and how its answer is read, against a stand-in script.
  */
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
+import { GhIssues } from "../src/github/issues";
 import { GhPullRequests } from "../src/github/pull-requests";
 
-test("asks gh for the open PRs requesting my review, as JSON, and reads each author's login", async () => {
+const made: string[] = [];
+afterEach(() => {
+  for (const directory of made.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+/** A stand-in gh: records each call's arguments, one per line, and answers with what `answer` (shell) prints. */
+function fakeGh(answer: string): { directory: string; command: string; asked: () => string[][] } {
   const directory = mkdtempSync(join(tmpdir(), "runshape-gh-"));
+  made.push(directory);
   const seen = join(directory, "seen.txt");
-  const listed = [{ number: 7, title: "Teach orders to refuse", url: "u", author: { login: "teammate" }, baseRefName: "main", headRefName: "pr-7", headRefOid: "abc", isCrossRepository: true, updatedAt: "t" }];
   const command = join(directory, "gh");
-  writeFileSync(command, `#!/bin/sh\nprintf '%s\\n' "$@" > "${seen}"\necho '${JSON.stringify(listed)}'\n`);
+  writeFileSync(command, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${seen}"\necho >> "${seen}"\n${answer}\n`);
   chmodSync(command, 0o755);
+  const asked = () => readFileSync(seen, "utf8").trim().split("\n\n").map((call) => call.split("\n"));
+  return { directory, command, asked };
+}
 
-  const prs = await new GhPullRequests(directory, command).requestingMyReview(5);
+test("asks gh for the open PRs requesting my review, as JSON, and reads each author's login", async () => {
+  const listed = [{ number: 7, title: "Teach orders to refuse", url: "u", author: { login: "teammate" }, baseRefName: "main", headRefName: "pr-7", headRefOid: "abc", isCrossRepository: true, updatedAt: "t" }];
+  const gh = fakeGh(`echo '${JSON.stringify(listed)}'`);
 
-  expect({ asked: readFileSync(seen, "utf8").trim().split("\n"), prs }).toEqual({
-    asked: ["pr", "list", "--search", "review-requested:@me", "--state", "open", "--limit", "5", "--json", "number,title,url,author,baseRefName,headRefName,headRefOid,isCrossRepository,updatedAt"],
+  const prs = await new GhPullRequests(gh.directory, gh.command).requestingMyReview(5);
+
+  expect({ asked: gh.asked(), prs }).toEqual({
+    asked: [["pr", "list", "--search", "review-requested:@me", "--state", "open", "--limit", "5", "--json", "number,title,url,author,baseRefName,headRefName,headRefOid,isCrossRepository,updatedAt"]],
     prs: [{ ...listed[0], author: "teammate" }],
+  });
+});
+
+test("a PR's story: its title and body, and the issues it closes, named as its own text would mention them", async () => {
+  const viewed = {
+    number: 7,
+    title: "Teach orders to refuse",
+    body: null, // an empty description comes back as null
+    url: "https://github.com/acme/shop/pull/7",
+    closingIssuesReferences: [
+      { number: 12, url: "https://github.com/acme/shop/issues/12" },
+      { number: 3, url: "https://github.com/acme/billing/issues/3" },
+    ],
+  };
+  const gh = fakeGh(`echo '${JSON.stringify(viewed)}'`);
+
+  const story = await new GhPullRequests(gh.directory, gh.command).story(7);
+
+  expect({ asked: gh.asked(), story }).toEqual({
+    asked: [["pr", "view", "7", "--json", "number,title,body,url,closingIssuesReferences"]],
+    story: { number: 7, title: "Teach orders to refuse", body: "", url: "https://github.com/acme/shop/pull/7", linkedIssues: ["#12", "acme/billing#3"] },
+  });
+});
+
+describe("GhIssues: GitHub Issues as tickets", () => {
+  test("mentions: #12 and owner/repo#12, each once; not a URL's fragment, a word's, or an HTML entity", () => {
+    const issues = new GhIssues("/nowhere");
+
+    expect(issues.mentions("Fixes #12, see acme/billing#3 and #12 again.\nNot page#4, /docs#5, &#39; or ##6; (#7) is.")).toEqual(["#12", "acme/billing#3", "#7"]);
+  });
+
+  test("reads an issue (in another repository with --repo); a PR's number or a missing issue is no ticket; anything else gh says is an error", async () => {
+    const gh = fakeGh(
+      [
+        'case "$3" in',
+        `  12) echo '${JSON.stringify({ number: 12, title: "Orders over the limit go through", body: "Customers can overspend.", url: "https://github.com/acme/shop/issues/12", state: "OPEN" })}' ;;`,
+        `  3) echo '${JSON.stringify({ number: 3, title: "Invoice totals", body: null, url: "https://github.com/acme/billing/issues/3", state: "CLOSED" })}' ;;`,
+        `  7) echo '${JSON.stringify({ number: 7, title: "The PR", body: "", url: "https://github.com/acme/shop/pull/7", state: "OPEN" })}' ;;`,
+        '  404) echo "GraphQL: Could not resolve to an issue or pull request with the number of 404." >&2; exit 1 ;;',
+        '  *) echo "HTTP 401: Bad credentials" >&2; exit 1 ;;',
+        "esac",
+      ].join("\n"),
+    );
+    const issues = new GhIssues(gh.directory, gh.command);
+
+    const read = [];
+    for (const id of ["#12", "acme/billing#3", "#7", "#404", "--repo=evil#1"]) read.push(await issues.ticket(id));
+    const failed = await issues.ticket("#500").then(
+      () => "read",
+      (error: Error) => error.message,
+    );
+
+    expect({ read, failed, asked: gh.asked().map((call) => call.join(" ")) }).toEqual({
+      read: [
+        { id: "#12", title: "Orders over the limit go through", body: "Customers can overspend.", url: "https://github.com/acme/shop/issues/12", state: "open" },
+        { id: "acme/billing#3", title: "Invoice totals", body: "", url: "https://github.com/acme/billing/issues/3", state: "closed" },
+        null,
+        null,
+        // Not an id at all: never handed to gh.
+        null,
+      ],
+      failed: "gh issue view: HTTP 401: Bad credentials",
+      asked: [
+        "issue view 12 --json number,title,body,url,state",
+        "issue view 3 --json number,title,body,url,state --repo acme/billing",
+        "issue view 7 --json number,title,body,url,state",
+        "issue view 404 --json number,title,body,url,state",
+        "issue view 500 --json number,title,body,url,state",
+      ],
+    });
   });
 });

@@ -10,6 +10,7 @@ import { describe, expect, test } from "vitest";
 import { ZoneRules } from "@runshape/architecture";
 import { buildReviewBundle, reviewBundleMarkdown } from "../src/review-bundle";
 import { buildReviewPage } from "../src/review-page";
+import { NoteKind, ReviewStory } from "../src/story";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 const CREATED = "2026-10-16T09:00:00Z";
@@ -265,6 +266,50 @@ describe("buildReviewBundle", () => {
     expect(markdown.split("\n").find((line) => line.startsWith("Compared"))).toBe(
       "Compared where this branch left `main` (`0123456` the main commit; `main` has 3 commits since) with the working tree (on `0123456`, with uncommitted changes).",
     );
+  });
+
+  test("the story: the PR, its tickets, what couldn't be read and the docs and comments changed, as one-line plain text a posted comment can't be hijacked by", async () => {
+    // Titles are the PR author's and ticket writers' text, and review.md may be posted as a PR
+    // comment: an image there would load from anywhere, a tag would render. Escaped, they read
+    // as typed. Ticket and PR bodies aren't here at all: they go to the explainer only.
+    const run = await fixtureRuns("go-shop").latest();
+    const story: ReviewStory = {
+      pullRequest: { number: 7, title: "Refuse orders ![x](https://evil.example/beacon.png) <img src=x>", url: "https://github.com/acme/shop/pull/7" },
+      tickets: [
+        { id: "#12", source: "GitHub Issues", title: "Orders over\nthe limit go *through*", url: "https://github.com/acme/shop/issues/12", state: "open" },
+        { id: "SHOP-7", source: "Jira", title: "Credit limits", url: null, state: "In Progress" },
+      ],
+      unread: [{ id: "#30", source: "GitHub Issues", reason: "gh issue view: HTTP 401: Bad credentials" }],
+      notes: [
+        { path: "docs/orders.md", kind: NoteKind.Doc, added: 3, removed: 1 },
+        { path: "src/orders.ts", kind: NoteKind.Comments, added: 2, removed: 0 },
+      ],
+    };
+    const bundle = buildReviewBundle({ base: run, head: run, baseSide: side("main", "bbbbbbbbbbbb"), headSide: side("feature", "cccccccccccc"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED, story });
+    const empty = buildReviewBundle({ base: run, head: run, baseSide: side("main", "bbbbbbbbbbbb"), headSide: side("feature", "cccccccccccc"), baseRules: ZoneRules.none(), rules: ZoneRules.none(), createdAt: CREATED, story: { pullRequest: null, tickets: [], unread: [], notes: [] } });
+    const section = (markdown: string) => markdown.slice(markdown.indexOf("### The story"), markdown.indexOf("### Cost"));
+
+    expect(bundle.story).toEqual(story);
+    expect(section(reviewBundleMarkdown(bundle))).toMatchInlineSnapshot(`
+      "### The story
+
+      Pull request [#7](https://github.com/acme/shop/pull/7): Refuse orders \\!\\[x\\](https://evil.example/beacon.png) \\<img src=x\\>
+
+      Tickets:
+
+      - [#12](https://github.com/acme/shop/issues/12) Orders over the limit go \\*through\\* (GitHub Issues, open)
+      - SHOP-7 Credit limits (Jira, In Progress)
+
+      Mentioned, not read: #30 (gh issue view: HTTP 401: Bad credentials)
+
+      Docs and comments changed:
+
+      - \`docs/orders.md\`: doc, +3 −1 lines
+      - \`src/orders.ts\`: comments, +2 lines
+
+      "
+    `);
+    expect(section(reviewBundleMarkdown(empty))).toBe("### The story\n\nNo pull request, ticket, doc or comment says what this change is for: its commit messages are all there is.\n\n");
   });
 
   test("when the base's rules aren't known, the bundle and its Markdown say both sides used head's", async () => {

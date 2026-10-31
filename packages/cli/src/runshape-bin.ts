@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { ArrangementFile, assertPlainRecording, DockerRecorder, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, sandboxVersion, ShellRecorder } from "@runshape/adapters";
+import { ArrangementFile, assertPlainRecording, DockerRecorder, GhIssues, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, sandboxVersion, ShellRecorder } from "@runshape/adapters";
 import { LogfmtLogger, nodeHashing } from "@runshape/infra";
 
 import { chooseModel } from "./choose-model";
@@ -44,4 +44,6 @@ process.exitCode = await runRecordings(process.argv.slice(2), {
   now: () => new Date(),
   models: (choice) => chooseModel(choice, process.env),
   pullRequests: new GhPullRequests(root),
+  // GitHub Issues, through the same gh login. Jira and the like are TicketSource adapters still to write.
+  tickets: [new GhIssues(root)],
 });

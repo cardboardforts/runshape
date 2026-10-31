@@ -1,4 +1,4 @@
-import { CommitMessage, CommitSummary, FileAtCommit, GitError, RefSummary, Repository, Uncommitted } from "@runshape/kernel";
+import { ChangedLines, CommitMessage, CommitSummary, FileAtCommit, GitError, RefSummary, Repository, Uncommitted } from "@runshape/kernel";
 
 import { Git } from "./git-cli";
 
@@ -13,6 +13,18 @@ const PULL_REQUEST_BASE_REFS = "refs/runshape/base/";
 /** git's modes for a plain file and an executable one. */
 const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
 const SYMBOLIC_LINK_MODE = "120000";
+/** Where each file's part of a patch starts: git writes it at the start of a line, and file content lines all start with +, - or a space. */
+const PATCH_FILE_START = "diff --git ";
+
+/** A name git still quotes with quotePath off (it has a quote, a backslash or a control character): JSON reads most of C's escapes. */
+function unquoted(name: string): string {
+  if (!name.startsWith('"')) return name;
+  try {
+    return JSON.parse(name) as string;
+  } catch {
+    return name;
+  }
+}
 
 /**
  * What git says about the project, named for what's asked of it. git's command lines, their
@@ -138,6 +150,42 @@ export class GitRepository implements Repository {
         const [commit, subject, ...body] = entry.split("\n");
         return { commit: commit!, subject: subject ?? "", body: body.join("\n") };
       });
+  }
+
+  /**
+   * Each text file's added and removed lines (-U0: no context), read from the patch: a file's
+   * header runs until its first hunk, so a changed line that reads like a header is still a
+   * line. Binary files have no hunks, so no lines. Renames are a removal and an addition.
+   */
+  async changedLines(base: string, head: string | null): Promise<ChangedLines[]> {
+    const sides = head === null ? [base] : [base, head];
+    // quotePath off: a name with spaces or non-ASCII letters reads as itself, not C-quoted.
+    const patch = await this.git.run(["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=0", ...sides, "--"]);
+    const files: ChangedLines[] = [];
+    let file: ChangedLines | null = null;
+    let inHunks = false;
+    for (const line of patch.split("\n")) {
+      if (line.startsWith(PATCH_FILE_START)) {
+        file = { path: "", added: [], removed: [] };
+        files.push(file);
+        inHunks = false;
+      } else if (file === null) {
+        continue;
+      } else if (line.startsWith("@@")) {
+        inHunks = true;
+      } else if (!inHunks) {
+        // "--- a/x" names it; for an added file that's /dev/null, and "+++ b/x" does. A name
+        // with a space ends in a tab there (for patch's sake); a real trailing tab is quoted.
+        const named = line.match(/^(?:---|\+\+\+) (.*?)\t?$/);
+        const path = named === null ? null : unquoted(named[1]!).match(/^[ab]\/(.*)$/);
+        if (path) file.path = path[1]!;
+      } else if (line.startsWith("+")) {
+        file.added.push(line.slice(1));
+      } else if (line.startsWith("-")) {
+        file.removed.push(line.slice(1));
+      }
+    }
+    return files.filter((changed) => changed.path !== "" && (changed.added.length > 0 || changed.removed.length > 0));
   }
 
   /** Every file in the working tree git doesn't ignore: tracked (deleted ones too) and untracked. */

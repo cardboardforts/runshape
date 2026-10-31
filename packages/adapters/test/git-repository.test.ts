@@ -102,4 +102,36 @@ describe("GitRepository", () => {
       notAtHead: null,
     });
   });
+
+  test("changed lines between two commits, or a commit and the working tree: added and removed per file, no context, no binaries", async () => {
+    // The story reads docs and comments from these: a line that looks like a diff header
+    // ("--- a/x", "diff --git") inside a file is still that file's line.
+    const { root, commits } = repository();
+    const run = gitIn(root);
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "docs", "why.md"), "# Why\n\nOld reason.\n");
+    writeFileSync(join(root, "gone.py"), "x = 1\n");
+    writeFileSync(join(root, "image.bin"), Buffer.from([0, 1, 2, 0]));
+    run("add", ".");
+    const before = commitIn(root, "Docs");
+    writeFileSync(join(root, "docs", "why.md"), "# Why\n\nNew reason.\n--- a/fake\ndiff --git a/x b/x\n");
+    writeFileSync(join(root, "a file.ts"), "// spaces in its name\n");
+    writeFileSync(join(root, "image.bin"), Buffer.from([0, 3, 2, 0]));
+    run("rm", "--quiet", "gone.py");
+    run("add", ".");
+    run("commit", "--quiet", "-m", "Rewrite");
+    const after = run("rev-parse", "HEAD");
+    writeFileSync(join(root, "docs", "why.md"), "# Why not\n");
+    const git = new GitRepository(new GitCli(root));
+
+    expect({ committed: await git.changedLines(before, after), working: await git.changedLines(after, null), none: await git.changedLines(commits.third!, commits.third!) }).toEqual({
+      committed: [
+        { path: "a file.ts", added: ["// spaces in its name"], removed: [] },
+        { path: "docs/why.md", added: ["New reason.", "--- a/fake", "diff --git a/x b/x"], removed: ["Old reason."] },
+        { path: "gone.py", added: [], removed: ["x = 1"] },
+      ],
+      working: [{ path: "docs/why.md", added: ["# Why not"], removed: ["# Why", "", "New reason.", "--- a/fake", "diff --git a/x b/x"] }],
+      none: [],
+    });
+  });
 });

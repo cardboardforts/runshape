@@ -26,6 +26,8 @@ import {
   workflowCostChanged,
 } from "@runshape/trace";
 
+import { NoteKind, ReviewStory, storyIsEmpty } from "./story";
+
 /** One side of the comparison: what was asked for, and the recording that answered it. */
 export interface ReviewSide {
   /** As the person named it: "main", "working", a branch or a commit. */
@@ -83,6 +85,8 @@ export interface ReviewBundle {
   threads: Threads;
   /** What the change costs at run time; absent from bundles saved before it was measured. */
   cost?: CostDiff;
+  /** What it's for, as the PR, its tickets and the changed docs and comments say: titles, links, counts. Absent from bundles saved before stories were read. */
+  story?: ReviewStory;
   /** The categorizer on head: the changed code's tags, the findings head adds, proposed zones for new code. */
   categories: BundleCategories;
 }
@@ -113,6 +117,8 @@ export interface BundleInput {
   baseRules: ZoneRules | null;
   rules: ZoneRules;
   createdAt: string;
+  /** The story the workflow gathered (gatherStory); left out, the bundle has none. */
+  story?: ReviewStory;
 }
 
 export function buildReviewBundle(input: BundleInput): ReviewBundle {
@@ -137,6 +143,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),
     threads,
     cost: diffCost(base, head, threads, { phases: BUNDLE_OPTIONS.phases, moves }),
+    ...(input.story === undefined ? {} : { story: input.story }),
     categories: bundleCategories(input, baseRules, architecture, threads, moves, placed),
   };
 }
@@ -225,6 +232,7 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
     "",
     `Compared ${sideText(bundle.base)} with ${sideText(bundle.head)}.`,
     "",
+    ...storyMarkdown(bundle.story),
     ...costMarkdown(bundle.cost),
     ...threadsMarkdown(bundle.threads),
     ...architectureMarkdown(bundle.architecture, bundle.baseRulesKnown),
@@ -363,6 +371,33 @@ const WAYS: Partial<Record<Change, [string, string]>> = {
 
 function decider(by: ZoneRule["by"]): string {
   return by === "llm" ? "a model" : by === "detected" ? "the detector" : "a person";
+}
+
+/**
+ * "The story": the pull request, its tickets, what was mentioned but not read, and the docs and
+ * comments that changed. Titles and reasons are someone else's text in a comment that may be
+ * posted: one line each, with Markdown and HTML escaped (no image, link or tag of theirs).
+ */
+function storyMarkdown(story: ReviewStory | undefined): string[] {
+  if (story === undefined) return [];
+  const out = ["### The story", ""];
+  if (storyIsEmpty(story)) return [...out, "No pull request, ticket, doc or comment says what this change is for: its commit messages are all there is.", ""];
+  const linked = (id: string, url: string | null) => (url === null ? inline(id) : `[${inline(id)}](${url})`);
+  if (story.pullRequest !== null) out.push(`Pull request ${linked(`#${story.pullRequest.number}`, story.pullRequest.url)}: ${inline(story.pullRequest.title)}`, "");
+  if (story.tickets.length > 0) out.push("Tickets:", "", ...story.tickets.map((t) => `- ${linked(t.id, t.url)} ${inline(t.title)} (${inline(t.source)}, ${inline(t.state)})`), "");
+  if (story.unread.length > 0) out.push(`Mentioned, not read: ${story.unread.map((u) => `${inline(u.id)} (${inline(u.reason)})`).join("; ")}`, "");
+  if (story.notes.length > 0) {
+    const counts = (n: ReviewStory["notes"][number]) => [n.added > 0 ? `+${n.added}` : "", n.removed > 0 ? `−${n.removed}` : ""].filter(Boolean).join(" ");
+    out.push("Docs and comments changed:", "", ...story.notes.slice(0, SHOWN_FUNCTIONS).map((n) => `- ${code(n.path.replace(/\s+/g, " "))}: ${n.kind === NoteKind.Doc ? "doc" : "comments"}, ${counts(n)} lines`));
+    if (story.notes.length > SHOWN_FUNCTIONS) out.push(`- and ${story.notes.length - SHOWN_FUNCTIONS} more (review.json lists every file)`);
+    out.push("");
+  }
+  return out;
+}
+
+/** Someone else's text as one line of plain Markdown: whitespace collapsed, every character Markdown or HTML would act on escaped. */
+function inline(text: string): string {
+  return text.replace(/\s+/g, " ").trim().replace(/[\\`*_[\]<>!|~&]/g, (c) => `\\${c}`);
 }
 
 /** A name containing a backtick needs a longer fence, or it ends the span early. */

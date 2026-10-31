@@ -3,7 +3,7 @@
 // adapters (the library, the CLI) implement these; core never imports them.
 import type { TraceFiles } from "./trace/data/trace-directory";
 
-import type { CommitMessage, CommitSummary, LibraryOverview, PullRequestSummary, RecordingMetadata, RequestedReviews } from "./recordings-model";
+import type { ChangedLines, CommitMessage, CommitSummary, LibraryOverview, PullRequestStory, PullRequestSummary, RecordingMetadata, RequestedReviews, Ticket } from "./recordings-model";
 import type { ReviewPage } from "./review-page";
 
 /** A path as a commit has it: nothing, a plain file's text, or something else (a folder, a link). */
@@ -36,6 +36,22 @@ export interface PullRequests {
   requestingMyReview(limit: number): Promise<PullRequestSummary[]>;
   /** Where they're listed from, to fetch them from: in a fork workflow that's not origin. */
   repository(): Promise<string>;
+  /** One pull request's title, description and linked issues: what its author says it's for. */
+  story(number: number): Promise<PullRequestStory>;
+}
+
+/**
+ * Port: a ticket system the change's story is read from (GitHub Issues through gh; Jira when
+ * someone needs it). Each source knows its own ids; the workflow asks every source about the
+ * PR's and the commits' text, and reads what they find.
+ */
+export interface TicketSource {
+  /** "GitHub Issues": said beside what it couldn't read. */
+  readonly name: string;
+  /** The ids of this source's tickets a text mentions, in its own syntax ("#12"; "PROJ-7"). */
+  mentions(text: string): string[];
+  /** The ticket; null when the source has none by that id (a pull request's number, say). */
+  ticket(id: string): Promise<Ticket | null>;
 }
 
 /** Port: what git says about the project, named for what the workflow asks (GitRepository in the library). */
@@ -60,6 +76,8 @@ export interface Repository {
   commitsAhead(from: string, to: string): Promise<number>;
   /** The commits head has that the base hasn't, oldest first, as their authors wrote them. */
   commitsBetween(base: string, head: string): Promise<CommitMessage[]>;
+  /** Each text file's changed lines from base to head (null: the working tree; untracked files aren't in it). */
+  changedLines(base: string, head: string | null): Promise<ChangedLines[]>;
   /** Every file in the working tree that isn't ignored: tracked (deleted ones too) and untracked. */
   files(): Promise<string[]>;
   uncommitted(): Promise<Uncommitted>;

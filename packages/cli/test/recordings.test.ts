@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import type { LanguageModel, PullRequestSummary, Recorder, RecordTarget } from "@runshape/kernel";
+import type { LanguageModel, PullRequestStory, PullRequestSummary, Recorder, RecordTarget, TicketSource } from "@runshape/kernel";
 import { GitCli, GitRepository, projectLibrary } from "@runshape/adapters";
 import { ArrangementFile, assertPlainRecording, NodeProjectFiles, sandboxVersion } from "@runshape/adapters";
 import { LogfmtLogger, nodeHashing } from "@runshape/infra";
@@ -74,6 +74,9 @@ async function run(
   requested: PullRequestSummary[] = [],
   /** What choosing a model fails with: no claude command and no key, say. */
   unavailable: Error | null = null,
+  /** What gh says a PR is for, by number: a description that mentions nothing, by default. */
+  story: (number: number) => PullRequestStory = (number) => ({ number, title: `PR ${number}`, body: "", url: `https://github.com/example/shop/pull/${number}`, linkedIssues: [] }),
+  tickets: TicketSource[] = [],
 ) {
   const lines: string[] = [];
   const logs: string[] = [];
@@ -86,10 +89,10 @@ async function run(
     if (unavailable !== null) throw unavailable;
     return model;
   };
-  const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin" };
+  const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin", story: async (number: number) => story(number) };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests });
+  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing)), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets });
   return { code, lines, logs, recorder, model, chosen, sandbox, sandboxVersions };
 }
 
@@ -771,6 +774,58 @@ describe("runshape review-requests: every open PR that asks for your review", ()
       "ts=2026-10-14T12:00:00.000Z level=warn run=r1 event=command.end command=review-requests exit=1 duration_ms=0",
     ]);
     expect(logs[2]).toMatch(/ error="fetching it failed: [^"]*refs\/pull\/8\/head[^]* stack="Error: fetching it failed[^]*\\n    at [^]* duration_ms=0$/);
+  });
+
+  test("each review carries the PR's story: its title and link, the tickets it mentions, and what couldn't be read; gh failing on the PR doesn't stop the review", async () => {
+    const { root, commits, prHead, pr } = withPullRequests();
+    const tickets: TicketSource = {
+      name: "GitHub Issues",
+      mentions: (text) => text.match(/#\d+/g) ?? [],
+      ticket: async (id) => (id === "#12" ? { id, title: "Orders over the limit go through", body: "Private detail the bundle mustn't keep.", url: "https://github.com/example/shop/issues/12", state: "open" } : null),
+    };
+    const story = (number: number): PullRequestStory => {
+      if (number === 8) throw new Error("gh pr view: HTTP 502");
+      return { number, title: "Teach orders to refuse", body: "Fixes #12. Not #13.", url: `https://github.com/example/shop/pull/${number}`, linkedIssues: ["#12"] };
+    };
+    // PR 8 is the same commit, so the same review: rewritten with what gh couldn't say.
+    gitIn(gitIn(root)("remote", "get-url", "origin"))("update-ref", "refs/pull/8/head", prHead);
+
+    await run(root, ["review-requests"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), [pr(7, prHead, "Teach orders to refuse")], null, story, [tickets]);
+    const reviewed = join(root, ".runshape", "reviews", `${commits.second!.slice(0, 12)}-sandbox..${prHead.slice(0, 12)}-sandbox`);
+    const bundle = JSON.parse(readFileSync(join(reviewed, "review.json"), "utf8"));
+    const markdown = readFileSync(join(reviewed, "review.md"), "utf8");
+    const failing = await run(root, ["review-requests"], new FixtureRecorder(), new FakeModel(), new FixtureRecorder(false, "docker:runshape-recorder:test"), [pr(8, prHead, "Teach orders to refuse")], null, story, [tickets]);
+
+    expect({
+      story: bundle.story,
+      privateText: JSON.stringify(bundle).includes("Private detail") || markdown.includes("Private detail"),
+      said: markdown.slice(markdown.indexOf("### The story"), markdown.indexOf("### Cost")),
+      failing: [failing.code, JSON.parse(readFileSync(join(reviewed, "review.json"), "utf8")).story.unread],
+      logged: failing.logs.filter((line) => line.includes("story.unread")).map((line) => line.replace(/^ts=\S+ /, "")),
+    }).toEqual({
+      story: {
+        pullRequest: { number: 7, title: "Teach orders to refuse", url: "https://github.com/example/shop/pull/7" },
+        tickets: [{ id: "#12", source: "GitHub Issues", title: "Orders over the limit go through", url: "https://github.com/example/shop/issues/12", state: "open" }],
+        unread: [{ id: "#13", source: "GitHub Issues", reason: "GitHub Issues has no such ticket" }],
+        notes: [],
+      },
+      privateText: false,
+      said: [
+        "### The story",
+        "",
+        "Pull request [#7](https://github.com/example/shop/pull/7): Teach orders to refuse",
+        "",
+        "Tickets:",
+        "",
+        "- [#12](https://github.com/example/shop/issues/12) Orders over the limit go through (GitHub Issues, open)",
+        "",
+        "Mentioned, not read: #13 (GitHub Issues has no such ticket)",
+        "",
+        "",
+      ].join("\n"),
+      failing: [0, [{ id: "#8", source: "the pull request", reason: "gh pr view: HTTP 502" }]],
+      logged: ['level=warn run=r1 pr=8 event=story.unread unread="#8: gh pr view: HTTP 502"'],
+    });
   });
 
   test("with --explain each review is explained too; with no PRs asking, it says so", async () => {

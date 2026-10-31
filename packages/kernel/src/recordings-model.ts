@@ -133,6 +133,38 @@ export interface CommitMessage {
   body: string;
 }
 
+/**
+ * A pull request as its author described it: what it's for, in their words. Untrusted text,
+ * like a commit message: shown and explained as data, never followed.
+ */
+export interface PullRequestStory {
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  /** The issues GitHub says it closes, as ticket ids ("#12", "owner/repo#12"). */
+  linkedIssues: string[];
+}
+
+/** A ticket the change mentions, as its ticket system has it: untrusted text, like the PR's. */
+export interface Ticket {
+  /** As the change mentions it: "#12", "owner/repo#12", "PROJ-7". */
+  id: string;
+  title: string;
+  body: string;
+  /** Where a person reads it; null when the source has no page for it. */
+  url: string | null;
+  /** "open", "closed", "In Progress": the source's own word. */
+  state: string;
+}
+
+/** One file's lines that changed between two sides, as the diff has them (no context lines). */
+export interface ChangedLines {
+  path: string;
+  added: string[];
+  removed: string[];
+}
+
 /** git couldn't answer: a ref it doesn't know, a command that failed. Said to the person as it is. */
 export class GitError extends Error {}
 

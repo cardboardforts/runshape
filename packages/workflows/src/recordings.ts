@@ -1,14 +1,15 @@
 // The recordings workflow (runshape list | record | compare | review-requests | readmes |
 // forget): the CLI parses the command line and wires the adapters; this decides and records.
-import { ArchitectureSummary, byCodeUnit, CommitSummary, GitError, Grouping, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, Logger, ModelChoice, Outcome, Phase, ProjectFiles, PullRequests, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, Run, SANDBOX_SUFFIX, TraceDirectory, VERSION_DIGITS, WORKING_TREE_ID, ZoneSource } from "@runshape/kernel";
+import { ArchitectureSummary, byCodeUnit, ChangedLines, CommitSummary, GitError, Grouping, Hashing, IncomingRecording, LanguageModel, Library, LibraryBusy, Logger, ModelChoice, Outcome, Phase, ProjectFiles, PullRequests, PullRequestStory, PullRequestSummary, Recorder, recordingIdFor, RecordingMetadata, RecordTarget, Repository, RequestedReview, RequestedReviews, ReviewHighlights, reviewName, Run, SANDBOX_SUFFIX, TicketSource, TraceDirectory, VERSION_DIGITS, WORKING_TREE_ID, ZoneSource } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildFolderGuides, buildPlacements, describeFolder, describeReadme, FolderGuide, folderGuideMarkdown, mergeIntoReadme, needsDescription, openingComment, RULES_FILE, ZoneRules, ZoneRulesError } from "@runshape/architecture";
-import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown } from "@runshape/explainer";
+import { ChangeContext, explainChange, Explanation, explanationInputs, explanationMarkdown, StoryContext } from "@runshape/explainer";
 import { AgentLevel, layoutForAgents } from "@runshape/visualizer";
 
 import { buildReviewBundle, ReviewBundle, reviewBundleMarkdown, reviewHighlights } from "./review-bundle";
 import { buildReviewPage } from "./review-page";
 import { ArrangementStore, ViewerSession } from "./session";
 import { stackOrder } from "./stacks";
+import { GatheredStory, gatherStory, StorySources } from "./story";
 
 /** What the recordings workflow is given: its ports, and how to talk to the person. */
 export interface RecordingsDependencies {
@@ -30,6 +31,8 @@ export interface RecordingsDependencies {
   /** The language model `--explain` asks. */
   models: (choice: ModelChoice) => Promise<LanguageModel>;
   pullRequests: PullRequests;
+  /** The ticket systems a change's story is read from, each asked about the PR's and the commits' text. */
+  tickets: TicketSource[];
   /** Where a person can look at a comparison: a page to open, and how. */
   comparisonLink: (baseId: string, headId: string) => string;
   /** The boxes a person moved in the viewer: `view` shows them where they were put. */
@@ -121,7 +124,7 @@ export class Recordings {
    * Records what's missing of the two and saves their review; `asked` names the head in the
    * review when its ref isn't how a person would say it (a pull request's).
    */
-  async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string }): Promise<Compared> {
+  async compare(baseName: string, headName: string, options: { againstTip: boolean; headAsked?: string; baseAsked?: string; pullRequest?: number }): Promise<Compared> {
     const workingHead = headName === WORKING_TREE_ID;
     // Either side: a checked-out PR as the base runs here just the same.
     if (workingHead || baseName === WORKING_TREE_ID) await this.refuseCheckedOutPullRequest();
@@ -134,7 +137,7 @@ export class Recordings {
     if (base.id === head.id) throw new RecordingError(`${baseName} and ${options.headAsked ?? headName} are the same recording: nothing to compare`);
     await this.ensure(base, { sameRecorder: true });
     await this.ensure(head, { sameRecorder: true });
-    const review = await this.writeReview({ asked: options.baseAsked ?? baseName, plan: base }, { asked: options.headAsked ?? headName, plan: head });
+    const review = await this.writeReview({ asked: options.baseAsked ?? baseName, plan: base }, { asked: options.headAsked ?? headName, plan: head }, options.pullRequest ?? null);
     this.dependencies.print(`review: ${review.markdown}`);
     this.dependencies.print(`open ${this.dependencies.comparisonLink(base.id, head.id)}`);
     return { review, base, head };
@@ -213,7 +216,7 @@ export class Recordings {
           throw new RecordingError(`fetching it failed: ${error instanceof Error ? error.message : String(error)}`);
         }
         const { head: headRef, base: baseRef } = fetched;
-        const compared = await this.compare(baseRef, headRef, { againstTip: false, headAsked: name, baseAsked: pr.baseRefName });
+        const compared = await this.compare(baseRef, headRef, { againstTip: false, headAsked: name, baseAsked: pr.baseRefName, pullRequest: pr.number });
         entry.head = compared.head.summary.commit;
         if (entry.head !== pr.headRefOid) this.dependencies.print(`${name}: its head moved since it was listed; reviewed ${entry.head.slice(0, 7)}`);
         entry.review = compared.review.name;
@@ -311,9 +314,10 @@ export class Recordings {
    * Saves the comparison as a review bundle beside the recordings (.runshape/reviews/<base>..<head>):
    * review.json for tools, review.md to read or post. Returns the Markdown's path, relative to the project.
    */
-  private async writeReview(base: { asked: string; plan: Plan }, head: { asked: string; plan: Plan }): Promise<SavedReview> {
+  private async writeReview(base: { asked: string; plan: Plan }, head: { asked: string; plan: Plan }, pullRequest: number | null): Promise<SavedReview> {
     const [baseRun, headRun] = await Promise.all([this.runOf(base.plan.id), this.runOf(head.plan.id)]);
     const [baseRules, headRules] = await Promise.all([this.rulesOf(base.plan.id), this.rulesOf(head.plan.id)]);
+    const { story, context } = await this.gatherStory(base.plan, head.plan, pullRequest);
     const side = ({ asked, plan }: { asked: string; plan: Plan }) => ({
       asked,
       recording: plan.id,
@@ -331,6 +335,7 @@ export class Recordings {
       baseRules: headRules === null ? null : baseRules,
       rules: headRules ?? ZoneRules.none(),
       createdAt: this.dependencies.now().toISOString(),
+      story,
     });
     const reviews = this.library.reviews;
     const name = reviewName(base.plan.id, head.plan.id);
@@ -338,7 +343,42 @@ export class Recordings {
     // An explanation of an older review mustn't sit beside this one looking current.
     const explained = (await reviews.explanation(name)) as Explanation | null;
     if (explained !== null && explained.basedOn.review !== this.dependencies.hashing.sha256(reviewBundleMarkdown(bundle))) await reviews.dropExplanation(name);
-    return { bundle, name, markdown: reviews.shownReview(name) };
+    return { bundle, name, markdown: reviews.shownReview(name), story: context };
+  }
+
+  /**
+   * What the change is for (story.ts): the pull request when there is one, the tickets it and
+   * the commits mention, and the docs and comments changed between the two sides. A PR gh
+   * can't read is said in the story, not fatal: the review stands without it.
+   */
+  private async gatherStory(base: Plan, head: Plan, number: number | null): Promise<GatheredStory> {
+    let pullRequest: PullRequestStory | null = null;
+    let pullRequestProblem: StorySources["pullRequestProblem"];
+    if (number !== null) {
+      try {
+        pullRequest = await this.dependencies.pullRequests.story(number);
+      } catch (error) {
+        pullRequestProblem = { number, reason: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    const commits = await this.repository.commitsBetween(base.summary.commit, head.summary.commit);
+    // A diff too big for git's output limit (a regenerated lockfile, say) costs the story its
+    // docs and comments, not the review.
+    let changed: ChangedLines[] = [];
+    let changedProblem: string | null = null;
+    try {
+      changed = await this.repository.changedLines(base.summary.commit, head.target.kind === "working" ? null : head.summary.commit);
+    } catch (error) {
+      changedProblem = error instanceof Error ? error.message : String(error);
+    }
+    const gathered = await gatherStory({ commits, pullRequest, changed, ...(pullRequestProblem === undefined ? {} : { pullRequestProblem }) }, this.dependencies.tickets);
+    if (changedProblem !== null) gathered.story.unread.push({ id: "docs and comments", source: "git diff", reason: changedProblem });
+    // Ids and reasons, never the text: a ticket's body may be private.
+    if (gathered.story.unread.length > 0) {
+      const log = number === null ? this.dependencies.logger : this.dependencies.logger.with({ pr: number });
+      log.log("warn", "story.unread", { unread: gathered.story.unread.map((u) => `${u.id}: ${u.reason}`).join("; ") });
+    }
+    return gathered;
   }
 
   /**
@@ -642,6 +682,8 @@ interface SavedReview {
   /** Its folder in the review store: "<base>..<head>". */
   name: string;
   markdown: string;
+  /** The story's text, for the explainer; the bundle keeps only its titles and counts. */
+  story: StoryContext;
 }
 
 /** The files a folder guide lists: source in the languages recorded, tests left out by the guide. */

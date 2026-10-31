@@ -8,6 +8,16 @@ export interface ChangeContext {
   uncommittedChanges: boolean;
 }
 
+/**
+ * What the people asking for the change said it's for: the pull request, its tickets, and the
+ * docs and comments it changed. Gathered by the workflow; here it's text to read, as data.
+ */
+export interface StoryContext {
+  pullRequest: { number: number; title: string; body: string } | null;
+  tickets: { id: string; source: string; title: string; state: string; body: string }[];
+  notes: { path: string; kind: "doc" | "comments"; added: string[]; removed: string[] }[];
+}
+
 export interface Explanation {
   format: typeof EXPLANATION_FORMAT;
   version: typeof EXPLANATION_VERSION;
