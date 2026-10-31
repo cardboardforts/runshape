@@ -87,7 +87,7 @@ export function buildRouteMap(run: Run, options: RouteMapOptions = {}): RouteMap
       const id = served ? `${request.method} ${served.route.path}` : `${request.method} ${path}`;
       const group = groups.get(id) ?? {
         id,
-        label: served ? `${request.method} ${readablePattern(served.route.path)}` : `${request.method} ${path}`,
+        label: routeLabel(request.method, path, served),
         routed: served !== null,
         variants: new Map(),
       };
@@ -248,6 +248,16 @@ function callsOnlyIn(these: VariantStep[], those: VariantStep[]): string[] {
     names.set(step.key, ambiguous ? `${step.symbol!.namespace}.${step.label}` : step.label);
   }
   return [...names.values()];
+}
+
+/** "GET /api/articles/{slug}": the route that served a request span, as the route map labels it. */
+export function requestRouteLabel(request: Span, routes: Route[]): string {
+  const path = withoutQuery(request.request!.path);
+  return routeLabel(request.request!.method, path, servingRoute(request, path, routes));
+}
+
+function routeLabel(method: string, path: string, served: ServedBy | null): string {
+  return served ? `${method} ${readablePattern(served.route.path)}` : `${method} ${path}`;
 }
 
 interface ServedBy {
