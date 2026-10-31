@@ -13,7 +13,7 @@ import { describe, expect, test } from "vitest";
 import { buildSystemGraph, moduleRoots, ZoneRules } from "@runshape/architecture";
 import { ComponentKind, Layout, Phase, QualifiedName, SystemGraph } from "@runshape/kernel";
 
-import { Arrangement, arrangeBox, ArrangementError, emptyArrangement, layout, parseArrangement, serializeArrangement } from "../src";
+import { Arrangement, arrangeBox, ArrangementError, emptyArrangement, layout, MAX_ARRANGED_SPOTS, parseArrangement, serializeArrangement } from "../src";
 import { loadFixtureRun } from "../../kernel/test/fixtures";
 
 async function moduleView(): Promise<{ graph: SystemGraph; at: (graph: SystemGraph, arrangement: Arrangement | null) => Promise<Layout> }> {
@@ -175,19 +175,60 @@ describe("saved arrangements", () => {
     const attempts = [
       "{ not json",
       JSON.stringify({ format: "runshape-arrangement", version: 2, levels: { "modules@hexagonal": { flat: { "app.db": { x: "10", y: 2 } }, floor: [] } } }),
-    ].map((text) => {
-      try {
-        return parseArrangement(text);
-      } catch (error) {
-        return error instanceof ArrangementError ? error.message : error;
-      }
-    });
+    ].map(attempt);
 
     expect(attempts).toMatchInlineSnapshot(`
       [
-        "not JSON: Expected property name or '}' in JSON at position 2 (line 1 column 3)",
+        "not JSON",
         "version: expected 1; levels.modules@hexagonal.flat.app.db: expected "x" and "y" as numbers; levels.modules@hexagonal.floor: expected an object",
       ]
     `);
   });
+
+  /**
+   * The file is gitignored, but a shared checkout, a copied .runshape or a tool can still hand
+   * one over: it's read as untrusted. Object machinery as a name is refused, so no box can
+   * reach Object's own "constructor"; a far-off coordinate is pulled in to the edge of the
+   * range; a file bigger than any real arrangement is refused outright.
+   */
+  test("a file someone else wrote can't reach past its own spots", () => {
+    const level = (flat: string) => `{"format":"runshape-arrangement","version":1,"levels":{"modules@hexagonal":{"flat":${flat},"floor":{}}}}`;
+    const many = Object.fromEntries(Array.from({ length: MAX_ARRANGED_SPOTS + 1 }, (_, i) => [`box${i}`, { x: 0, y: 0 }]));
+
+    const results = [
+      level('{"__proto__":{"x":1,"y":2},"constructor":{"x":1,"y":2}}'),
+      level('{"app.db":{"x":1e300,"y":-1e300}}'),
+      level(JSON.stringify(many)),
+    ].map(attempt);
+
+    expect(results).toMatchInlineSnapshot(`
+      [
+        "levels.modules@hexagonal.flat: a box may not be called __proto__; levels.modules@hexagonal.flat: a box may not be called constructor",
+        {
+          "levels": {
+            "modules@hexagonal": {
+              "flat": {
+                "app.db": {
+                  "x": 1000000,
+                  "y": -1000000,
+                },
+              },
+              "floor": {},
+            },
+          },
+        },
+        "more than 20000 spots",
+      ]
+    `);
+    const clamped = results[1] as ReturnType<typeof parseArrangement>;
+    expect(Object.getPrototypeOf(clamped.levels["modules@hexagonal"]!.flat)).toBe(null);
+  });
 });
+
+function attempt(text: string): unknown {
+  try {
+    return parseArrangement(text);
+  } catch (error) {
+    return error instanceof ArrangementError ? error.message : error;
+  }
+}

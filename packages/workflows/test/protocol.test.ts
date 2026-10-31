@@ -258,8 +258,28 @@ describe("moving a box on the wire", () => {
       [
         "That box isn't drawn at this level any more: nothing was moved.",
         "Can't move that box: no spot: flat x and y, or floor x and z, as numbers",
-        "Fix .runshape/arrangement.json before moving boxes (it would be overwritten): not JSON: Expected property name or '}' in JSON at position 2 (line 1 column 3)",
+        "Fix .runshape/arrangement.json before moving boxes (it would be overwritten): not JSON",
       ]
     `);
+    // Said on the canvas as soon as it's drawn, not only when someone tries to move a box.
+    expect(drawn.layout.arrangementProblem).toBe("not JSON");
+  });
+
+  test("a move the file couldn't keep is an error, and isn't drawn as if it were kept", async () => {
+    const run = await fixtureRuns("fastapi-slug-refactor").latest();
+    const full = { ...memoryFile(), write: async () => Promise.reject(new Error("disk full")) };
+    const session = new ViewerSession(run, { sources: { readLines: async () => null }, arrangements: full });
+    const drawn = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
+    if (drawn?.type !== "graph") throw new Error("expected a layout");
+    const box = drawn.layout.nodes[0]!;
+
+    const moved = await session.handle({ type: "arrange", level: drawn.layout.level, style: drawn.layout.profile.style, node: box.id, to: { flat: { x: -999, y: -999 } } });
+    const again = await session.handle({ type: "graph", phases: [Phase.Call], grouping: GROUPING });
+    if (again?.type !== "graph") throw new Error("expected a layout");
+
+    expect({ moved, stillWhereItWas: again.layout.nodes[0]!.flat }).toEqual({
+      moved: { type: "error", message: "Couldn't keep that move in .runshape/arrangement.json: disk full" },
+      stillWhereItWas: box.flat,
+    });
   });
 });

@@ -285,7 +285,9 @@ export class ViewerSession {
 
   /** The layout with the saved arrangement applied, kept as what the person now sees at its level. */
   private async laidOut(graph: Parameters<typeof layout>[0], view: Omit<Parameters<typeof layout>[1], "arrangement">): Promise<Layout> {
-    const drawn = await layout(graph, { ...view, arrangement: (await this.savedArrangement()).arrangement });
+    const saved = await this.savedArrangement();
+    // Drawn as computed when the file couldn't be used, and the canvas says why.
+    const drawn = { ...(await layout(graph, { ...view, arrangement: saved.arrangement })), arrangementProblem: saved.problem };
     this.drawn.set(zoomLevelKey(drawn.level, drawn.profile.style), drawn);
     return drawn;
   }
@@ -324,8 +326,15 @@ export class ViewerSession {
     }
     const move = "flat" in request.to ? { node: request.node, flat: request.to.flat } : { node: request.node, floor: request.to.floor };
     const arrangement = arrangeBox(saved.arrangement, seen, move);
+    if (this.arrangements !== null) {
+      try {
+        await this.arrangements.write(serializeArrangement(arrangement));
+      } catch (error) {
+        // Not kept: the session goes on drawing what's saved, not a move the file doesn't have.
+        return { type: "error", message: `Couldn't keep that move in ${this.arrangements.where}: ${error instanceof Error ? error.message : String(error)}` };
+      }
+    }
     this.arranged = Promise.resolve({ arrangement, problem: null });
-    if (this.arrangements !== null) await this.arrangements.write(serializeArrangement(arrangement));
     return null;
   }
 

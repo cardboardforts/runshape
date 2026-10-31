@@ -56,7 +56,8 @@ export async function layout(graph: SystemGraph, view: LayoutView): Promise<Layo
       placedNearNeighbours: false,
     }),
   );
-  const arranged = arrange(nodes, kept.edges, view.arrangement?.levels[zoomLevelKey(view.level, graph.profile.style)]);
+  const levelKey = zoomLevelKey(view.level, graph.profile.style);
+  const arranged = arrange(nodes, kept.edges, view.arrangement && Object.hasOwn(view.arrangement.levels, levelKey) ? view.arrangement.levels[levelKey] : undefined);
   const edges = kept.edges.map((edge): LayoutEdge => ({ ...graphEdge(edge), change: changes === null ? null : (changes.edges.get(edge.id) ?? Change.Unchanged) }));
   return {
     level: view.level,

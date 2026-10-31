@@ -36,23 +36,34 @@ export function sourceReaderAt(projectRoot: vscode.Uri): SourceReader {
 export function arrangementFileAt(projectRoot: vscode.Uri): ArrangementStore {
   const file = childUri(projectRoot, ".runshape/arrangement.json");
   const writing = childUri(projectRoot, ".runshape/arrangement.json.writing");
+  const where = ".runshape/arrangement.json";
   return {
-    where: ".runshape/arrangement.json",
+    where,
     async read(): Promise<string | null> {
+      let stat: vscode.FileStat;
       try {
-        return new TextDecoder("utf-8").decode(await vscode.workspace.fs.readFile(file));
+        stat = await vscode.workspace.fs.stat(file);
       } catch (error) {
         // None yet; anything else is the session's to report, not to save over.
         if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") return null;
         throw error;
       }
+      // A link or a folder isn't followed (whoever put it there chose where it points); nor is a huge file read.
+      if (stat.type !== vscode.FileType.File) throw new Error(`${where} isn't a plain file (a link or a folder): not read`);
+      if (stat.size > MAX_ARRANGEMENT_BYTES) throw new Error(`${where} is over ${MAX_ARRANGEMENT_BYTES} bytes: not read`);
+      return new TextDecoder("utf-8").decode(await vscode.workspace.fs.readFile(file));
     },
     async write(text: string): Promise<void> {
+      // A link planted at the side path is removed (the link, not what it points at), never written through.
+      await vscode.workspace.fs.delete(writing, { useTrash: false }).then(undefined, () => undefined);
       await vscode.workspace.fs.writeFile(writing, new TextEncoder().encode(text));
       await vscode.workspace.fs.rename(writing, file, { overwrite: true });
     },
   };
 }
+
+/** Far past any real arrangement (a few levels of tens of boxes is a few kilobytes): more is refused unread. */
+const MAX_ARRANGEMENT_BYTES = 1024 * 1024;
 
 export function childUri(base: vscode.Uri, relativePath: string): vscode.Uri {
   return vscode.Uri.joinPath(base, ...safeSegments(relativePath));

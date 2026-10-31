@@ -25,11 +25,31 @@ export type BoxMove = { node: string; flat: FlatPoint } | { node: string; floor:
 const FORMAT = "runshape-arrangement";
 const VERSION = 1;
 
+/**
+ * The file can come from anywhere a checkout does, so it's read as untrusted: at most this many
+ * levels and spots (a real arrangement has a few levels of tens of boxes), coordinates within
+ * this range (beyond it a box is nowhere anyone will scroll to, and sums of them stay exact),
+ * and no key that names an object's own machinery.
+ */
+export const MAX_ARRANGED_LEVELS = 500;
+export const MAX_ARRANGED_SPOTS = 20_000;
+export const MAX_COORDINATE = 1_000_000;
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+/** Names from the file are quoted back this long at most. */
+const MAX_QUOTED = 60;
+
 export class ArrangementError extends Error {}
 
 export function emptyArrangement(): Arrangement {
-  return { levels: {} };
+  return { levels: table() };
 }
+
+/** A lookup table with no prototype: a box named "constructor" finds its own spot or none, never Object's. */
+function table<T>(entries: Record<string, T> = {}): Record<string, T> {
+  return Object.assign(Object.create(null) as Record<string, T>, entries);
+}
+
+const clamp = (value: number) => Math.min(MAX_COORDINATE, Math.max(-MAX_COORDINATE, value));
 
 /** A box's name in the file: its code's name, or its id for boxes code doesn't name (client, externals). */
 export function boxName(node: Pick<LayoutNode, "id" | "qualifiedName">): string {
@@ -47,16 +67,16 @@ export function arrangeBox(arrangement: Arrangement, layout: Layout, move: BoxMo
   const key = zoomLevelKey(layout.level, layout.profile.style);
   const moved = layout.nodes.find((node) => node.id === move.node);
   if (moved === undefined) throw new ArrangementError(`no box ${move.node} at this level`);
-  const level = arrangement.levels[key] ?? { flat: {}, floor: {} };
-  const next: ArrangedLevel = { flat: { ...level.flat }, floor: { ...level.floor } };
+  const level = Object.hasOwn(arrangement.levels, key) ? arrangement.levels[key]! : { flat: table<FlatPoint>(), floor: table<FloorSpot>() };
+  const next: ArrangedLevel = { flat: table(level.flat), floor: table(level.floor) };
   if ("flat" in move) {
-    for (const node of layout.nodes) next.flat[boxName(node)] ??= { x: node.flat.x, y: node.flat.y };
-    next.flat[boxName(moved)] = { x: move.flat.x, y: move.flat.y };
+    for (const node of layout.nodes) next.flat[boxName(node)] ??= { x: clamp(node.flat.x), y: clamp(node.flat.y) };
+    next.flat[boxName(moved)] = { x: clamp(move.flat.x), y: clamp(move.flat.y) };
   } else {
-    for (const node of layout.nodes) next.floor[boxName(node)] ??= { x: node.floor.x, z: node.floor.z };
-    next.floor[boxName(moved)] = { x: move.floor.x, z: move.floor.z };
+    for (const node of layout.nodes) next.floor[boxName(node)] ??= { x: clamp(node.floor.x), z: clamp(node.floor.z) };
+    next.floor[boxName(moved)] = { x: clamp(move.floor.x), z: clamp(move.floor.z) };
   }
-  return { levels: { ...arrangement.levels, [key]: next } };
+  return { levels: table({ ...arrangement.levels, [key]: next }) };
 }
 
 /** A box's footprint, for finding a free spot: the 2D box, or the 3D tile seen from above. */
@@ -84,8 +104,8 @@ export function applyArrangement<P extends { x: number; y: number }>(
   if (saved === undefined || Object.keys(saved).length === 0) return nodes;
   const placed = new Map<string, P>();
   for (const node of nodes) {
-    const spot = saved[boxName(node)];
-    if (spot !== undefined) placed.set(node.id, spot);
+    const name = boxName(node);
+    if (Object.hasOwn(saved, name)) placed.set(node.id, saved[name]!);
   }
   const arranged = new Set(placed.keys());
   const neighbours = new Map<string, string[]>();
@@ -151,43 +171,64 @@ export function parseArrangement(text: string): Arrangement {
   let data: unknown;
   try {
     data = JSON.parse(text);
-  } catch (error) {
-    throw new ArrangementError(`not JSON: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    // The parser's own message quotes the file: say what's wrong, not what's in it.
+    throw new ArrangementError("not JSON");
   }
   const problems: string[] = [];
   if (!isRecord(data)) throw new ArrangementError("not an object");
   if (data.format !== FORMAT) problems.push(`format: expected "${FORMAT}"`);
   if (data.version !== VERSION) problems.push(`version: expected ${VERSION}`);
-  const levels: Record<string, ArrangedLevel> = {};
+  const levels = table<ArrangedLevel>();
+  const counted = { spots: 0 };
   if (!isRecord(data.levels)) problems.push("levels: expected an object");
+  else if (Object.keys(data.levels).length > MAX_ARRANGED_LEVELS) problems.push(`levels: more than ${MAX_ARRANGED_LEVELS}`);
   else {
     for (const [key, level] of Object.entries(data.levels)) {
+      if (FORBIDDEN_KEYS.has(key)) {
+        problems.push(`levels: a level may not be called ${key}`);
+        continue;
+      }
       if (!isRecord(level)) {
-        problems.push(`levels.${key}: expected an object`);
+        problems.push(`levels.${quoted(key)}: expected an object`);
         continue;
       }
       levels[key] = {
-        flat: spots<FlatPoint>(level.flat, `levels.${key}.flat`, ["x", "y"], problems),
-        floor: spots<FloorSpot>(level.floor, `levels.${key}.floor`, ["x", "z"], problems),
+        flat: spots<FlatPoint>(level.flat, `levels.${quoted(key)}.flat`, ["x", "y"], problems, counted),
+        floor: spots<FloorSpot>(level.floor, `levels.${quoted(key)}.floor`, ["x", "z"], problems, counted),
       };
     }
   }
-  if (problems.length > 0) throw new ArrangementError(problems.join("; "));
+  if (counted.spots > MAX_ARRANGED_SPOTS) problems.push(`more than ${MAX_ARRANGED_SPOTS} spots`);
+  if (problems.length > 0) throw new ArrangementError(problems.slice(0, MAX_PROBLEMS_SAID).join("; ") + (problems.length > MAX_PROBLEMS_SAID ? `; and ${problems.length - MAX_PROBLEMS_SAID} more` : ""));
   return { levels };
 }
 
+/** A broken file says its first few problems, not thousands. */
+const MAX_PROBLEMS_SAID = 5;
+
+function quoted(name: string): string {
+  return name.length > MAX_QUOTED ? `${name.slice(0, MAX_QUOTED)}…` : name;
+}
+
 /** The spots under one view of a level, each checked to have exactly its axes as numbers. */
-function spots<T>(value: unknown, path: string, axes: string[], problems: string[]): Record<string, T> {
-  if (value === undefined) return {};
+function spots<T>(value: unknown, path: string, axes: string[], problems: string[], counted: { spots: number }): Record<string, T> {
+  const result = table<T>();
+  if (value === undefined) return result;
   if (!isRecord(value)) {
     problems.push(`${path}: expected an object`);
-    return {};
+    return result;
   }
-  const result: Record<string, T> = {};
   for (const [name, spot] of Object.entries(value)) {
+    counted.spots += 1;
+    if (counted.spots > MAX_ARRANGED_SPOTS) return result;
+    if (FORBIDDEN_KEYS.has(name)) {
+      problems.push(`${path}: a box may not be called ${name}`);
+      continue;
+    }
     const valid = isRecord(spot) && axes.every((axis) => typeof spot[axis] === "number" && Number.isFinite(spot[axis]));
-    if (!valid) problems.push(`${path}.${name}: expected ${axes.map((axis) => `"${axis}"`).join(" and ")} as numbers`);
-    else result[name] = Object.fromEntries(axes.map((axis) => [axis, spot[axis] as number])) as T;
+    if (!valid) problems.push(`${path}.${quoted(name)}: expected ${axes.map((axis) => `"${axis}"`).join(" and ")} as numbers`);
+    else result[name] = Object.fromEntries(axes.map((axis) => [axis, clamp(spot[axis] as number)])) as T;
   }
   return result;
 }
