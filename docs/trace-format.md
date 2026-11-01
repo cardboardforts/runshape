@@ -95,3 +95,22 @@ A malformed catalog entry or scenario is skipped and reported; a malformed manif
 Segments are sent already split, so no reader parses a language's separators. Two functions are
 the same function when all three name parts match, so they must be stable across commits: no
 line numbers or addresses in them.
+
+## Limits and size
+
+A big suite records millions of calls: Runshape's own 381 tests write about 4 million spans and
+440 MB of scenario files. So that a hot loop can't fill a scenario, the TypeScript and Go
+recorders stop recording:
+
+| limit | default | what's left out |
+|---|---|---|
+| calls per caller | 50 | a function's calls from one calling span after its 50th, with everything under them |
+| events per scenario | 500,000 | every later call, line and object of that scenario |
+
+Each omission is said in the scenario's `recorderErrors` ("12 more calls of X from Y were not
+recorded (limit 50 per caller)", "stopped recording after 500000 events: ..."), and counted in
+the manifest's `recorderErrors`. Views draw what was recorded: a count past a limit is a floor.
+
+Readers keep one scenario file's text in memory at a time: read it, build its spans, let the
+JSON go. A scenario file is one JSON document, so a single scenario is limited only by
+`eventsPerScenario`.
