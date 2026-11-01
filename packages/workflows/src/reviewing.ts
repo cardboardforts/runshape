@@ -68,7 +68,15 @@ export class Reviewing {
     if (finished.review === null) return { errors: finished.errors };
     // Counts and where, never the comments' text: the log is read by more people than the review.
     const fields = { review: name, sink: sink.name, verdict, comments: finished.review.comments.length };
-    const preview = await sink.preview(finished.review);
+    let preview: CommentPreview;
+    try {
+      preview = await sink.preview(finished.review);
+    } catch (error) {
+      // Where it would go couldn't be found (no such PR, gh not logged in): nothing was sent.
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.log("warn", "review.not_previewed", { ...fields, error: reason });
+      return { errors: [`${sink.name} can't be sent to: ${reason}`] };
+    }
     const digest = this.digest(`${preview.where}\n${preview.text}`).slice(0, SHOWN_DIGEST_LENGTH);
     if (mode === SendMode.Preview) {
       await this.reviews.saveDraft(name, { ...draft, previewed: { where: preview.where, digest } });

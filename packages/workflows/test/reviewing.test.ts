@@ -216,5 +216,10 @@ describe("Reviewing", () => {
     await expect(reviewing.open("cccccccccccc..working")).rejects.toThrow("no review cccccccccccc..working: `compare` makes one");
     expect(await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Deliver)).toEqual({ errors: ["no comments to send: leave one with `review <name> comment <what> -- <text>`"] });
     expect(sink.delivered).toEqual([]);
+
+    // A destination that can't be found (no such PR) is said, not thrown.
+    await reviewing.comment(NAME, "change", "Small and clear.");
+    const nowhere: CommentSink = { name: "pull request #1", preview: async () => Promise.reject(new Error("no pull request #1")), deliver: async () => Promise.reject(new Error("never")) };
+    expect(await reviewing.send(NAME, nowhere, ReviewVerdict.Comment, SendMode.Preview)).toEqual({ errors: ["pull request #1 can't be sent to: no pull request #1"] });
   });
 });
