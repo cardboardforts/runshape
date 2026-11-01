@@ -130,6 +130,8 @@ export interface ReviewPageFunction {
   name: string;
   namespace: string;
   change: "edited" | "added" | "removed" | "ran differently";
+  /** A digest of its source before and after, when both recordings kept their source: edited again, it differs. */
+  revision?: string;
 }
 
 /** Changed functions with the same workflows through them: one thread to follow. */

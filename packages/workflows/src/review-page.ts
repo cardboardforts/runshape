@@ -155,8 +155,8 @@ function side({ asked, recording, commit, subject }: ReviewSide): ReviewPageSide
   return { asked, recording, commit, subject };
 }
 
-function pageFunction(fn: Pick<ChangedFunction, "symbol" | "change">): ReviewPageFunction {
-  return { name: fn.symbol.path, namespace: fn.symbol.namespace, change: fn.change };
+function pageFunction(fn: Pick<ChangedFunction, "symbol" | "change" | "revision">): ReviewPageFunction {
+  return { name: fn.symbol.path, namespace: fn.symbol.namespace, change: fn.change, ...(fn.revision === undefined ? {} : { revision: fn.revision }) };
 }
 
 /** What a reviewer should look at first, worst first; nothing when nothing changed. */

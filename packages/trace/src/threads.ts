@@ -31,6 +31,8 @@ export interface ChangedFunction {
   file: string;
   /** Its own source changed, or it only exists on one side. */
   change: "edited" | "added" | "removed" | "ran differently";
+  /** A digest of its source before and after (when kept, and a digest was given): edited again, it differs. */
+  revision?: string;
   threads: Thread[];
   routes: ThreadRoute[];
 }
@@ -52,7 +54,7 @@ const KIND_ORDER = [ThreadKind.Different, ThreadKind.New, ThreadKind.Gone, Threa
  * through it on either side. A reviewer works down this list; a workflow that still behaves the
  * same is listed too, since "still green, still the same" is what the change has to keep.
  */
-export function buildThreads(base: Run, head: Run, diff: RunDiff, options: { phases?: Phase[]; moves?: Moves } = {}): Threads {
+export function buildThreads(base: Run, head: Run, diff: RunDiff, options: { phases?: Phase[]; moves?: Moves; digest?: (text: string) => string } = {}): Threads {
   const phases = new Set(options.phases ?? [Phase.Call]);
   const moves = options.moves ?? Moves.none();
   const basis = base.sources !== null && head.sources !== null ? "source" : "behaviour";
@@ -66,7 +68,7 @@ export function buildThreads(base: Run, head: Run, diff: RunDiff, options: { pha
   const headRoutes = routesByFunction(buildRouteMap(head, { phases: [...phases] }));
   const baseRoutes = routesByFunction(buildRouteMap(base, { phases: [...phases], keyOf: moves.headKey }));
 
-  const functions = changed.map(({ fn, change }): ChangedFunction => {
+  const functions = changed.map(({ fn, change, before, after }): ChangedFunction => {
     const key = fn.symbol.key;
     const ids = new Set([...(headRuns.get(key) ?? []), ...(baseRuns.get(key) ?? [])]);
     const threads = [...ids]
@@ -84,7 +86,9 @@ export function buildThreads(base: Run, head: Run, diff: RunDiff, options: { pha
       return { label, on: onHead && onBase ? "both" : onHead ? "head" : "base" };
     });
     const symbol = functionRef(fn.symbol);
-    return { symbol, label: `${symbol.path} (${symbol.namespace})`, file: fn.file, change, threads, routes };
+    // Separated so "ab" + "c" and "a" + "bc" differ; a side without the function is empty.
+    const revision = options.digest !== undefined && (before !== null || after !== null) ? options.digest(`${before ?? ""}\u0000${after ?? ""}`).slice(0, REVISION_LENGTH) : undefined;
+    return { symbol, label: `${symbol.path} (${symbol.namespace})`, file: fn.file, change, ...(revision === undefined ? {} : { revision }), threads, routes };
   });
   // The ones whose workflows changed first: that's where a reviewer starts.
   const weight = (fn: ChangedFunction) => fn.threads.filter((t) => t.kind !== ThreadKind.Same).length;
@@ -96,7 +100,13 @@ interface Changed {
   /** Head's function, or the base's when it's gone (named as head would name it). */
   fn: CatalogFunction;
   change: ChangedFunction["change"];
+  /** Its source on each side, when kept: what a revision is a digest of. */
+  before: string | null;
+  after: string | null;
 }
+
+/** Hex digits of a revision: enough to tell one edit from the next, short in a bundle. */
+const REVISION_LENGTH = 16;
 
 /**
  * Functions whose own lines differ, or that only one side has; a moved function is paired with
@@ -113,15 +123,15 @@ function changedBySource(base: Run, head: Run, moves: Moves, ranDifferently: Map
     if (tests.has(fn.symbol.key)) continue;
     const before = baseByHeadKey.get(fn.symbol.key);
     if (before === undefined) {
-      changed.push({ fn, change: "added" });
+      changed.push({ fn, change: "added", before: null, after: bodyOf(head, fn) });
       continue;
     }
     const [was, now] = [bodyOf(base, before), bodyOf(head, fn)];
     if (was === null || now === null) {
-      if (behaved.has(fn.symbol.key)) changed.push({ fn, change: "ran differently" });
-    } else if (was !== now) changed.push({ fn, change: "edited" });
+      if (behaved.has(fn.symbol.key)) changed.push({ fn, change: "ran differently", before: was, after: now });
+    } else if (was !== now) changed.push({ fn, change: "edited", before: was, after: now });
   }
-  for (const [headKey, fn] of baseByHeadKey) if (!headKeys.has(headKey) && !tests.has(headKey)) changed.push({ fn, change: "removed" });
+  for (const [headKey, fn] of baseByHeadKey) if (!headKeys.has(headKey) && !tests.has(headKey)) changed.push({ fn, change: "removed", before: bodyOf(base, fn), after: null });
   return changed;
 }
 
@@ -136,7 +146,7 @@ function changedByBehaviour(base: Run, head: Run, ranDifferently: Map<string, Se
   const baseByHeadKey = new Map(base.catalog.map((fn) => [moves.headKey(fn.symbol.key), fn]));
   return [...keys].flatMap((key) => {
     const fn = head.catalogFunction(key) ?? baseByHeadKey.get(key);
-    return fn === undefined ? [] : [{ fn, change: "ran differently" as const }];
+    return fn === undefined ? [] : [{ fn, change: "ran differently" as const, before: null, after: null }];
   });
 }
 

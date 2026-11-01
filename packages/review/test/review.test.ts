@@ -44,17 +44,27 @@ describe("reviewables", () => {
 describe("a draft", () => {
   test("comparing again un-checks only what now looks different; comments on what's gone stay, unpinned", () => {
     const items = reviewables(PAGE);
-    let draft = checkOff(startDraft(NAME, PAGE), items, ["1", "2", "3", "7"]).draft;
+    let draft = checkOff(startDraft(NAME, PAGE), items, ["1", "2", "3", "5", "6", "7"]).draft;
     draft = addComment(draft, items, "test:tests/test_api/test_routes/test_articles.py::test_user_can_create_article", "Add a case for a title that's all punctuation.", AT).draft;
     draft = addComment(draft, items, "change", "Nice and small.", AT).draft;
 
-    // The fix: the second thread's tests now also run the normaliser, so the first thread's
-    // workflows change, and the create test is no longer a change at all.
+    // The fix, compared again:
+    // - the first thread's tests now include one more, so it and its functions look different;
+    // - get_slug_for_article was edited again (a new revision: its source differs), though its
+    //   change ("edited") and its tests are the same: only it is un-checked, not its neighbour;
+    // - the duplicate-slug test now fails: same row, new status (heading and outcome);
+    // - the create test is no longer a change at all, so its comment is unpinned.
     const [first, second] = PAGE.threads;
+    const editedAgain = second!.functions.map((fn) => (fn.name === "get_slug_for_article" ? { ...fn, revision: "0000000000000000" } : fn));
     const again: ReviewPage = {
       ...PAGE,
-      threads: [{ ...first!, workflows: [...first!.workflows, { kind: "same", tests: [{ id: "t", name: "test_list_articles", inHead: true }] }] }, second!],
-      sections: PAGE.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({ ...row, tests: row.tests.filter((t) => t.name !== "test_user_can_create_article") })) })),
+      threads: [{ ...first!, workflows: [...first!.workflows, { kind: "same", tests: [{ id: "t", name: "test_list_articles", inHead: true }] }] }, { ...second!, functions: editedAgain }],
+      sections: [
+        {
+          heading: "Now failing",
+          rows: PAGE.sections[0]!.rows.map((row) => ({ ...row, tests: row.tests.filter((t) => t.name !== "test_user_can_create_article"), changes: ["passed → failed", ...row.changes] })),
+        },
+      ],
     };
     const after = reviewables(again);
     const redrafted = draftFor(NAME, again, draft);
@@ -65,17 +75,43 @@ describe("a draft", () => {
     }).toMatchInlineSnapshot(`
       {
         "progress": [
-          "thread:app.services.articles._normalize_title [changed-since-checked] ",
+          "thread:app.services.articles._normalize_title+0c6069dd8c3100 [changed-since-checked] ",
           "function:app.services.articles._normalize_title [changed-since-checked] ",
           "function:app.services.articles.ensure_slug_available [changed-since-checked] ",
-          "thread:app.api.routes.articles.articles_resource.create_new_article [to-review] ",
-          "function:app.api.routes.articles.articles_resource.create_new_article [to-review] ",
-          "function:app.services.articles.get_slug_for_article [to-review] ",
-          "test:tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug [checked] ",
+          "thread:app.api.routes.articles.articles_resource.create_new_article+11f6b0efbf9a40 [to-review] ",
+          "function:app.api.routes.articles.articles_resource.create_new_article [checked] ",
+          "function:app.services.articles.get_slug_for_article [changed-since-checked] ",
+          "test:tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug [changed-since-checked] ",
         ],
         "unpinned": [
           "test:tests/test_api/test_routes/test_articles.py::test_user_can_create_article: Add a case for a title that's all punctuation.",
           "change: Nice and small.",
+        ],
+      }
+    `);
+  });
+
+  test("a thread is all of its functions: one gained is another thread; two functions of one name (overloads) are two", () => {
+    const [first] = PAGE.threads;
+    const fn = first!.functions[0]!;
+    const grown: ReviewPage = { ...PAGE, threads: [{ ...first!, functions: [...first!.functions, { ...fn, name: "slugify" }, { ...fn }] }], sections: [] };
+
+    expect({
+      before: reviewables({ ...PAGE, threads: [first!], sections: [] }).map((item) => item.key),
+      after: reviewables(grown).map((item) => item.key),
+    }).toMatchInlineSnapshot(`
+      {
+        "after": [
+          "thread:app.services.articles._normalize_title+09660239180672",
+          "function:app.services.articles._normalize_title",
+          "function:app.services.articles.ensure_slug_available",
+          "function:app.services.articles.slugify",
+          "function:app.services.articles._normalize_title#2",
+        ],
+        "before": [
+          "thread:app.services.articles._normalize_title+0c6069dd8c3100",
+          "function:app.services.articles._normalize_title",
+          "function:app.services.articles.ensure_slug_available",
         ],
       }
     `);

@@ -336,6 +336,7 @@ export class Recordings {
       rules: headRules ?? ZoneRules.none(),
       createdAt: this.dependencies.now().toISOString(),
       story,
+      digest: (text) => this.dependencies.hashing.sha256(text),
     });
     const reviews = this.library.reviews;
     const name = reviewName(base.plan.id, head.plan.id);

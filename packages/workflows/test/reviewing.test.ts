@@ -4,6 +4,7 @@
  * on GitHub, a revision request for a local agent: adapters, faked here by one that keeps what
  * it's given). The workflow does the loading and saving; the review module does the rest.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -31,6 +32,7 @@ async function slugRefactorPage(): Promise<ReviewPage> {
     baseRules: ZoneRules.none(),
     rules: ZoneRules.none(),
     createdAt: "2026-10-16T09:00:00Z",
+    digest: (text) => createHash("sha256").update(text).digest("hex"),
   });
   return buildReviewPage(bundle);
 }
@@ -88,10 +90,10 @@ describe("Reviewing", () => {
     // What there is to look at: each thread, each changed function in it, each test that changed.
     expect(opened.progress.map((entry) => `${entry.item.key} [${entry.state}]`)).toMatchInlineSnapshot(`
       [
-        "thread:app.services.articles._normalize_title [to-review]",
+        "thread:app.services.articles._normalize_title+0c6069dd8c3100 [to-review]",
         "function:app.services.articles._normalize_title [to-review]",
         "function:app.services.articles.ensure_slug_available [to-review]",
-        "thread:app.api.routes.articles.articles_resource.create_new_article [to-review]",
+        "thread:app.api.routes.articles.articles_resource.create_new_article+11f6b0efbf9a40 [to-review]",
         "function:app.api.routes.articles.articles_resource.create_new_article [to-review]",
         "function:app.services.articles.get_slug_for_article [to-review]",
         "test:tests/test_api/test_routes/test_articles.py::test_user_can_not_create_article_with_duplicated_slug [to-review]",
@@ -129,11 +131,11 @@ describe("Reviewing", () => {
           },
           "checked": [
             {
-              "fingerprint": "1d9b23d7effec5",
-              "key": "thread:app.services.articles._normalize_title",
+              "fingerprint": "12012cdee07357",
+              "key": "thread:app.services.articles._normalize_title+0c6069dd8c3100",
             },
             {
-              "fingerprint": "1d383ebc08e9e0",
+              "fingerprint": "10a37c59043f8b",
               "key": "function:app.services.articles._normalize_title",
             },
           ],

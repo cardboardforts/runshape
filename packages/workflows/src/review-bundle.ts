@@ -96,6 +96,8 @@ export interface BundleInput {
   createdAt: string;
   /** The story the workflow gathered (gatherStory); left out, the bundle has none. */
   story?: ReviewStory;
+  /** Hashing's sha256: each changed function's revision (a digest of its source), so a review knows when it was edited again. */
+  digest?: (text: string) => string;
 }
 
 export function buildReviewBundle(input: BundleInput): ReviewBundle {
@@ -105,7 +107,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
   const graphs = comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules });
   const placed = { base: buildPlacements(base, baseRules, rules.profile), head: buildPlacements(head, rules) };
   const architecture = diffArchitecture(placed.base, placed.head, moves);
-  const threads = buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves });
+  const threads = buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves, digest: input.digest });
   return {
     format: REVIEW_FORMAT,
     version: REVIEW_VERSION,

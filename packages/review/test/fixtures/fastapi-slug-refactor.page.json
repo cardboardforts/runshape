@@ -50,22 +50,26 @@
             {
               "name": "_normalize_title",
               "namespace": "app.services.articles",
-              "change": "added"
+              "change": "added",
+              "revision": "39f5e8ee94c1adb7"
             },
             {
               "name": "create_new_article",
               "namespace": "app.api.routes.articles.articles_resource",
-              "change": "edited"
+              "change": "edited",
+              "revision": "587c01f6ad7f269b"
             },
             {
               "name": "ensure_slug_available",
               "namespace": "app.services.articles",
-              "change": "added"
+              "change": "added",
+              "revision": "9613a60e097f0b32"
             },
             {
               "name": "get_slug_for_article",
               "namespace": "app.services.articles",
-              "change": "edited"
+              "change": "edited",
+              "revision": "8d667677dbd85c7f"
             }
           ],
           "changes": [
@@ -83,12 +87,14 @@
         {
           "name": "_normalize_title",
           "namespace": "app.services.articles",
-          "change": "added"
+          "change": "added",
+          "revision": "39f5e8ee94c1adb7"
         },
         {
           "name": "ensure_slug_available",
           "namespace": "app.services.articles",
-          "change": "added"
+          "change": "added",
+          "revision": "9613a60e097f0b32"
         }
       ],
       "workflows": [
@@ -120,12 +126,14 @@
         {
           "name": "create_new_article",
           "namespace": "app.api.routes.articles.articles_resource",
-          "change": "edited"
+          "change": "edited",
+          "revision": "587c01f6ad7f269b"
         },
         {
           "name": "get_slug_for_article",
           "namespace": "app.services.articles",
-          "change": "edited"
+          "change": "edited",
+          "revision": "8d667677dbd85c7f"
         }
       ],
       "workflows": [

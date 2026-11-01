@@ -16,7 +16,10 @@ export interface Beam {
 
 /** Something in a review to check off and comment on. */
 export interface Reviewable {
-  /** Stable across pushes: "thread:app.services.articles._normalize_title", "function:…", "test:<id>". */
+  /**
+   * Stable across pushes: "thread:<first function>+<digest of all of them>", "function:<namespace>.<name>"
+   * ("#2" after a second function of the same name: an overload), "test:<id>".
+   */
   key: string;
   kind: ReviewableKind;
   label: string;
@@ -36,13 +39,15 @@ export const WHOLE_CHANGE = "change";
  */
 export function reviewables(page: ReviewPage): Reviewable[] {
   const items: Reviewable[] = [];
+  const functionKey = overloadSafeKeys();
   for (const thread of page.threads) {
     const [first] = thread.functions;
     if (first === undefined) continue;
     const beams = thread.workflows.map((workflow) => ({ kind: workflow.kind, tests: workflow.tests }));
     const seen = { workflows: thread.workflows.map((workflow) => [workflow.kind, workflow.tests.map((test) => test.id)]), routes: thread.routes };
     items.push({
-      key: `${ReviewableKind.Thread}:${qualified(first)}`,
+      // Every function names the thread: one gained or lost is another thread to look at.
+      key: `${ReviewableKind.Thread}:${qualified(first)}+${fingerprint(thread.functions.map(qualified))}`,
       kind: ReviewableKind.Thread,
       label: `through ${listed(thread.functions.map(qualified))}`,
       fingerprint: fingerprint({ functions: thread.functions, ...seen }),
@@ -51,10 +56,11 @@ export function reviewables(page: ReviewPage): Reviewable[] {
     });
     for (const fn of thread.functions) {
       items.push({
-        key: `${ReviewableKind.Function}:${qualified(fn)}`,
+        key: `${ReviewableKind.Function}:${functionKey(qualified(fn))}`,
         kind: ReviewableKind.Function,
         label: `${qualified(fn)} (${fn.change})`,
-        fingerprint: fingerprint({ change: fn.change, ...seen }),
+        // Its revision: edited again since it was checked, it's to look at again.
+        fingerprint: fingerprint({ change: fn.change, revision: fn.revision ?? null, ...seen }),
         target: { kind: "function", function: commentFunction(fn) },
         beams,
       });
@@ -70,6 +76,8 @@ export function reviewables(page: ReviewPage): Reviewable[] {
           key: `${ReviewableKind.Test}:${test.id}`,
           kind: ReviewableKind.Test,
           label: `${test.name} (${section.heading.toLowerCase()})`,
+          // The heading is its status (now failing, still passing but different, …), and the
+          // changes say an outcome that changed ("passed → failed").
           fingerprint: fingerprint({ heading: section.heading, changes: row.changes, cause: row.cause }),
           target: { kind: "test", id: test.id, name: test.name },
           beams: [],
@@ -95,6 +103,16 @@ const FUNCTIONS_IN_THREAD_LABEL = 3;
 function listed(names: string[]): string {
   const more = names.length - FUNCTIONS_IN_THREAD_LABEL;
   return more > 0 ? `${names.slice(0, FUNCTIONS_IN_THREAD_LABEL).join(", ")} and ${more} more` : names.join(", ");
+}
+
+/** Function names as keys, the second of a name (an overload) with "#2", in the page's order. */
+function overloadSafeKeys(): (name: string) => string {
+  const seen = new Map<string, number>();
+  return (name) => {
+    const count = (seen.get(name) ?? 0) + 1;
+    seen.set(name, count);
+    return count === 1 ? name : `${name}#${count}`;
+  };
 }
 
 function qualified(fn: ReviewPageFunction): string {
