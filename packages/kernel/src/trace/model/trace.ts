@@ -205,23 +205,30 @@ export class ObjectInstance {
 /** Shared by every span with nothing in a list: most spans are leaves that make no boundary calls. */
 const NONE: readonly never[] = Object.freeze([]);
 
+/** What few spans have: kept apart so the millions of plain calls don't carry a field for each. */
+interface RareSpanFacts {
+  boundaryCalls: BoundaryCall[] | null;
+  /** Set when it ran in slices (a coroutine resumed), or began running after its start. */
+  runs: [startUs: number, endUs: number][] | null;
+  resumes: number;
+  request: RequestLine | null;
+}
+
 /**
- * One call. A recording of a big test suite holds millions, so a span keeps its lists only when
- * they have something in them, trimmed to size once its scenario is parsed (settle), and its one
- * running interval without an array of its own.
+ * One call. A recording of a big test suite holds millions, so a span keeps a list only when it
+ * has something in it, sized to fit once its scenario is parsed (settle), its one running
+ * interval without an array, and what few spans have (a coroutine's slices, a request, boundary
+ * calls) in one object apart.
  */
 export class Span {
   private childList: Span[] | null = null;
   private lineList: number[] | null = null;
-  private callList: BoundaryCall[] | null = null;
-  resumes = 0;
   endUs: number;
   /** Set when the span ran in one interval from its start: its first stop. */
   private onlyRunEnd: number | null = null;
-  /** Set instead when it ran in slices (a coroutine resumed), or began running after its start. */
-  private runList: [startUs: number, endUs: number][] | null = null;
+  /** While parsing: when it last started running, null while stopped. */
   private runningSince: number | null;
-  request: RequestLine | null = null;
+  private rare: RareSpanFacts | null = null;
 
   constructor(
     readonly id: number,
@@ -246,35 +253,53 @@ export class Span {
   }
 
   get boundaryCalls(): readonly BoundaryCall[] {
-    return this.callList ?? NONE;
+    return this.rare?.boundaryCalls ?? NONE;
   }
 
   /** When it was actually running: one interval for a plain call, one per resume for a coroutine. */
   get runs(): readonly [startUs: number, endUs: number][] {
-    if (this.runList !== null) return this.runList;
+    if (this.rare?.runs) return this.rare.runs;
     return this.onlyRunEnd === null ? NONE : [[this.startUs, this.onlyRunEnd]];
   }
 
+  get resumes(): number {
+    return this.rare?.resumes ?? 0;
+  }
+
+  /** The HTTP request a request-entry span received. */
+  get request(): RequestLine | null {
+    return this.rare?.request ?? null;
+  }
+
+  set request(request: RequestLine | null) {
+    this.rareFacts().request = request;
+  }
+
   addChild(child: Span): void {
-    (this.childList ??= []).push(child);
+    // A one-element literal is sized to fit; the first push onto [] reserves seventeen slots.
+    if (this.childList === null) this.childList = [child];
+    else this.childList.push(child);
   }
 
   addLine(line: number): void {
-    (this.lineList ??= []).push(line);
+    if (this.lineList === null) this.lineList = [line];
+    else this.lineList.push(line);
   }
 
   addBoundaryCall(call: BoundaryCall): void {
-    (this.callList ??= []).push(call);
+    const rare = this.rareFacts();
+    if (rare.boundaryCalls === null) rare.boundaryCalls = [call];
+    else rare.boundaryCalls.push(call);
   }
 
   /** Its lists are complete: drop the room they grew for more. */
   settle(): void {
     if (this.childList !== null && this.childList.length > 1) this.childList = this.childList.slice();
     if (this.lineList !== null && this.lineList.length > 1) this.lineList = this.lineList.slice();
-    if (this.callList !== null && this.callList.length > 1) this.callList = this.callList.slice();
   }
 
   resumedAt(tUs: number): void {
+    this.rareFacts().resumes += 1;
     this.runningSince = tUs;
   }
 
@@ -282,15 +307,21 @@ export class Span {
   stoppedAt(tUs: number): void {
     this.endUs = tUs;
     if (this.runningSince !== null) {
-      if (this.runList === null && this.onlyRunEnd === null && this.runningSince === this.startUs) {
+      if (this.rare?.runs == null && this.onlyRunEnd === null && this.runningSince === this.startUs) {
         this.onlyRunEnd = tUs;
       } else {
-        this.runList ??= this.onlyRunEnd === null ? [] : [[this.startUs, this.onlyRunEnd]];
+        const rare = this.rareFacts();
+        rare.runs ??= this.onlyRunEnd === null ? [] : [[this.startUs, this.onlyRunEnd]];
         this.onlyRunEnd = null;
-        this.runList.push([this.runningSince, tUs]);
+        rare.runs.push([this.runningSince, tUs]);
       }
     }
     this.runningSince = null;
+  }
+
+  private rareFacts(): RareSpanFacts {
+    this.rare ??= { boundaryCalls: null, runs: null, resumes: 0, request: null };
+    return this.rare;
   }
 
   get isLandmark(): boolean {

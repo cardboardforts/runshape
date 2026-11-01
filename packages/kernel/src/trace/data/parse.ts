@@ -158,10 +158,7 @@ export function parseScenario(dto: ScenarioDto, naming: Naming): Scenario {
       }
       case "R": {
         const span = spans.get(event[2]);
-        if (span) {
-          span.resumes += 1;
-          span.resumedAt(event[1]);
-        }
+        span?.resumedAt(event[1]);
         break;
       }
       case "X": {
