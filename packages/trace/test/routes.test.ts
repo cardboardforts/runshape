@@ -571,7 +571,7 @@ describe("shapes the recordings don't have", () => {
       const info: FunctionInfo = { role: Role.Source, symbol: new CodeSymbol([pkg!], [], fn!, SymbolKind.Function, null), file: null, firstLine: 1, landmarkKind: null };
       const span = new Span(spans.length + 1, info, parent, null, Phase.Call, (clock += 1), 1);
       spans.push(span);
-      parent?.children.push(span);
+      parent?.addChild(span);
       return span;
     };
     // A tiny parser for "a(b, c(d))".

@@ -1,6 +1,6 @@
 import { RunSource } from "../model/run-source";
 import { Run } from "../model/trace";
-import { LoadedScenario, parseRun, TraceFormatError } from "./parse";
+import { RunParser, TraceFormatError } from "./parse";
 import { ManifestDto, ScenarioDto } from "./wire";
 
 /**
@@ -50,17 +50,21 @@ export class TraceDirectory implements RunSource {
 
   private async load(runDirectory: string): Promise<Run> {
     const manifest = await this.readJson<ManifestDto>(`${runDirectory}/manifest.json`);
-    const loaded: LoadedScenario[] = [];
+    const parser = new RunParser(manifest);
     const unreadable: string[] = [];
+    // One scenario's text and wire objects at a time: a big suite's run is hundreds of megabytes of JSON.
     for (const entry of manifest.scenarios ?? []) {
       const path = `${runDirectory}/${entry.file}`;
+      let dto: ScenarioDto;
       try {
-        loaded.push({ file: path, dto: await this.readJson<ScenarioDto>(path) });
+        dto = await this.readJson<ScenarioDto>(path);
       } catch (error) {
         unreadable.push(`skipped ${path}: ${describe(error)}`);
+        continue;
       }
+      parser.add(path, dto);
     }
-    const run = parseRun(manifest, loaded);
+    const run = parser.finish();
     run.problems.push(...unreadable);
     return run;
   }

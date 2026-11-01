@@ -51,7 +51,7 @@ export interface TimelineBar {
   startUs: number;
   endUs: number;
   /** Running intervals; gaps between them are a coroutine awaiting. */
-  runs: [startUs: number, endUs: number][];
+  runs: readonly [startUs: number, endUs: number][];
   label: string;
   componentId: string;
   role: Role;

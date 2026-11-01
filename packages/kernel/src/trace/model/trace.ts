@@ -202,14 +202,24 @@ export class ObjectInstance {
   ) {}
 }
 
+/** Shared by every span with nothing in a list: most spans are leaves that make no boundary calls. */
+const NONE: readonly never[] = Object.freeze([]);
+
+/**
+ * One call. A recording of a big test suite holds millions, so a span keeps its lists only when
+ * they have something in them, trimmed to size once its scenario is parsed (settle), and its one
+ * running interval without an array of its own.
+ */
 export class Span {
-  readonly children: Span[] = [];
-  readonly lines: number[] = [];
-  readonly boundaryCalls: BoundaryCall[] = [];
+  private childList: Span[] | null = null;
+  private lineList: number[] | null = null;
+  private callList: BoundaryCall[] | null = null;
   resumes = 0;
   endUs: number;
-  /** When it was actually running: one interval for a plain call, one per resume for a coroutine. */
-  readonly runs: [startUs: number, endUs: number][] = [];
+  /** Set when the span ran in one interval from its start: its first stop. */
+  private onlyRunEnd: number | null = null;
+  /** Set instead when it ran in slices (a coroutine resumed), or began running after its start. */
+  private runList: [startUs: number, endUs: number][] | null = null;
   private runningSince: number | null;
   request: RequestLine | null = null;
 
@@ -226,6 +236,44 @@ export class Span {
     this.runningSince = startUs;
   }
 
+  get children(): readonly Span[] {
+    return this.childList ?? NONE;
+  }
+
+  /** The project lines it executed, each once. */
+  get lines(): readonly number[] {
+    return this.lineList ?? NONE;
+  }
+
+  get boundaryCalls(): readonly BoundaryCall[] {
+    return this.callList ?? NONE;
+  }
+
+  /** When it was actually running: one interval for a plain call, one per resume for a coroutine. */
+  get runs(): readonly [startUs: number, endUs: number][] {
+    if (this.runList !== null) return this.runList;
+    return this.onlyRunEnd === null ? NONE : [[this.startUs, this.onlyRunEnd]];
+  }
+
+  addChild(child: Span): void {
+    (this.childList ??= []).push(child);
+  }
+
+  addLine(line: number): void {
+    (this.lineList ??= []).push(line);
+  }
+
+  addBoundaryCall(call: BoundaryCall): void {
+    (this.callList ??= []).push(call);
+  }
+
+  /** Its lists are complete: drop the room they grew for more. */
+  settle(): void {
+    if (this.childList !== null && this.childList.length > 1) this.childList = this.childList.slice();
+    if (this.lineList !== null && this.lineList.length > 1) this.lineList = this.lineList.slice();
+    if (this.callList !== null && this.callList.length > 1) this.callList = this.callList.slice();
+  }
+
   resumedAt(tUs: number): void {
     this.runningSince = tUs;
   }
@@ -233,7 +281,15 @@ export class Span {
   /** Returned, raised or suspended; the last stop is its end. */
   stoppedAt(tUs: number): void {
     this.endUs = tUs;
-    if (this.runningSince !== null) this.runs.push([this.runningSince, tUs]);
+    if (this.runningSince !== null) {
+      if (this.runList === null && this.onlyRunEnd === null && this.runningSince === this.startUs) {
+        this.onlyRunEnd = tUs;
+      } else {
+        this.runList ??= this.onlyRunEnd === null ? [] : [[this.startUs, this.onlyRunEnd]];
+        this.onlyRunEnd = null;
+        this.runList.push([this.runningSince, tUs]);
+      }
+    }
     this.runningSince = null;
   }
 

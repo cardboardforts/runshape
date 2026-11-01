@@ -32,68 +32,89 @@ export interface LoadedScenario {
  * A manifest we can't read is fatal. A single unreadable scenario is skipped and reported
  * in Run.problems, so one corrupt file doesn't hide the other ninety.
  */
-export function parseRun(manifest: ManifestDto, loaded: LoadedScenario[]): Run {
-  const manifestProblems: string[] = [];
-  if (manifest.format !== TRACE_FORMAT) {
-    manifestProblems.push(`format is ${JSON.stringify(manifest.format)}, expected ${JSON.stringify(TRACE_FORMAT)}`);
-  }
-  if (!SUPPORTED_VERSIONS.includes(manifest.version)) {
-    manifestProblems.push(`version ${manifest.version} is not supported (this viewer reads versions ${SUPPORTED_VERSIONS.join(" and ")})`);
-  }
-  if (manifest.version === 2) {
-    for (const field of ["language", "runtime"] as const) {
-      if (typeof manifest[field] !== "string" || manifest[field] === "") {
-        manifestProblems.push(`version 2 says which ${field} recorded it: "${field}" is missing`);
+export function parseRun(manifest: ManifestDto, loaded: Iterable<LoadedScenario>): Run {
+  const parser = new RunParser(manifest);
+  for (const { file, dto } of loaded) parser.add(file, dto);
+  return parser.finish();
+}
+
+/**
+ * parseRun a scenario at a time: the caller can read each scenario's file, add it and let its
+ * text and wire objects go before reading the next, so a run is never held twice over.
+ */
+export class RunParser {
+  private readonly naming: Naming;
+  private readonly problems: string[];
+  private readonly catalog: CatalogFunction[] = [];
+  private readonly topology: Topology | null = null;
+  private readonly scenarios: Scenario[] = [];
+
+  /** Throws TraceFormatError when the manifest can't be read. */
+  constructor(private readonly manifest: ManifestDto) {
+    const manifestProblems: string[] = [];
+    if (manifest.format !== TRACE_FORMAT) {
+      manifestProblems.push(`format is ${JSON.stringify(manifest.format)}, expected ${JSON.stringify(TRACE_FORMAT)}`);
+    }
+    if (!SUPPORTED_VERSIONS.includes(manifest.version)) {
+      manifestProblems.push(`version ${manifest.version} is not supported (this viewer reads versions ${SUPPORTED_VERSIONS.join(" and ")})`);
+    }
+    if (manifest.version === 2) {
+      for (const field of ["language", "runtime"] as const) {
+        if (typeof manifest[field] !== "string" || manifest[field] === "") {
+          manifestProblems.push(`version 2 says which ${field} recorded it: "${field}" is missing`);
+        }
       }
     }
-  }
-  if (manifestProblems.length > 0) {
-    throw new TraceFormatError(manifestProblems);
-  }
-  const naming = manifest.version === 1 ? VERSION_1_NAMES : VERSION_2_NAMES;
+    if (manifestProblems.length > 0) {
+      throw new TraceFormatError(manifestProblems);
+    }
+    this.naming = interning(manifest.version === 1 ? VERSION_1_NAMES : VERSION_2_NAMES);
 
-  const problems = [...(manifest.sessionProblems ?? [])];
-  for (const problem of manifest.catalogProblems ?? []) {
-    problems.push(`${problem.file}: ${problem.reason}`);
-  }
-  const catalog: CatalogFunction[] = [];
-  (manifest.catalog ?? []).forEach((entry, index) => {
-    try {
-      catalog.push(parseCatalogFunction(entry, naming));
-    } catch (error) {
-      problems.push(`catalog entry ${index} (${entry?.file}) skipped: ${messageOf(error)}`);
+    this.problems = [...(manifest.sessionProblems ?? [])];
+    for (const problem of manifest.catalogProblems ?? []) {
+      this.problems.push(`${problem.file}: ${problem.reason}`);
     }
-  });
-  let topology: Topology | null = null;
-  try {
-    topology = manifest.framework && {
-      ...manifest.framework,
-      routes: manifest.framework.routes.map((route) => ({ ...route, handler: naming.type(route.handler) })),
-    };
-  } catch (error) {
-    problems.push(`framework skipped: ${messageOf(error)}`);
-  }
-  const scenarios: Scenario[] = [];
-  for (const { file, dto } of loaded) {
+    (manifest.catalog ?? []).forEach((entry, index) => {
+      try {
+        this.catalog.push(parseCatalogFunction(entry, this.naming));
+      } catch (error) {
+        this.problems.push(`catalog entry ${index} (${entry?.file}) skipped: ${messageOf(error)}`);
+      }
+    });
     try {
-      scenarios.push(parseScenario(dto, naming));
+      this.topology = manifest.framework && {
+        ...manifest.framework,
+        routes: manifest.framework.routes.map((route) => ({ ...route, handler: this.naming.type(route.handler) })),
+      };
     } catch (error) {
-      problems.push(`${file}: skipped, ${messageOf(error)}`);
+      this.problems.push(`framework skipped: ${messageOf(error)}`);
     }
   }
-  return new Run(
-    manifest.root,
-    manifest.createdAt,
-    manifest.language ?? "python",
-    manifest.runtime ?? manifest.python ?? "unknown",
-    manifest.backend,
-    topology,
-    catalog,
-    scenarios,
-    problems,
-    manifest.recorder ?? null,
-    manifest.sources ? new Map(Object.entries(manifest.sources)) : null,
-  );
+
+  add(file: string, dto: ScenarioDto): void {
+    try {
+      this.scenarios.push(parseScenario(dto, this.naming));
+    } catch (error) {
+      this.problems.push(`${file}: skipped, ${messageOf(error)}`);
+    }
+  }
+
+  finish(): Run {
+    const manifest = this.manifest;
+    return new Run(
+      manifest.root,
+      manifest.createdAt,
+      manifest.language ?? "python",
+      manifest.runtime ?? manifest.python ?? "unknown",
+      manifest.backend,
+      this.topology,
+      this.catalog,
+      this.scenarios,
+      this.problems,
+      manifest.recorder ?? null,
+      manifest.sources ? new Map(Object.entries(manifest.sources)) : null,
+    );
+  }
 }
 
 export function parseScenario(dto: ScenarioDto, naming: Naming): Scenario {
@@ -132,7 +153,7 @@ export function parseScenario(dto: ScenarioDto, naming: Naming): Scenario {
         const obj = objectId === null ? null : objects.get(objectId) ?? null;
         const span = new Span(id, fn, parent, obj, phase, startUs, thread);
         spans.set(id, span);
-        parent?.children.push(span);
+        parent?.addChild(span);
         break;
       }
       case "R": {
@@ -149,7 +170,7 @@ export function parseScenario(dto: ScenarioDto, naming: Naming): Scenario {
         break;
       }
       case "L":
-        spans.get(event[1])?.lines.push(event[2]);
+        spans.get(event[1])?.addLine(event[2]);
         break;
       case "O":
         break;
@@ -165,7 +186,7 @@ export function parseScenario(dto: ScenarioDto, naming: Naming): Scenario {
         const caller = callerId === null ? null : spans.get(callerId) ?? null;
         const call: BoundaryCall = { system, operation, statement, startUs, caller, phase };
         boundaryCalls.push(call);
-        caller?.boundaryCalls.push(call);
+        caller?.addBoundaryCall(call);
         break;
       }
       case "Q": {
@@ -178,6 +199,7 @@ export function parseScenario(dto: ScenarioDto, naming: Naming): Scenario {
     }
   }
 
+  for (const span of spans.values()) span.settle();
   for (const [objectId, spanId] of createdIn) {
     const obj = objects.get(objectId);
     if (obj) obj.createdIn = spans.get(spanId) ?? null;
@@ -198,7 +220,7 @@ function parseFunction(dto: ScenarioDto["functions"][number], naming: Naming): F
   return {
     role: parseEnum(Role, dto.role, "role"),
     symbol: naming.symbol(dto),
-    file: dto.file,
+    file: dto.file === null ? null : naming.text(dto.file),
     firstLine: dto.firstLine,
     landmarkKind: dto.landmarkKind === null ? null : parseEnum(LandmarkKind, dto.landmarkKind, "landmarkKind"),
   };
@@ -213,9 +235,44 @@ interface Naming {
   symbol(dto: CodeNameDto): CodeSymbol;
   /** An object's class or a route's handler. */
   type(name: unknown): QualifiedName;
+  /** The one copy of a repeated string (a file path) this run keeps. */
+  text(value: string): string;
 }
 
-const VERSION_1_NAMES: Naming = {
+/**
+ * One CodeSymbol per function and one QualifiedName per class for the whole run: every scenario
+ * names the functions it called again, and a big suite's recording repeats each thousands of times.
+ */
+function interning(naming: Omit<Naming, "text">): Naming {
+  const symbols = new Map<string, CodeSymbol>();
+  const types = new Map<string, QualifiedName>();
+  const texts = new Map<string, string>();
+  return {
+    symbol(dto) {
+      const fresh = naming.symbol(dto);
+      const key = JSON.stringify([fresh.key, fresh.kind, fresh.ownerType]);
+      const known = symbols.get(key);
+      if (known !== undefined) return known;
+      symbols.set(key, fresh);
+      return fresh;
+    },
+    type(name) {
+      const fresh = naming.type(name);
+      const known = types.get(fresh.key);
+      if (known !== undefined) return known;
+      types.set(fresh.key, fresh);
+      return fresh;
+    },
+    text(value) {
+      const known = texts.get(value);
+      if (known !== undefined) return known;
+      texts.set(value, value);
+      return value;
+    },
+  };
+}
+
+const VERSION_1_NAMES: Omit<Naming, "text"> = {
   symbol(dto) {
     if (!("module" in dto) || typeof dto.module !== "string" || typeof dto.qualname !== "string") {
       throw new Error("version 1 names code by module and qualname");
@@ -225,7 +282,7 @@ const VERSION_1_NAMES: Naming = {
   type: (name) => new QualifiedName(text(name, "a version 1 class or handler").split(".")),
 };
 
-const VERSION_2_NAMES: Naming = {
+const VERSION_2_NAMES: Omit<Naming, "text"> = {
   symbol(dto) {
     if (!("symbol" in dto) || typeof dto.symbol !== "object" || dto.symbol === null) {
       throw new Error("version 2 names code by symbol, not module and qualname");

@@ -82,6 +82,37 @@ describe("TraceDirectory", () => {
     `);
   });
 
+  /**
+   * Recording Runshape's own suite gives 381 scenarios and four million spans; held as
+   * written, that's over 3 GB and Node's default heap runs out. Every scenario names the
+   * functions it called again, so the run keeps one CodeSymbol per function, and each scenario
+   * file is read, parsed and let go before the next. A span keeps a list only when it has
+   * something in it, so a leaf call's children are the one shared empty list.
+   */
+  test("a run keeps one copy of what its scenarios repeat", async () => {
+    const run = await fixtureRuns("django").latest();
+    const symbolsByKey = new Map<string, Set<unknown>>();
+    let leaves = 0;
+    const emptyChildLists = new Set<unknown>();
+    for (const scenario of run.scenarios) {
+      for (const span of scenario.spans) {
+        const copies = symbolsByKey.get(span.fn.symbol.key) ?? new Set();
+        copies.add(span.fn.symbol);
+        symbolsByKey.set(span.fn.symbol.key, copies);
+        if (span.children.length === 0) {
+          leaves += 1;
+          emptyChildLists.add(span.children);
+        }
+      }
+    }
+    const calledInSeveral = [...symbolsByKey.keys()].filter((key) => run.scenarios.filter((s) => s.spans.some((span) => span.fn.symbol.key === key)).length > 1);
+
+    expect(calledInSeveral.length, "functions more than one scenario called").toBeGreaterThan(10);
+    expect(calledInSeveral.filter((key) => symbolsByKey.get(key)!.size > 1), "functions with more than one CodeSymbol").toEqual([]);
+    expect(run.catalog.every((fn) => !symbolsByKey.has(fn.symbol.key) || symbolsByKey.get(fn.symbol.key)!.has(fn.symbol)), "the catalog shares them too").toBe(true);
+    expect({ leaves: leaves > 0, emptyChildLists: emptyChildLists.size }).toEqual({ leaves: true, emptyChildLists: 1 });
+  });
+
   test("a missing traces folder explains what to run: the project's own recorder when it's known, else every one", async () => {
     const files: TraceFiles = { readText: async () => Promise.reject(new Error("ENOENT: no such file")) };
     const reason = (directory: TraceDirectory) => directory.latest().catch((error: Error) => error.message.split("\n").pop());
