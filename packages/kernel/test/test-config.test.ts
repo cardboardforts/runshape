@@ -58,5 +58,11 @@ describe("chooseTestConfig", () => {
       "recorder.interpreter only applies to Python",
     ]);
     expect(problemsOf(() => chooseTestConfig({ language: "cobol" }, [], "rust"))).toEqual(["--recorder=rust isn't one of: typescript, python, go"]);
+    // A folder or test that starts with "-" would reach pytest as an option (-p loads a plugin);
+    // args are where options go, deliberately (examples/record.sh's -n0 --no-cov).
+    expect(problemsOf(() => chooseTestConfig({ language: "python", source: ["-pevil"], tests: ["--rootdir=/"], args: ["-n0"] }, []))).toEqual([
+      'recorder.source "-pevil" can\'t start with "-": options go in recorder.args',
+      'recorder.tests "--rootdir=/" can\'t start with "-": options go in recorder.args',
+    ]);
   });
 });

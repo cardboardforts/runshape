@@ -1,11 +1,11 @@
 // The TypeScript recorder in the sandbox (recorder-ts/sandbox/Dockerfile): npm installs the
 // commit's lockfile with no scripts, from the npm registry only, and vitest records it.
-import { lstat, readFile, rm } from "node:fs/promises";
+import { lstat, rm } from "node:fs/promises";
 import { isAbsolute, join, normalize } from "node:path";
 
 import { TestConfig } from "@runshape/kernel";
 
-import { ContainerStep, SandboxRecipe, SandboxRefusal } from "../docker-recorder";
+import { ContainerStep, readPlainFile, SandboxRecipe, SandboxRefusal } from "../docker-recorder";
 import { vitestEnvironment } from "./typescript-recorder";
 
 /** The only place lockfile entries may come from: anything else (git, a tarball URL, a path) can run code at install. */
@@ -68,9 +68,15 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   if (await lstat(join(worktree, "npm-shrinkwrap.json")).then(() => true, () => false)) {
     throw new SandboxRefusal("it has an npm-shrinkwrap.json, which npm installs from instead of package-lock.json: not checked, so not installed");
   }
-  const text = await readFile(join(worktree, "package-lock.json"), "utf8").catch(() => null);
-  if (text === null) throw new SandboxRefusal("the commit has no package-lock.json: its dependencies can't be installed as locked");
-  const lock = JSON.parse(text) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; name?: string; version?: string; link?: boolean; inBundle?: boolean }> };
+  const text = await readPlainFile(worktree, "package-lock.json", "the commit has no package-lock.json: its dependencies can't be installed as locked");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // JSON.parse's message quotes the text: the commit's, not for the log.
+    throw new SandboxRefusal("its package-lock.json isn't valid JSON: its dependencies can't be checked before installing");
+  }
+  const lock = (typeof parsed === "object" && parsed !== null ? parsed : {}) as { lockfileVersion?: number; packages?: Record<string, { resolved?: string; name?: string; version?: string; link?: boolean; inBundle?: boolean }> };
   // Without `packages` npm resolves dependencies itself, past anything checked here.
   if ((lock.lockfileVersion ?? 0) < MIN_LOCKFILE_VERSION || typeof lock.packages !== "object" || lock.packages === null) {
     throw new SandboxRefusal("its lockfile isn't one npm 7+ writes (lockfileVersion 2 or 3, with packages): its dependencies can't be checked before installing");

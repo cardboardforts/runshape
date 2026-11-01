@@ -333,7 +333,11 @@ describe("a sandbox per language: the same container, network and checks; the im
     const commands = new FakeCommands((command, args) => {
       if (command === "git" && args.includes("add")) {
         mkdirSync(worktree, { recursive: true });
-        for (const [path, text] of Object.entries(files)) writeFileSync(join(worktree, path), text);
+        for (const [path, text] of Object.entries(files)) {
+          mkdirSync(join(worktree, path, ".."), { recursive: true });
+          if (text.startsWith("link:")) symlinkSync(text.slice("link:".length), join(worktree, path));
+          else writeFileSync(join(worktree, path), text);
+        }
       }
       if (command === "docker" && args[0] === "run" && args.includes("none")) {
         mkdirSync(join(out, "run"), { recursive: true });
@@ -362,7 +366,7 @@ describe("a sandbox per language: the same container, network and checks; the im
       outcome: "recorded",
       steps: [
         "runshape-proxy-.incoming-abc -e HOME=/tmp --network bridge -e RUNSHAPE_PROXY_ALLOW=pypi.org:443,files.pythonhosted.org:443 --workdir /runshape runshape-recorder-python:0123456789abcdef node recorder-ts/sandbox/registry-proxy.mjs",
-        "runshape-install-.incoming-abc -e HOME=/tmp --network runshape-install-.incoming-abc -e PIP_CONFIG_FILE=/dev/null -e HTTPS_PROXY=http://runshape-proxy-.incoming-abc:3128 -e HTTP_PROXY=http://runshape-proxy-.incoming-abc:3128 -e https_proxy=http://runshape-proxy-.incoming-abc:3128 -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target --workdir /target runshape-recorder-python:0123456789abcdef sh -c python -m venv --system-site-packages /target/.runshape-venv && /target/.runshape-venv/bin/pip install --no-input --disable-pip-version-check --no-cache-dir --only-binary=:all: --index-url https://pypi.org/simple/ -r requirements.txt",
+        "runshape-install-.incoming-abc -e HOME=/tmp --network runshape-install-.incoming-abc -e PIP_CONFIG_FILE=/dev/null -e HTTPS_PROXY=http://runshape-proxy-.incoming-abc:3128 -e HTTP_PROXY=http://runshape-proxy-.incoming-abc:3128 -e https_proxy=http://runshape-proxy-.incoming-abc:3128 -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target --workdir /tmp runshape-recorder-python:0123456789abcdef sh -c python -I -m venv --system-site-packages /target/.runshape-venv && /target/.runshape-venv/bin/python -I -m pip install --no-input --disable-pip-version-check --no-cache-dir --only-binary=:all: --index-url https://pypi.org/simple/ -r /target/requirements.txt",
         'runshape-record-.incoming-abc -e HOME=/tmp --network none -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target:ro -v <root>/.runshape/recordings/.incoming-abc:/out -e PYTHONPATH=/runshape/recorder/src -e PYTHONDONTWRITEBYTECODE=1 --workdir /target runshape-recorder-python:0123456789abcdef sh -c /target/.runshape-venv/bin/python -m runshape_recorder.run --runshape-out=/out --runshape-run-name=run -p no:cacheprovider "$@" > /out/run.log 2>&1 || true sh -o runshape_source=conduit tests -k journey',
       ],
     });
@@ -374,7 +378,8 @@ describe("a sandbox per language: the same container, network and checks; the im
     const missing = sandboxFor(pythonSandbox(PYTHON), {});
 
     expect({ refused: await refused.record(), installed: refused.steps().some((step) => step.startsWith("runshape-install-")), missing: await missing.record() }).toEqual({
-      refused: "its requirements.txt has lines that aren't a pinned release (name==version), which could install from elsewhere or build from source: --extra-index-url https://evil.example/simple, evil @ https://evil.example/evil.whl, -e .",
+      // By number: a line's text is the commit's, and goes to neither the terminal nor the log.
+      refused: "its requirements.txt has lines that aren't a pinned release (name==version), which could install from elsewhere or build from source: line 2, 3, 4 and 2 more",
       installed: false,
       missing: "the commit has no requirements.txt: its dependencies can't be installed as pinned (a lockfile of poetry's or uv's isn't read yet)",
     });
@@ -392,6 +397,30 @@ describe("a sandbox per language: the same container, network and checks; the im
         `runshape-record-.incoming-abc -e HOME=/tmp --network none -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target:ro -v <root>/.runshape/recordings/.incoming-abc:/out ${pinned} -e GOPROXY=off -e GOSUMDB=off -e GOFLAGS=-mod=mod --workdir /runshape runshape-recorder-go:0123456789abcdef sh -c /runshape/bin/runshape-go record -out /out -run run /target "$@" > /out/run.log 2>&1 || true sh ./...`,
       ],
     });
+  });
+
+  test("what the commit plants where the install works (its own venv or module cache, a requirements.txt or lockfile that links elsewhere, a marker that isn't one) is refused before anything installs (second-model review)", async () => {
+    // A committed .runshape-venv/bin/pip or a .pth in it would run at install, with network; a
+    // committed module cache would be trusted as fetched. A link would put ~/.ssh/id_rsa in the refusal.
+    const secret = join(mkdtempSync(join(tmpdir(), "runshape-secret-")), "id_rsa");
+    writeFileSync(secret, "-----BEGIN OPENSSH PRIVATE KEY-----\n");
+    const outcomes = await Promise.all([
+      sandboxFor(pythonSandbox(PYTHON), { "requirements.txt": "Django==5.2.7\n", ".runshape-venv/bin/pip": "#!/bin/sh\n" }).record(),
+      sandboxFor(goSandbox(GO), { "go.mod": "module example.com/shop\n", ".runshape-gomod/cache/x": "" }).record(),
+      sandboxFor(pythonSandbox(PYTHON), { "requirements.txt": `link:${secret}` }).record(),
+      sandboxFor(typescriptSandbox(RUNSHAPE), { "package-lock.json": `link:${secret}` }).record(),
+      sandboxFor(typescriptSandbox(RUNSHAPE), { "package-lock.json": "-----BEGIN OPENSSH PRIVATE KEY-----" }).record(),
+      sandboxFor(pythonSandbox(PYTHON), { "requirements.txt": 'evil==1.0 ; python_version >= "3" --index-url=x\nok==1.0 ; sys_platform == "linux"\n' }).record(),
+    ]);
+
+    expect(outcomes).toEqual([
+      "the commit has its own .runshape-venv, where the install puts what it fetches: not used, so not installed",
+      "the commit has its own .runshape-gomod, where the install puts what it fetches: not used, so not installed",
+      "the commit's requirements.txt isn't a plain file (a link?): not read",
+      "the commit's package-lock.json isn't a plain file (a link?): not read",
+      "its package-lock.json isn't valid JSON: its dependencies can't be checked before installing",
+      "its requirements.txt has lines that aren't a pinned release (name==version), which could install from elsewhere or build from source: line 1",
+    ]);
   });
 
   test("Go: a commit with no go.mod at its root has no module to record", async () => {

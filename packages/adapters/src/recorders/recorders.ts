@@ -1,6 +1,6 @@
 // A project's recorder, here and in the sandbox, from its TestConfig: one per language.
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
 
 import { chooseTestConfig, Hashing, Recorder, RecorderLanguage, RecordTarget, Repository, TEST_CONFIG_SECTION, TestConfig, TestConfigError } from "@runshape/kernel";
 
@@ -65,7 +65,21 @@ export async function projectTestConfig(root: string, override: string | null): 
       throw new TestConfigError([`${RULES_FILE} isn't valid JSON: ${error instanceof Error ? error.message : String(error)}`]);
     }
   }
-  return chooseTestConfig(section, files, override);
+  const config = chooseTestConfig(section, files, override);
+  // chooseTestConfig reads the paths as written; a link inside the project can still lead out of it.
+  const projectRoot = await realpath(root);
+  const problems: string[] = [];
+  for (const [name, paths] of [["source", config.source], ["tests", config.tests]] as const) {
+    for (const path of paths) {
+      const resolved = await realpath(join(root, path)).catch(() => null);
+      // A glob, a package pattern (./...) or a test id isn't a path on disk: nothing to resolve.
+      if (resolved === null) continue;
+      const inside = relative(projectRoot, resolved);
+      if (inside.startsWith("..") || isAbsolute(inside)) problems.push(`${TEST_CONFIG_SECTION}.${name} "${path}" leads outside the project (through a link)`);
+    }
+  }
+  if (problems.length > 0) throw new TestConfigError(problems);
+  return config;
 }
 
 /**

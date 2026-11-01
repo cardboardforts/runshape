@@ -6,10 +6,11 @@ import { join } from "node:path";
 
 import { TestConfig } from "@runshape/kernel";
 
-import { ContainerStep, SandboxRecipe, SandboxRefusal } from "../docker-recorder";
+import { ContainerStep, refuseCommitted, SandboxRecipe, SandboxRefusal } from "../docker-recorder";
 
 /** Where the install puts the commit's modules, inside its folder: the record step reads them there. */
-const MODULE_CACHE = "/target/.runshape-gomod";
+const MODULE_CACHE_NAME = ".runshape-gomod";
+const MODULE_CACHE = `/target/${MODULE_CACHE_NAME}`;
 const GO_PROXY_HOSTS = ["proxy.golang.org:443", "sum.golang.org:443"];
 /**
  * Settings the commit can't change: one toolchain (a go.mod asking for another would download
@@ -30,6 +31,8 @@ export function goSandbox(config: TestConfig): SandboxRecipe {
     imageSources: ["recorder-go", "recorder-ts/sandbox/registry-proxy.mjs", ".dockerignore"],
     registries: GO_PROXY_HOSTS,
     async prepare(worktree: string): Promise<void> {
+      // A committed module cache would be trusted as fetched: modules the checksum database never saw.
+      await refuseCommitted(worktree, [MODULE_CACHE_NAME]);
       if (!(await lstat(join(worktree, "go.mod")).then((entry) => entry.isFile(), () => false))) {
         throw new SandboxRefusal("the commit has no go.mod at its root: there's no module to record");
       }

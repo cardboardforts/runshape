@@ -4,7 +4,7 @@
 // language (the image, the checks before installing, the install, the test run) is a
 // SandboxRecipe, one per recorder (typescript/, python/, go/).
 import { spawn } from "node:child_process";
-import { lstat } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { assertPlainFiles, NotPlainFiles, removeAnyway } from "@runshape/infra";
@@ -66,6 +66,27 @@ export interface SandboxRecipe {
   install(proxy: string): ContainerStep;
   /** The tests, with /target read-only, /out for the recording, and no network. */
   record(): ContainerStep;
+}
+
+/**
+ * Folders the install makes inside the commit (its venv, its module cache): one the commit
+ * already has is the commit's, and would be used as it is, so nothing is installed.
+ */
+export async function refuseCommitted(worktree: string, names: string[]): Promise<void> {
+  for (const name of names) {
+    if (await lstat(join(worktree, name)).then(() => true, () => false)) throw new SandboxRefusal(`the commit has its own ${name}, where the install puts what it fetches: not used, so not installed`);
+  }
+}
+
+/**
+ * A file of the commit's the host reads before installing: a plain file, links not followed
+ * (one pointing at ~/.ssh/id_rsa would put that in a refusal and the log).
+ */
+export async function readPlainFile(worktree: string, name: string, missing: string): Promise<string> {
+  const entry = await lstat(join(worktree, name)).catch(() => null);
+  if (entry === null) throw new SandboxRefusal(missing);
+  if (!entry.isFile()) throw new SandboxRefusal(`the commit's ${name} isn't a plain file (a link?): not read`);
+  return readFile(join(worktree, name), "utf8");
 }
 
 /** The image's version: what HEAD has at each of its sources (a path HEAD hasn't got counts too). */

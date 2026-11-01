@@ -84,6 +84,11 @@ export function chooseTestConfig(section: unknown, rootFiles: readonly string[],
   for (const [name, value] of [["source", source], ["tests", tests], ["interpreter", interpreter === null ? [] : [interpreter]]] as const) {
     for (const path of value) if (escapesProject(path)) problems.push(`${TEST_CONFIG_SECTION}.${name} "${path}" must stay inside the project`);
   }
+  // A path that starts with "-" reaches the test runner as an option (pytest's -p loads a
+  // plugin): only args take options, and say so by being args.
+  for (const [name, value] of [["source", source], ["tests", tests]] as const) {
+    for (const path of value) if (path.startsWith("-")) problems.push(`${TEST_CONFIG_SECTION}.${name} "${path}" can't start with "-": options go in ${TEST_CONFIG_SECTION}.args`);
+  }
   // What a language's recorder can't take: said, rather than silently dropped.
   if (language === "go" && source.length > 0) problems.push(`${TEST_CONFIG_SECTION}.source doesn't apply to Go: the recorder instruments the whole module`);
   if (language !== "python" && language !== null && args.length > 0) problems.push(`${TEST_CONFIG_SECTION}.args only applies to Python (pytest's arguments)`);

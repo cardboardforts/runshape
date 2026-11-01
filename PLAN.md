@@ -605,6 +605,12 @@ that pays. A no-op change has no time callout.
   each built from HEAD when its sources change. pip: a pinned requirements.txt, wheels only,
   PyPI only. Go: `go mod download` from the Go proxy, one toolchain. Threat model rows in
   docs/design.md. Not yet tried for real: a Go module with dependencies (go-shop has none).
+  Second-model security review (2026-11-01), fixed with a test per attack: pip ran with the
+  commit's folder first on sys.path (now `-I` from /tmp), a committed `.runshape-venv` or
+  `.runshape-gomod` was used as it was (now refused), a `.venv` linked to a committed folder (or
+  `.Venv` on macOS) passed the tracked-interpreter check (now every folder, as named and
+  resolved, case-insensitively), a linked requirements.txt or lockfile was read and echoed (now
+  plain files only, lines by number). Transitive Python dependencies stay unpinned (accepted).
 - 4: listed as limits (docs/design.md): jest isn't recorded; plain JS only as far as vitest
   runs it; neither tried.
 - 5: the hint names every recorder, or the one a caller passes (`HOW_TO_RECORD[language]`).

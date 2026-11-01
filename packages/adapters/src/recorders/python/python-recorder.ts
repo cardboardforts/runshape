@@ -1,7 +1,7 @@
 // Records a Python project's pytest run on this machine with Runshape's recorder (recorder/),
 // put on PYTHONPATH: nothing is installed into the project.
-import { stat } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { delimiter, isAbsolute, join, relative } from "node:path";
 
 import { Hashing, Recorder, RecordTarget, TestConfig } from "@runshape/kernel";
 
@@ -48,14 +48,36 @@ export class PythonRecorder implements Recorder {
   }
 
   private async interpreter(): Promise<string> {
-    const relative = this.config.interpreter ?? PROJECT_VENV_PYTHON;
-    if (this.config.interpreter === null && !(await stat(join(this.root, relative)).then(() => true, () => false))) return SYSTEM_PYTHON;
+    const named = this.config.interpreter ?? PROJECT_VENV_PYTHON;
+    const path = join(this.root, named);
+    if (this.config.interpreter === null && !(await stat(path).then(() => true, () => false))) return SYSTEM_PYTHON;
+    const refuse = (why: string) => new Error(`the Python to record with (${named}) ${why}: that's the commit's code, not an environment of yours, so it isn't run here`);
+    const resolved = await realpath(path).catch(() => {
+      throw new Error(`the Python to record with (${named}) can't be found`);
+    });
+    const inProject = relative(await realpath(this.root), resolved);
+    const isInProject = inProject !== "" && !inProject.startsWith("..") && !isAbsolute(inProject);
     // A committed one is a commit's code: a pull request checked out here could ship
-    // .venv/bin/python, and recording main would run it on this machine.
-    const tracked = await run("git", ["-C", this.root, "ls-files", "--", relative], { cwd: this.root });
-    if (tracked.code !== 0 || tracked.output.trim() !== "") {
-      throw new Error(`the Python to record with (${relative}) is a file git tracks: that's the commit's code, not an environment of yours, so it isn't run here`);
+    // .venv/bin/python, or .venv as a link to a committed folder, and recording main would run it.
+    // Every folder on the way, as named and as resolved, case-insensitively (macOS's .Venv is .venv).
+    for (const folder of [...pathPrefixes(named), ...(isInProject ? pathPrefixes(inProject) : [])]) {
+      if (await this.tracked(folder)) throw refuse(`goes through ${folder}, which git tracks`);
     }
-    return join(this.root, relative);
+    if (isInProject && (await run("git", ["-C", this.root, "check-ignore", "-q", "--", inProject], { cwd: this.root })).code !== 0) {
+      throw refuse(`is ${inProject}, inside the project but not ignored by git`);
+    }
+    return path;
   }
+
+  /** Fails closed: anything git can't answer about counts as tracked. */
+  private async tracked(path: string): Promise<boolean> {
+    const listed = await run("git", ["-C", this.root, "ls-files", "-s", "--", `:(icase,literal)${path}`], { cwd: this.root });
+    return listed.code !== 0 || listed.output.trim() !== "";
+  }
+}
+
+/** "a/b/c" -> a, a/b, a/b/c. */
+function pathPrefixes(path: string): string[] {
+  const parts = path.split(/[\\/]/).filter((part) => part !== "" && part !== ".");
+  return parts.map((_part, i) => parts.slice(0, i + 1).join("/"));
 }

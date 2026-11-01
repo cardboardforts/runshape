@@ -7,7 +7,7 @@
  * run/manifest.json, in the universal trace format, and the commit's checkout gone.
  */
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -91,19 +91,53 @@ describe("projectRecorders", () => {
     });
   });
 
-  test("a project's committed .venv/bin/python is never run: a pull request checked out here could ship one, and recording main would run it", async () => {
-    const { root } = projectFrom(join(HOME, "recorder", "tests", "sample_shop"));
-    const planted = join(root, ".venv", "bin", "python");
-    mkdirSync(join(root, ".venv", "bin"), { recursive: true });
-    writeFileSync(planted, `#!/bin/sh\ntouch "${root}/ran"\n`, { mode: 0o755 });
-    gitIn(root)("add", "--force", planted);
-    const { recorders } = await recorderFor(root);
+  test("a committed Python is never run, however it's reached: a pull request checked out here could ship one, and recording main would run it (second-model review)", async () => {
+    // Each plants a script that leaves a mark if run, committed as a pull request would commit it.
+    const plant = (layout: "file" | "link to a committed folder" | "ignored but linked into a committed folder" | "named in runshape.json") => {
+      const { root } = projectFrom(join(HOME, "recorder", "tests", "sample_shop"));
+      const git = gitIn(root);
+      const script = (folder: string) => {
+        mkdirSync(join(root, folder, "bin"), { recursive: true });
+        writeFileSync(join(root, folder, "bin", "python"), `#!/bin/sh\ntouch "${root}/ran"\n`, { mode: 0o755 });
+      };
+      if (layout === "file") {
+        script(".venv");
+        git("add", "--force", ".venv");
+      } else if (layout === "link to a committed folder") {
+        // git ls-files -- .venv/bin/python says nothing past a link: the link itself is what's tracked.
+        script("x");
+        symlinkSync("x", join(root, ".venv"));
+        git("add", "x", ".venv");
+      } else if (layout === "ignored but linked into a committed folder") {
+        script("x");
+        mkdirSync(join(root, ".venv", "bin"), { recursive: true });
+        symlinkSync(join(root, "x", "bin", "python"), join(root, ".venv", "bin", "python"));
+        writeFileSync(join(root, ".git", "info", "exclude"), ".runshape/\n.venv/\n");
+        git("add", "x");
+      } else {
+        script("tools");
+        writeFileSync(join(root, "runshape.json"), JSON.stringify({ version: 2, style: "hexagonal", zones: [], recorder: { interpreter: "tools/bin/python" } }));
+        git("add", "tools", "runshape.json");
+      }
+      git("commit", "--quiet", "-m", "Plant");
+      return root;
+    };
+    const attempt = async (root: string) => {
+      const { recorders } = await recorderFor(root);
+      const failure = await recorders.host.record({ kind: "working" }, join(root, ".runshape", "recordings", ".incoming-planted")).catch((error: Error) => error.message);
+      return { failure: failure?.split(":")[0], ran: existsSync(join(root, "ran")) };
+    };
 
-    const failure = await recorders.host.record({ kind: "working" }, join(root, ".runshape", "recordings", ".incoming-planted")).catch((error: Error) => error.message);
-
-    expect({ failure, ran: existsSync(join(root, "ran")) }).toEqual({
-      failure: "the Python to record with (.venv/bin/python) is a file git tracks: that's the commit's code, not an environment of yours, so it isn't run here",
-      ran: false,
+    expect({
+      file: await attempt(plant("file")),
+      link: await attempt(plant("link to a committed folder")),
+      linkedIn: await attempt(plant("ignored but linked into a committed folder")),
+      named: await attempt(plant("named in runshape.json")),
+    }).toEqual({
+      file: { failure: "the Python to record with (.venv/bin/python) goes through .venv, which git tracks", ran: false },
+      link: { failure: "the Python to record with (.venv/bin/python) goes through .venv, which git tracks", ran: false },
+      linkedIn: { failure: "the Python to record with (.venv/bin/python) goes through x, which git tracks", ran: false },
+      named: { failure: "the Python to record with (tools/bin/python) goes through tools, which git tracks", ran: false },
     });
   });
 
@@ -125,14 +159,20 @@ describe("projectRecorders", () => {
     const broken = mkdtempSync(join(tmpdir(), "runshape-project-"));
     writeFileSync(join(broken, "runshape.json"), "{ not json");
     const untold = new UnchosenRecorder(new TestConfigError(["nothing at the project's root says its language"]));
+    // "tests" reads as inside the project, but it's a link to the home folder (second-model review).
+    const linkedOut = mkdtempSync(join(tmpdir(), "runshape-project-"));
+    symlinkSync(tmpdir(), join(linkedOut, "tests"));
+    writeFileSync(join(linkedOut, "runshape.json"), JSON.stringify({ recorder: { language: "python", tests: ["tests", "tests/test_x.py::case"] } }));
 
     expect({
       declared: await projectTestConfig(declared, null),
       broken: await projectTestConfig(broken, null).catch((error: TestConfigError) => error.problems[0]!.split(":")[0]),
+      linkedOut: await projectTestConfig(linkedOut, null).catch((error: TestConfigError) => error.problems),
       untold: await untold.record({ kind: "working" }, declared).catch((error: Error) => error.message),
     }).toEqual({
       declared: { language: "python", chosenBy: "runshape.json", source: [], tests: ["tests"], args: [], interpreter: null },
       broken: "runshape.json isn't valid JSON",
+      linkedOut: ['recorder.tests "tests" leads outside the project (through a link)'],
       untold: "can't tell how to record this project:\n  - nothing at the project's root says its language",
     });
   });
