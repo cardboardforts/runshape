@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Runshape.Record/Runshape.Record.csproj" />
+    <Project Path="src/Runshape.Runtime/Runshape.Runtime.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Runshape.Record.Tests/Runshape.Record.Tests.csproj" />
+  </Folder>
+</Solution>

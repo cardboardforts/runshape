@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- What instrumented code calls. net8.0, the oldest supported .NET, so any project on 8 or later
+       can reference it; no package dependencies, so a reference to the one DLL is enough. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Runshape.Runtime</RootNamespace>
+  </PropertyGroup>
+</Project>
