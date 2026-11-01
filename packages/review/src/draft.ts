@@ -91,7 +91,7 @@ export function unpinnedComments(draft: ReviewDraft, items: Reviewable[]): Revie
  */
 export function finishReview(draft: ReviewDraft, verdict: ReviewVerdict): { review: FinishedReview | null; errors: string[] } {
   if (verdict !== ReviewVerdict.Approve && draft.comments.length === 0) {
-    return { review: null, errors: ["no comments to send: leave one with `review <name> comment <what> <text>`"] };
+    return { review: null, errors: ["no comments to send: leave one with `review <name> comment <what> -- <text>`"] };
   }
   return { review: { change: draft.change, verdict, comments: draft.comments }, errors: [] };
 }

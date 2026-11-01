@@ -43,16 +43,24 @@ the machine that made them, since a bundle may be stored centrally.
 tests through them, then each test whose behaviour changed, numbered. Then:
 
 - `review <name> check <n>...` checks them off. Each is kept with a fingerprint of what the page
-  showed of it, so after comparing the working tree again only what now looks different is
-  un-checked (`[~]`).
-- `review <name> comment <n|change> <text>` leaves a comment on one of them, or on the change.
+  showed of it (for a function, its source's revision; for a test, its status), so after
+  comparing the working tree again only what now looks different is un-checked (`[~]`).
+- `review <name> comment <n|change> -- <text>` leaves a comment on one of them, or on the
+  change. After `--` the text is taken as given: it may start with `--` and hold newlines.
+  `review-draft.json` is written whole (temporary file, then rename) and refused, with where it
+  is, when it isn't a version 1 draft.
 - `review <name> send agent [--request-changes]` writes `.runshape/revisions/<name>.json`: the
   comments as a revision request for a local agent to act on (the Phase 8 loop reads it). It
   says which text is the reviewer's and which (function and test names) comes from the code.
 - `review <name> send github [--pr=N] [--approve|--request-changes]` shows the PR review it
-  would post and posts nothing. With `--post` it posts it, as one review, through `gh pr
-  review`: only to the PR the review is of, and only if the PR's head is still the commit that
-  was reviewed. Names from the code go out as plain text (no mentions, links or HTML).
+  would post, with the PR's own URL and a preview digest, and posts nothing. The same command
+  with `--post` (exactly that: `--post=yes` is refused) posts it, and only if it's exactly what
+  was last previewed: never previewed, changed since (a comment, the verdict), or already
+  posted, it's refused. It posts one review through `gh api repos/<owner>/<repo>/pulls/<n>/reviews`,
+  to the repository in the PR's URL, the body on stdin, pinned to the reviewed commit
+  (`commit_id`), and only if the PR's head is still that commit. A post with no answer in 60 s
+  says it may have gone through, to look at the PR before sending again; it never retries.
+  Names from the code go out as plain text (no mentions, links or HTML).
 
 The log records each send by its sink, verdict, comment count and destination, never the
 comments' text.

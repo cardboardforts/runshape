@@ -29,14 +29,15 @@ export class RevisionRequestFile implements CommentSink {
     private readonly shownAs: string,
   ) {}
 
-  preview(review: FinishedReview): CommentPreview {
+  async preview(review: FinishedReview): Promise<CommentPreview> {
     return { where: join(this.shownAs, fileOf(review)), text: `${JSON.stringify(revisionRequest(review), null, 2)}\n` };
   }
 
   /** Replaces the review's earlier request, if any: the latest review is the one to act on. */
   async deliver(review: FinishedReview): Promise<CommentDelivery> {
-    const { where, text } = this.preview(review);
-    await this.files.writeText(fileOf(review), text);
+    const { where, text } = await this.preview(review);
+    // Whole or not at all: an agent reading it mid-write would act on half a request.
+    await this.files.replaceText(fileOf(review), text);
     return { where, comments: review.comments.length };
   }
 }

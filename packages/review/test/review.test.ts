@@ -144,7 +144,7 @@ describe("a draft", () => {
       requestChanges: finishReview(draft, ReviewVerdict.RequestChanges),
     }).toEqual({
       approve: ReviewVerdict.Approve,
-      requestChanges: { review: null, errors: ["no comments to send: leave one with `review <name> comment <what> <text>`"] },
+      requestChanges: { review: null, errors: ["no comments to send: leave one with `review <name> comment <what> -- <text>`"] },
     });
   });
 });

@@ -59,6 +59,24 @@ describe("NodeFiles writing", () => {
   });
 });
 
+describe("NodeFiles.replaceText", () => {
+  test("replaces a file whole, leaving nothing beside it; a folder in the way fails and leaves no partial file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runshape-infra-"));
+    const files = new NodeFiles(root);
+
+    await files.replaceText("a..b/review-draft.json", "old\n");
+    await files.replaceText("a..b/review-draft.json", "new\n");
+    await mkdir(join(root, "a..b", "in-the-way"));
+    const failed = await files.replaceText("a..b/in-the-way", "x").then(() => "written", (error: NodeJS.ErrnoException) => error.code);
+
+    expect({ text: await files.readText("a..b/review-draft.json"), failed, left: (await readdir(join(root, "a..b"))).sort() }).toEqual({
+      text: "new\n",
+      failed: "EISDIR",
+      left: ["in-the-way", "review-draft.json"],
+    });
+  });
+});
+
 describe("NodeFiles.readTextWithin (the demo's dev server)", () => {
   test("reads a file inside; refuses a climb, a link out (even one inside that points out), and a folder", async () => {
     const outside = await mkdtemp(join(tmpdir(), "runshape-outside-"));

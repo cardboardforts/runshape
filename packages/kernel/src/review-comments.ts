@@ -57,6 +57,11 @@ export interface ReviewDraft {
   change: ReviewedChange;
   checked: CheckedOff[];
   comments: ReviewComment[];
+  /**
+   * The last preview shown for a sink that posts outward: where, and a digest of exactly what it
+   * would send. Posting sends only that; anything else needs a new preview first.
+   */
+  previewed?: { where: string; digest: string } | null;
 }
 
 /** A finished review, on its way out through a sink. */
@@ -86,15 +91,16 @@ export interface CommentDelivery {
 export interface CommentSink {
   /** "GitHub pull request #7", "revision request for a local agent". */
   readonly name: string;
-  preview(review: FinishedReview): CommentPreview;
+  /** May ask the system where it would go (the PR's own URL), but sends nothing. */
+  preview(review: FinishedReview): Promise<CommentPreview>;
   deliver(review: FinishedReview): Promise<CommentDelivery>;
 }
 
 /** Port: the reviews kept beside the recordings, as the review module reads and writes them. */
 export interface KeptReviewDrafts {
-  /** The PR page (page.json); null when there's no such review. */
+  /** The PR page (page.json); null when there's no such review. Throws when it's there but isn't one it can read. */
   page(name: string): Promise<ReviewPage | null>;
-  /** The draft; null before anything was checked or commented. */
+  /** The draft; null before anything was checked or commented. Throws when it's there but isn't a version 1 draft. */
   draft(name: string): Promise<ReviewDraft | null>;
   saveDraft(name: string, draft: ReviewDraft): Promise<void>;
 }

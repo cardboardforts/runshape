@@ -1461,22 +1461,25 @@ describe("runshape review: check off, comment, then send to a PR or a local agen
     writeFileSync(join(root, ".runshape", "reviews", NAME, "page.json"), PAGE);
     return root;
   };
+  /** gh's answers: the PR (its URL and head) for `pr view`, nothing for the API's post. */
+  const ghAnswering = (head: string) => `case "$1" in pr) echo '{"url":"https://github.com/example/shop/pull/7","headRefOid":"${head}"}';; api) ;; esac`;
   const review = (root: string, args: string[], gh?: string) => run(root, ["review", NAME, ...args], undefined, undefined, undefined, [], null, undefined, [], gh);
 
   test("the list, the draft growing, a revision request written, and GitHub previewed until --post", async () => {
     const root = withReview();
-    const gh = fakeGh(`case "$2" in view) echo '{"headRefOid":"${HEAD}"}';; review) ;; esac`);
+    const gh = fakeGh(ghAnswering(HEAD));
 
     const steps = [
       await review(root, ["check", "1", "2", "3"]),
       await review(root, ["comment", "4", "Does", "the", "route", "still", "return", "422?"]),
-      await review(root, ["comment", "change", "Small and clear."]),
+      // After "--" it's text, as given: it may start with "--" and run over lines.
+      await review(root, ["comment", "change", "--", "--force-push is fine here,\nbut say so in the PR."]),
       await review(root, []),
       await review(root, ["send", "agent", "--request-changes"]),
       await review(root, ["send", "github", "--pr=7"], gh.command),
     ];
     const askedBeforePost = gh.asked();
-    const posted = await review(root, ["send", "github", "--pr=7", "--approve", "--post"], gh.command);
+    const posted = await review(root, ["send", "github", "--pr=7", "--post"], gh.command);
 
     expect(steps.map((step) => [step.code, ...step.lines].join("\n"))).toMatchInlineSnapshot(`
       [
@@ -1499,13 +1502,14 @@ describe("runshape review: check off, comment, then send to a PR or a local agen
         [ ]   8. test test_user_can_create_article (still passing, but now run differently)
 
       Comments on the change, or on what this comparison no longer shows:
-        change: Small and clear.
+        change: --force-push is fine here,
+      but say so in the PR.
 
-      Next: review aaaaaaaaaaaa..bbbbbbbbbbbb check <n>... | comment <n|change> <text> | send github|agent",
+      Next: review aaaaaaaaaaaa..bbbbbbbbbbbb check <n>... | comment <n|change> -- <text> | send github|agent",
         "0
       Sent 2 comments (request-changes) to .runshape/revisions/aaaaaaaaaaaa..bbbbbbbbbbbb.json.",
         "0
-      Would send to pull request #7 (comment):
+      Would send to https://github.com/example/shop/pull/7 (comment), preview b10189edd310:
 
         ### Runshape review: comments
         
@@ -1517,9 +1521,10 @@ describe("runshape review: check off, comment, then send to a PR or a local agen
         
         **On the change**
         
-        Small and clear.
+        --force-push is fine here,
+        but say so in the PR.
 
-      Nothing posted. Run it again with --post to post this.",
+      Nothing posted. To post exactly this (preview b10189edd310), run the same with --post.",
       ]
     `);
     expect({
@@ -1532,20 +1537,31 @@ describe("runshape review: check off, comment, then send to a PR or a local agen
       {
         "asked": [
           "pr view 7 --json",
-          "pr review 7 --approve",
+          "pr view 7 --json",
+          "pr view 7 --json",
+          "api --method POST repos/example/shop/pulls/7/reviews",
         ],
-        "askedBeforePost": [],
+        "askedBeforePost": [
+          [
+            "pr",
+            "view",
+            "7",
+            "--json",
+            "url,headRefOid",
+          ],
+        ],
         "logged": [
           "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.sent review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="revision request for a local agent" verdict=request-changes comments=2 where=.runshape/revisions/aaaaaaaaaaaa..bbbbbbbbbbbb.json",
-          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.previewed review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="GitHub pull request #7" verdict=comment comments=2 where="pull request #7"",
-          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.sent review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="GitHub pull request #7" verdict=approve comments=2 where="pull request #7"",
+          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.previewed review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="GitHub pull request #7" verdict=comment comments=2 where=https://github.com/example/shop/pull/7 digest=b10189edd310",
+          "ts=2026-10-14T12:00:00.000Z level=info run=r1 event=review.sent review=aaaaaaaaaaaa..bbbbbbbbbbbb sink="GitHub pull request #7" verdict=comment comments=2 where=https://github.com/example/shop/pull/7",
         ],
         "posted": [
-          "Sent 2 comments (approve) to pull request #7.",
+          "Sent 2 comments (comment) to https://github.com/example/shop/pull/7.",
         ],
         "revision": [
           "Does the route still return 422?",
-          "Small and clear.",
+          "--force-push is fine here,
+      but say so in the PR.",
         ],
       }
     `);
@@ -1561,12 +1577,18 @@ describe("runshape review: check off, comment, then send to a PR or a local agen
       await review(root, ["send", "github"]),
       await review(root, ["send", "github", "--pr=7", "--approve", "--request-changes"]),
       await review(root, ["send", "github", "--pr=7", "--post"]),
+      await review(root, ["check", "1", "--", "text"]),
     ];
     await review(root, ["comment", "change", "Small and clear."]);
+    const gh = fakeGh(ghAnswering(HEAD));
+    // A yes to nothing in particular, and a first post nobody saw: neither posts.
+    refusals.push(await review(root, ["send", "github", "--pr=7", "--post=yes"], gh.command));
+    refusals.push(await review(root, ["send", "github", "--pr=7", "--post"], gh.command));
     // Pushed to since the review: posting it would comment on code nobody reviewed.
-    const movedOn = fakeGh(`case "$2" in view) echo '{"headRefOid":"3333333333333333333333333333333333333333"}';; esac`);
+    const movedOn = fakeGh(ghAnswering("3333333333333333333333333333333333333333"));
+    await review(root, ["send", "github", "--pr=7"], movedOn.command);
     refusals.push(await review(root, ["send", "github", "--pr=7", "--post"], movedOn.command));
-    expect(movedOn.asked().map((call) => call.slice(0, 2).join(" "))).toEqual(["pr view"]);
+    expect([...gh.asked(), ...movedOn.asked()].filter((call) => call[0] === "api")).toEqual([]);
 
     expect(refusals.map((step) => `${step.code} ${step.lines.join(" / ")}`)).toMatchInlineSnapshot(`
       [
@@ -1575,7 +1597,10 @@ describe("runshape review: check off, comment, then send to a PR or a local agen
         "1 runshape: --post and --pr are for send github: a revision request stays on this machine",
         "1 runshape: which pull request? This review isn't of one: name it with --pr=N",
         "1 runshape: --approve or --request-changes, not both",
-        "1 runshape: no comments to send: leave one with \`review <name> comment <what> <text>\`",
+        "1 runshape: no comments to send: leave one with \`review <name> comment <what> -- <text>\`",
+        "1 runshape: text after -- is a comment's: review <name> comment <n|change> -- <text>",
+        "1 runshape: --post takes no value: it posts exactly what the last preview showed",
+        "1 runshape: not posted: it hasn't been previewed. Send it without --post to see exactly what would be posted, then post that.",
         "1 runshape: GitHub pull request #7 refused or failed: pull request #7 is at 333333333333, but this review is of 222222222222: compare it again; nothing posted",
       ]
     `);

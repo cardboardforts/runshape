@@ -4,7 +4,7 @@
  * taken back, so the sink checks it's posting to the PR the review is of, as it is now, and
  * names from the code under review go out as plain text: a test called "@everyone" pings no one.
  */
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,7 @@ import { describe, expect, test } from "vitest";
 import { FinishedReview, ReviewVerdict } from "@runshape/kernel";
 import { NodeFiles } from "@runshape/infra";
 import { GhPullRequestReview, GITHUB_REVIEW_BODY_LIMIT } from "../src/github/review-comments";
+import { ReviewStore } from "../src/library/review-store";
 import { RevisionRequestFile } from "../src/library/revision-requests";
 import { fakeGh } from "./fake-gh";
 
@@ -34,15 +35,15 @@ const REVIEW: FinishedReview = {
   ],
 };
 
-/** gh's answers: the PR's head for `pr view`, nothing for `pr review`. */
-const ghAt = (head: string) => `case "$2" in view) echo '{"headRefOid":"${head}"}';; review) ;; esac`;
+/** gh's answers: the PR (its URL and head) for `pr view`; for `api`, what `post` says (nothing, by default). */
+const ghAt = (head: string, post = "") => `case "$1" in pr) echo '{"url":"https://github.com/acme/shop/pull/7","headRefOid":"${head}"}';; api) ${post || ":"};; esac`;
 
 describe("GhPullRequestReview", () => {
-  test("previews the body exactly, then posts it as one review of the PR as it is now", async () => {
+  test("previews the PR's own URL and the body exactly, then posts it through the API, pinned to the reviewed commit, the body on stdin", async () => {
     const gh = fakeGh(ghAt(HEAD));
     const sink = new GhPullRequestReview(gh.directory, 7, gh.command);
 
-    const preview = sink.preview(REVIEW);
+    const preview = await sink.preview(REVIEW);
     const delivered = await sink.deliver(REVIEW);
 
     expect(preview.text).toMatchInlineSnapshot(`
@@ -63,14 +64,17 @@ describe("GhPullRequestReview", () => {
       Needs a negative case.
       "
     `);
-    expect({ name: sink.name, where: preview.where, delivered, asked: gh.asked() }).toEqual({
+    expect({ name: sink.name, where: preview.where, delivered, asked: gh.asked(), posted: JSON.parse(gh.inputs()[2]!) }).toEqual({
       name: "GitHub pull request #7",
-      where: "pull request #7",
-      delivered: { where: "pull request #7", comments: 3 },
+      where: "https://github.com/acme/shop/pull/7",
+      delivered: { where: "https://github.com/acme/shop/pull/7", comments: 3 },
+      // The PR asked for by the URL the review recorded: the repository is the PR's, not this checkout's default.
       asked: [
-        ["pr", "view", "7", "--json", "headRefOid"],
-        ["pr", "review", "7", "--request-changes", "--body", preview.text],
+        ["pr", "view", "https://github.com/acme/shop/pull/7", "--json", "url,headRefOid"],
+        ["pr", "view", "https://github.com/acme/shop/pull/7", "--json", "url,headRefOid"],
+        ["api", "--method", "POST", "repos/acme/shop/pulls/7/reviews", "--input", "-"],
       ],
+      posted: { commit_id: HEAD, body: preview.text, event: "REQUEST_CHANGES" },
     });
   });
 
@@ -85,12 +89,14 @@ describe("GhPullRequestReview", () => {
       new GhPullRequestReview(other.directory, 7, other.command).deliver(long).catch((error: Error) => error.message),
     ]);
 
-    expect({ refusals, movedAsked: moved.asked().map((call) => call.join(" ")), otherAsked: other.asked() }).toMatchInlineSnapshot(`
+    expect({ refusals, movedAsked: moved.asked().map((call) => call.slice(0, 2).join(" ")), otherAsked: other.asked().map((call) => call.slice(0, 2).join(" ")) }).toMatchInlineSnapshot(`
       {
         "movedAsked": [
-          "pr view 7 --json headRefOid",
+          "pr view",
         ],
-        "otherAsked": [],
+        "otherAsked": [
+          "pr view",
+        ],
         "refusals": [
           "pull request #7 is at 333333333333, but this review is of 222222222222: compare it again; nothing posted",
           "this review is of pull request #7, not #8: nothing posted",
@@ -100,6 +106,18 @@ describe("GhPullRequestReview", () => {
     `);
     expect(() => new GhPullRequestReview("/", 0)).toThrow("a pull request's number is a whole number from 1, not 0");
   });
+
+  test("a post that gets no answer in time may have gone through: it says so, and doesn't try again", async () => {
+    const gh = fakeGh(ghAt(HEAD, "sleep 5"));
+    const sink = new GhPullRequestReview(gh.directory, 7, gh.command, undefined, 200);
+
+    const failed = await sink.deliver(REVIEW).catch((error: Error) => error.message);
+
+    expect({ failed, posts: gh.asked().filter((call) => call[0] === "api").length }).toEqual({
+      failed: "no answer from GitHub in 0.2 s: the review may have been posted. Look at https://github.com/acme/shop/pull/7 before sending it again",
+      posts: 1,
+    });
+  });
 });
 
 describe("RevisionRequestFile", () => {
@@ -107,7 +125,7 @@ describe("RevisionRequestFile", () => {
     const directory = mkdtempSync(join(tmpdir(), "runshape-revisions-"));
     const sink = new RevisionRequestFile(new NodeFiles(directory), ".runshape/revisions");
 
-    const preview = sink.preview(REVIEW);
+    const preview = await sink.preview(REVIEW);
     const delivered = await sink.deliver(REVIEW);
 
     expect(readFileSync(join(directory, "aaaaaaaaaaaa..bbbbbbbbbbbb.json"), "utf8")).toBe(preview.text);
@@ -171,5 +189,40 @@ describe("RevisionRequestFile", () => {
         },
       }
     `);
+  });
+});
+
+describe("ReviewStore: the draft beside a review", () => {
+  test("no draft yet is null; one that isn't JSON, or isn't a version 1 draft, is refused with where it is; a draft is replaced whole", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "runshape-reviews-"));
+    const store = new ReviewStore(new NodeFiles(directory), ".runshape/reviews");
+    const draft = { format: "runshape-review-draft" as const, version: 1 as const, change: REVIEW.change, checked: [], comments: [] };
+    const reason = (promise: Promise<unknown>) => promise.then(() => "read", (error: Error) => error.message);
+
+    const none = await store.draft("a..b");
+    await store.saveDraft("a..b", draft);
+    const saved = await store.draft("a..b");
+    mkdirSync(join(directory, "c..d"));
+    writeFileSync(join(directory, "c..d", "review-draft.json"), "{ half");
+    mkdirSync(join(directory, "e..f"));
+    writeFileSync(join(directory, "e..f", "review-draft.json"), JSON.stringify({ ...draft, version: 2 }));
+    // A folder where the draft should be: not "no draft", an error to see.
+    mkdirSync(join(directory, "g..h", "review-draft.json"), { recursive: true });
+
+    expect({
+      none,
+      saved: saved?.format,
+      left: readdirSync(join(directory, "a..b")),
+      notJson: await reason(store.draft("c..d")),
+      newer: await reason(store.draft("e..f")),
+      folder: (await reason(store.draft("g..h"))).split(":")[0],
+    }).toEqual({
+      none: null,
+      saved: "runshape-review-draft",
+      left: ["review-draft.json"],
+      notJson: ".runshape/reviews/c..d/review-draft.json isn't JSON (Expected property name or '}' in JSON at position 2 (line 1 column 3)): move it aside to start again",
+      newer: '.runshape/reviews/e..f/review-draft.json is "runshape-review-draft" version 2, not runshape-review-draft version 1: move it aside to start again',
+      folder: "EISDIR",
+    });
   });
 });

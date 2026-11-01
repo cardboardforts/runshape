@@ -2,7 +2,7 @@
 // the command line. Each command is a call on the workflows' Recordings (packages/workflows).
 import { RULES_FILE } from "@runshape/architecture";
 import { ArchitectureSummary, CommentSink, GitError, KeptReviewDrafts, LibraryOverview, ModelChoice, ReviewVerdict, TestConfigError, WORKING_TREE_ID } from "@runshape/kernel";
-import { OpenedReview, RecordingError, Recordings, RecordingsDependencies, RecordingView, ReviewNotFound, Reviewing } from "@runshape/workflows";
+import { OpenedReview, RecordingError, Recordings, RecordingsDependencies, RecordingView, ReviewNotFound, Reviewing, SendMode } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -56,9 +56,11 @@ export function usageProblem(error: unknown): string | null {
 export async function runRecordings(argv: string[], dependencies: CommandDependencies): Promise<number> {
   const { logger, now } = dependencies;
   const started = now().getTime();
-  const [command = "list"] = argv.filter((arg) => !arg.startsWith("--"));
+  // Everything after a lone "--" is text (a comment's): never a flag, and never logged.
+  const options = argv.includes("--") ? argv.slice(0, argv.indexOf("--")) : argv;
+  const [command = "list"] = options.filter((arg) => !arg.startsWith("--"));
   // Flags by name only: the values (and the refs named) are the person's, not the log's.
-  logger.log("info", "command.start", { command, flags: argv.filter((arg) => arg.startsWith("--")).map((arg) => arg.split("=")[0]).join(" ") });
+  logger.log("info", "command.start", { command, flags: options.filter((arg) => arg.startsWith("--")).map((arg) => arg.split("=")[0]).join(" ") });
   try {
     const exit = await runCommand(argv, dependencies);
     logger.log(exit === 0 ? "info" : "warn", "command.end", { command, exit, duration_ms: now().getTime() - started });
@@ -69,7 +71,11 @@ export async function runRecordings(argv: string[], dependencies: CommandDepende
   }
 }
 
-async function runCommand(given: string[], dependencies: CommandDependencies): Promise<number> {
+async function runCommand(everything: string[], dependencies: CommandDependencies): Promise<number> {
+  // After a lone "--", the words are text as they were given (newlines and all), not flags.
+  const separator = everything.indexOf("--");
+  const given = separator === -1 ? everything : everything.slice(0, separator);
+  const text = separator === -1 ? null : everything.slice(separator + 1);
   // For view only, "--module app.db" reads as "--module=app.db", the way every other flag takes
   // its value. Any other command keeps its arguments as given: there, --module is refused below,
   // and the word after it stays the ref or id it was.
@@ -171,7 +177,7 @@ async function runCommand(given: string[], dependencies: CommandDependencies): P
         return 0;
       }
       case "review":
-        return await review(names, flags, flagValues, dependencies);
+        return await review(names, text, flags, flagValues, dependencies);
       case "forget":
         if (names.length !== 1) throw new UsageError(`forget <id>\n${USAGE}`);
         await recordings.exclusively(() => recordings.forget(names[0]!));
@@ -196,7 +202,7 @@ const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
-const REVIEW_USAGE = "review <base>..<head> [check <n>... | comment <n|change> <text> | send github|agent [--approve|--request-changes] [--pr=N] [--post]]";
+const REVIEW_USAGE = "review <base>..<head> [check <n>... | comment <n|change> -- <text> | send github|agent [--approve|--request-changes] [--pr=N] [--post]]";
 const USAGE =
   `usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | ${REVIEW_USAGE} | schedule [--at=HH:MM] | forget <id>`;
 
@@ -206,12 +212,13 @@ const USAGE =
  * post, unless --post says to post it: posting can't be taken back. A revision request for a
  * local agent is a file here, written straight away.
  */
-async function review(names: string[], flags: Set<string>, flagValues: Map<string, string | null>, dependencies: CommandDependencies): Promise<number> {
+async function review(names: string[], text: string[] | null, flags: Set<string>, flagValues: Map<string, string | null>, dependencies: CommandDependencies): Promise<number> {
   const [name, action, ...rest] = names;
+  if (text !== null && action !== "comment") throw new UsageError(`text after -- is a comment's: review <name> comment <n|change> -- <text>`);
   if (name === undefined) throw new UsageError(`${REVIEW_USAGE}: the names are the folders in .runshape/reviews`);
   const misplaced = [...flags].filter((flag) => REVIEW_FLAGS.has(flag) && action !== "send");
   if (misplaced.length > 0) throw new UsageError(`${misplaced.join(", ")} only ${misplaced.length === 1 ? "applies" : "apply"} to review <name> send`);
-  const reviewing = new Reviewing(dependencies.reviewDrafts, dependencies.logger, dependencies.now);
+  const reviewing = new Reviewing(dependencies.reviewDrafts, dependencies.logger, dependencies.now, (body) => dependencies.hashing.sha256(body));
   const print = dependencies.print;
   const refused = (errors: string[]) => {
     for (const error of errors) print(`runshape: ${error}`);
@@ -225,13 +232,17 @@ async function review(names: string[], flags: Set<string>, flagValues: Map<strin
       if (rest.length === 0) throw new UsageError(`check what? ${REVIEW_USAGE}`);
       return refused((await reviewing.check(name, rest)).errors);
     case "comment": {
+      // The text after "--" can start with "--" or hold newlines; plain words after the target work too.
       const [on, ...words] = rest;
-      if (on === undefined || words.length === 0) throw new UsageError(`comment <n|change> <text>: ${REVIEW_USAGE}`);
-      return refused((await reviewing.comment(name, on, words.join(" "))).errors);
+      const body = text ?? words;
+      if (on === undefined || body.length === 0 || (text !== null && words.length > 0)) throw new UsageError(`comment <n|change> -- <text>: ${REVIEW_USAGE}`);
+      return refused((await reviewing.comment(name, on, body.join(" "))).errors);
     }
     case "send": {
       const [to] = rest;
       if (flags.has("--approve") && flags.has("--request-changes")) throw new UsageError("--approve or --request-changes, not both");
+      // Exactly --post: "--post=yes" isn't a yes to anything in particular.
+      if (flags.has("--post") && flagValues.get("--post") !== null) throw new UsageError("--post takes no value: it posts exactly what the last preview showed");
       const verdict = flags.has("--approve") ? ReviewVerdict.Approve : flags.has("--request-changes") ? ReviewVerdict.RequestChanges : ReviewVerdict.Comment;
       let sink: CommentSink;
       if (to === "agent") {
@@ -240,16 +251,17 @@ async function review(names: string[], flags: Set<string>, flagValues: Map<strin
       } else if (to === "github") {
         sink = dependencies.commentSinks.github(await pullRequestOf(name, flagValues.get("--pr") ?? null, flags.has("--pr"), reviewing));
       } else throw new UsageError(`send it where? github or agent: ${REVIEW_USAGE}`);
-      // Only GitHub is outward: a revision request is this machine's, replaced by the next.
-      const confirmed = to === "agent" || flags.has("--post");
-      const sent = await reviewing.send(name, sink, verdict, { confirmed });
+      // Only GitHub is outward, and posts only what was previewed: a revision request is this
+      // machine's, replaced by the next.
+      const mode = to === "agent" ? SendMode.Deliver : flags.has("--post") ? SendMode.Post : SendMode.Preview;
+      const sent = await reviewing.send(name, sink, verdict, mode);
       if ("errors" in sent) return refused(sent.errors);
       if ("preview" in sent) {
-        print(`Would send to ${sent.preview.where} (${verdict}):`);
+        print(`Would send to ${sent.preview.where} (${verdict}), preview ${sent.digest}:`);
         print("");
         for (const line of sent.preview.text.trimEnd().split("\n")) print(`  ${line}`);
         print("");
-        print("Nothing posted. Run it again with --post to post this.");
+        print(`Nothing posted. To post exactly this (preview ${sent.digest}), run the same with --post.`);
         return 0;
       }
       print(`Sent ${sent.delivered.comments} comment${sent.delivered.comments === 1 ? "" : "s"} (${verdict}) to ${sent.delivered.where}.`);
@@ -287,7 +299,7 @@ function reviewText(name: string, opened: OpenedReview): string[] {
     lines.push("", "Comments on the change, or on what this comparison no longer shows:");
     for (const comment of unpinned) lines.push(`  ${comment.key}: ${comment.body}`);
   }
-  lines.push("", `Next: review ${name} check <n>... | comment <n|change> <text> | send github|agent`);
+  lines.push("", `Next: review ${name} check <n>... | comment <n|change> -- <text> | send github|agent`);
   return lines;
 }
 

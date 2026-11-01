@@ -48,20 +48,41 @@ export class ReviewStore implements KeptReviews, KeptReviewDrafts {
     await this.files.writeText(`${name}/${REVIEW_PAGE}`, asJson(page));
   }
 
-  /** The PR page; null when there's no such review. */
+  /** The PR page; null when there's no such review. Any other failure, or a file that isn't a page, throws. */
   async page(name: string): Promise<ReviewPage | null> {
-    const text = await this.files.readText(`${name}/${REVIEW_PAGE}`).catch(() => null);
-    return text === null ? null : (JSON.parse(text) as ReviewPage);
+    return this.readVersioned<ReviewPage>(name, REVIEW_PAGE, "runshape-review-page");
   }
 
-  /** What's checked and the comments so far; null before the first. */
+  /** What's checked and the comments so far; null before the first. A file that isn't a version 1 draft throws. */
   async draft(name: string): Promise<ReviewDraft | null> {
-    const text = await this.files.readText(`${name}/${REVIEW_DRAFT}`).catch(() => null);
-    return text === null ? null : (JSON.parse(text) as ReviewDraft);
+    return this.readVersioned<ReviewDraft>(name, REVIEW_DRAFT, "runshape-review-draft");
   }
 
+  /** Whole or not at all: a draft cut short mid-write would lose every check and comment. */
   async saveDraft(name: string, draft: ReviewDraft): Promise<void> {
-    await this.files.writeText(`${name}/${REVIEW_DRAFT}`, asJson(draft));
+    await this.files.replaceText(`${name}/${REVIEW_DRAFT}`, asJson(draft));
+  }
+
+  /** A JSON file of a known format, version 1; null only when there's no such file. */
+  private async readVersioned<T>(name: string, file: string, format: string): Promise<T | null> {
+    const where = join(this.shownAs, name, file);
+    let text: string;
+    try {
+      text = await this.files.readText(`${name}/${file}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    let value: { format?: unknown; version?: unknown };
+    try {
+      value = JSON.parse(text) as { format?: unknown; version?: unknown };
+    } catch (error) {
+      throw new Error(`${where} isn't JSON (${error instanceof Error ? error.message : String(error)}): move it aside to start again`);
+    }
+    if (value?.format !== format || value.version !== 1) {
+      throw new Error(`${where} is ${JSON.stringify(value?.format)} version ${JSON.stringify(value?.version)}, not ${format} version 1: move it aside to start again`);
+    }
+    return value as T;
   }
 
   /** The saved explanation; null when there's none, or it can't be read (it's asked again). */

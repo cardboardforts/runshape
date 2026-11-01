@@ -14,7 +14,7 @@ import { ZoneRules } from "@runshape/architecture";
 import { CommentSink, FinishedReview, KeptReviewDrafts, LogFields, Logger, LogLevel, ReviewDraft, ReviewPage, ReviewVerdict } from "@runshape/kernel";
 import { buildReviewBundle } from "../src/review-bundle";
 import { buildReviewPage } from "../src/review-page";
-import { Reviewing } from "../src/reviewing";
+import { Reviewing, SendMode } from "../src/reviewing";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 /** The review module's own tests read this page; it's the slug refactor's, as compare makes it. */
@@ -51,10 +51,12 @@ class MemoryDrafts implements KeptReviewDrafts {
   }
 }
 
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+
 class KeepingSink implements CommentSink {
   readonly name = "a sink that keeps what it's given";
   readonly delivered: FinishedReview[] = [];
-  preview(review: FinishedReview) {
+  async preview(review: FinishedReview) {
     return { where: "memory", text: `${review.verdict}: ${review.comments.map((comment) => comment.body).join(" / ")}` };
   }
   async deliver(review: FinishedReview) {
@@ -84,7 +86,7 @@ describe("Reviewing", () => {
   test("check off, comment, then send: a preview first, delivery only when asked, the draft kept throughout", async () => {
     const drafts = new MemoryDrafts(new Map([[NAME, await slugRefactorPage()]]));
     const logger = new KeepingLogger();
-    const reviewing = new Reviewing(drafts, logger, () => new Date("2026-10-31T10:00:00Z"));
+    const reviewing = new Reviewing(drafts, logger, () => new Date("2026-10-31T10:00:00Z"), sha256);
 
     const opened = await reviewing.open(NAME);
     // What there is to look at: each thread, each changed function in it, each test that changed.
@@ -106,8 +108,8 @@ describe("Reviewing", () => {
     expect(await reviewing.comment(NAME, "change", "   ")).toEqual({ errors: ["a comment needs some text"] });
 
     const sink = new KeepingSink();
-    const preview = await reviewing.send(NAME, sink, ReviewVerdict.RequestChanges, { confirmed: false });
-    const sent = await reviewing.send(NAME, sink, ReviewVerdict.RequestChanges, { confirmed: true });
+    const preview = await reviewing.send(NAME, sink, ReviewVerdict.RequestChanges, SendMode.Preview);
+    const sent = await reviewing.send(NAME, sink, ReviewVerdict.RequestChanges, SendMode.Post);
 
     expect({ preview, sent, delivered: sink.delivered.map((review) => `${review.verdict}: ${review.comments.length} comment`), draft: drafts.drafts.get(NAME), log: logger.lines }).toMatchInlineSnapshot(`
       {
@@ -154,13 +156,15 @@ describe("Reviewing", () => {
             },
           ],
           "format": "runshape-review-draft",
+          "previewed": null,
           "version": 1,
         },
         "log": [
-          "info review.previewed {"review":"aaaaaaaaaaaa..bbbbbbbbbbbb","sink":"a sink that keeps what it's given","verdict":"request-changes","comments":1,"where":"memory"}",
+          "info review.previewed {"review":"aaaaaaaaaaaa..bbbbbbbbbbbb","sink":"a sink that keeps what it's given","verdict":"request-changes","comments":1,"where":"memory","digest":"1d87bb452542"}",
           "info review.sent {"review":"aaaaaaaaaaaa..bbbbbbbbbbbb","sink":"a sink that keeps what it's given","verdict":"request-changes","comments":1,"where":"memory"}",
         ],
         "preview": {
+          "digest": "1d87bb452542",
           "preview": {
             "text": "request-changes: Why does the normaliser lower-case before slugging?",
             "where": "memory",
@@ -178,13 +182,39 @@ describe("Reviewing", () => {
     `);
   });
 
+  test("posting sends only what was last previewed: never-previewed, changed since, or already posted is refused", async () => {
+    const drafts = new MemoryDrafts(new Map([[NAME, await slugRefactorPage()]]));
+    const reviewing = new Reviewing(drafts, new KeepingLogger(), () => new Date("2026-10-31T10:00:00Z"), sha256);
+    const sink = new KeepingSink();
+    await reviewing.comment(NAME, "change", "Small and clear.");
+
+    const neverPreviewed = await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Post);
+    await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Preview);
+    await reviewing.comment(NAME, "2", "One more thing.");
+    const changedSince = await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Post);
+    // Another verdict is another body, too.
+    await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Preview);
+    const otherVerdict = await reviewing.send(NAME, sink, ReviewVerdict.Approve, SendMode.Post);
+    const posted = await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Post);
+    const again = await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Post);
+
+    expect({ neverPreviewed, changedSince, otherVerdict, posted, again, delivered: sink.delivered.length }).toEqual({
+      neverPreviewed: { errors: ["not posted: it hasn't been previewed. Send it without --post to see exactly what would be posted, then post that."] },
+      changedSince: { errors: ["not posted: it isn't what was last previewed. Send it without --post to see exactly what would be posted, then post that."] },
+      otherVerdict: { errors: ["not posted: it isn't what was last previewed. Send it without --post to see exactly what would be posted, then post that."] },
+      posted: { delivered: { where: "memory", comments: 2 }, sink: sink.name },
+      again: { errors: ["not posted: it hasn't been previewed. Send it without --post to see exactly what would be posted, then post that."] },
+      delivered: 1,
+    });
+  });
+
   test("a review that isn't there, or has nothing to send, is refused with the reason, and nothing is sent", async () => {
     const drafts = new MemoryDrafts(new Map([[NAME, await slugRefactorPage()]]));
-    const reviewing = new Reviewing(drafts, new KeepingLogger(), () => new Date("2026-10-31T10:00:00Z"));
+    const reviewing = new Reviewing(drafts, new KeepingLogger(), () => new Date("2026-10-31T10:00:00Z"), sha256);
     const sink = new KeepingSink();
 
     await expect(reviewing.open("cccccccccccc..working")).rejects.toThrow("no review cccccccccccc..working: `compare` makes one");
-    expect(await reviewing.send(NAME, sink, ReviewVerdict.Comment, { confirmed: true })).toEqual({ errors: ["no comments to send: leave one with `review <name> comment <what> <text>`"] });
+    expect(await reviewing.send(NAME, sink, ReviewVerdict.Comment, SendMode.Deliver)).toEqual({ errors: ["no comments to send: leave one with `review <name> comment <what> -- <text>`"] });
     expect(sink.delivered).toEqual([]);
   });
 });

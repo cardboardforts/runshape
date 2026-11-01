@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
@@ -30,6 +31,23 @@ export class NodeFiles {
     const path = this.pathOf(relativePath);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, text);
+  }
+
+  /**
+   * Writes the whole file so a reader sees the old text or the new, never half: written beside
+   * it under a name of its own, then renamed over it (a rename within a folder is atomic).
+   */
+  async replaceText(relativePath: string, text: string): Promise<void> {
+    const path = this.pathOf(relativePath);
+    await mkdir(dirname(path), { recursive: true });
+    const partial = `${path}.${process.pid}.${randomUUID()}.partial`;
+    try {
+      await writeFile(partial, text);
+      await rename(partial, path);
+    } catch (error) {
+      await rm(partial, { force: true });
+      throw error;
+    }
   }
 
   /** Makes a folder ("" for the root itself), and any above it. */

@@ -591,6 +591,14 @@ that pays. A no-op change has no time callout.
   (`.runshape/revisions/<review>.json` for Phase 8's loop). Proved on the fixtures and on a
   real Runshape compare (4b4933a61a07..1fe496dc6399: 603 reviewables; checked, commented,
   previewed to GitHub, written for an agent). docs/review-bundle.md, "Reviewing it".
+- **Done (2026-11-01): fixes from the second-model review.** The kernel holds no logic: replay
+  pacing and time wording are the webview's (`replay-pace.ts`). `--post` posts only what was
+  last previewed (a digest kept in the draft) and takes no value; the post goes through `gh api`
+  to the repository in the PR's URL, pinned to the reviewed commit, the body on stdin, with its
+  own timeout that says it may have posted. Fingerprints carry each function's source revision
+  (a SHA-256 digest through the Hashing port), threads are keyed by all their functions,
+  overloads get `#2`. Comment text after `--`. Drafts are format-checked and, with revision
+  requests, written whole.
 - **Left:** step 1 (beams: the reviewables carry the tests through each function, but they
   aren't told apart as unit, integration and e2e, and walking one backwards with timing deltas
   is the viewer's, with step 3's UI). The ticket sink (no ticket writer exists yet: GhIssues

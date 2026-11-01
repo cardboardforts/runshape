@@ -12,9 +12,24 @@ export interface OpenedReview {
   unpinned: ReviewComment[];
 }
 
-/** What sending did: shown and waiting for the person's OK, or delivered. */
-export type Sent = { preview: CommentPreview; sink: string } | { delivered: CommentDelivery; sink: string } | { errors: string[] };
+/** What sending did: shown (with the digest a post must match), delivered, or refused. */
+export type Sent = { preview: CommentPreview; digest: string; sink: string } | { delivered: CommentDelivery; sink: string } | { errors: string[] };
 
+/**
+ * How to send: `preview` shows and remembers it; `post` sends only what was last previewed for
+ * that destination (outward: the person saw exactly this); `deliver` sends without a preview
+ * (a sink that stays on this machine).
+ */
+export enum SendMode {
+  Preview = "preview",
+  Post = "post",
+  Deliver = "deliver",
+}
+
+/** Hex digits of a preview's digest the person sees: enough to tell two previews apart. */
+export const SHOWN_DIGEST_LENGTH = 12;
+
+/** No review by that name, or one whose files can't be read: said to the person as it is. */
 export class ReviewNotFound extends Error {}
 
 export class Reviewing {
@@ -22,6 +37,8 @@ export class Reviewing {
     private readonly reviews: KeptReviewDrafts,
     private readonly logger: Logger,
     private readonly now: () => Date,
+    /** Hashing's sha256: what a preview's digest is. */
+    private readonly digest: (text: string) => string,
   ) {}
 
   async open(name: string): Promise<OpenedReview> {
@@ -44,29 +61,38 @@ export class Reviewing {
     return { errors: edit.errors };
   }
 
-  /**
-   * The finished review through a sink. Unconfirmed, it's only previewed: exactly what would be
-   * sent, and where. Confirmed (the person saw the preview and said so), it's delivered.
-   */
-  async send(name: string, sink: CommentSink, verdict: ReviewVerdict, options: { confirmed: boolean }): Promise<Sent> {
+  /** The finished review through a sink: previewed, posted as previewed, or delivered (see SendMode). */
+  async send(name: string, sink: CommentSink, verdict: ReviewVerdict, mode: SendMode): Promise<Sent> {
     const { draft } = await this.load(name);
     const finished = finishReview(draft, verdict);
     if (finished.review === null) return { errors: finished.errors };
     // Counts and where, never the comments' text: the log is read by more people than the review.
     const fields = { review: name, sink: sink.name, verdict, comments: finished.review.comments.length };
-    if (!options.confirmed) {
-      const preview = sink.preview(finished.review);
-      this.logger.log("info", "review.previewed", { ...fields, where: preview.where });
-      return { preview, sink: sink.name };
+    const preview = await sink.preview(finished.review);
+    const digest = this.digest(`${preview.where}\n${preview.text}`).slice(0, SHOWN_DIGEST_LENGTH);
+    if (mode === SendMode.Preview) {
+      await this.reviews.saveDraft(name, { ...draft, previewed: { where: preview.where, digest } });
+      this.logger.log("info", "review.previewed", { ...fields, where: preview.where, digest });
+      return { preview, digest, sink: sink.name };
+    }
+    if (mode === SendMode.Post) {
+      const shown = draft.previewed ?? null;
+      if (shown === null || shown.where !== preview.where || shown.digest !== digest) {
+        this.logger.log("warn", "review.not_previewed", { ...fields, where: preview.where });
+        const why = shown === null ? "it hasn't been previewed" : "it isn't what was last previewed";
+        return { errors: [`not posted: ${why}. Send it without --post to see exactly what would be posted, then post that.`] };
+      }
     }
     try {
       const delivered = await sink.deliver(finished.review);
       this.logger.log("info", "review.sent", { ...fields, where: delivered.where });
+      // A post is used up: posting again needs another look.
+      if (mode === SendMode.Post) await this.reviews.saveDraft(name, { ...draft, previewed: null });
       return { delivered, sink: sink.name };
     } catch (error) {
       // A sink refuses (the PR moved on since the review) or fails (gh, the network): the
       // person is told why rather than shown a stack. A timeout may still have posted, so
-      // "refused or failed", not "not sent"; the sink says "nothing posted" when it knows.
+      // "refused or failed", not "not sent"; the sink says which when it knows.
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.log("warn", "review.not_sent", { ...fields, error: reason });
       return { errors: [`${sink.name} refused or failed: ${reason}`] };
@@ -74,9 +100,15 @@ export class Reviewing {
   }
 
   private async load(name: string): Promise<{ page: ReviewPage; draft: ReviewDraft; items: Reviewable[] }> {
-    const page = await this.reviews.page(name);
+    let page: ReviewPage | null;
+    let saved: ReviewDraft | null;
+    try {
+      [page, saved] = await Promise.all([this.reviews.page(name), this.reviews.draft(name)]);
+    } catch (error) {
+      throw new ReviewNotFound(`can't read review ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (page === null) throw new ReviewNotFound(`no review ${name}: \`compare\` makes one`);
-    const draft = draftFor(name, page, await this.reviews.draft(name));
+    const draft = draftFor(name, page, saved);
     return { page, draft, items: reviewables(page) };
   }
 }
