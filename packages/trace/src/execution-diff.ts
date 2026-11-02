@@ -8,7 +8,8 @@ const PROJECT_ROLES = new Set([Role.Source, Role.Test]);
 
 export function diffExecution(before: Scenario, after: Scenario, phases: Phase[] = [Phase.Call], moves: Moves = Moves.none()): ExecutionDiff {
   // Base calls are identified as head names their functions, so a moved function lines up with itself.
-  const aligned = align(callsOf(before, phases, moves.headKey), callsOf(after, phases, (key) => key), (call) => call.identity);
+  const chains = new Map<string, number>();
+  const aligned = align(callsOf(before, phases, moves.headKey, chains), callsOf(after, phases, (key) => key, chains), (call) => call.identity);
   const headKeys = aligned.steps.map((entry) => moves.headKey((entry.after ?? entry.before)!.symbol.key));
   const calls = aligned.steps.map((entry): CallStep => {
     const call = (entry.after ?? entry.before)!;
@@ -77,27 +78,36 @@ interface Call {
   symbol: CodeSymbol;
   /** The chain of callers by name, to show. */
   path: string;
-  /** The same chain by symbol key, to line calls up: two functions sharing a name stay apart. */
-  identity: string;
+  /**
+   * The same chain by symbol key, to line calls up: two functions sharing a name stay apart.
+   * Numbered in `chains`, shared by both sides: the caller's chain's number and this key.
+   */
+  identity: number;
 }
 
 /** `keyOf` names a function for alignment: head's key for it, on the base side. */
-function callsOf(scenario: Scenario, phases: Phase[], keyOf: (key: string) => string): Call[] {
+function callsOf(scenario: Scenario, phases: Phase[], keyOf: (key: string) => string, chains: Map<string, number>): Call[] {
+  const numbered = (chain: string): number => {
+    let number = chains.get(chain);
+    if (number === undefined) chains.set(chain, (number = chains.size));
+    return number;
+  };
   const included = new Set(phases);
   const calls: Call[] = [];
-  const chains = new Map<Span, Call>();
+  const callOf = new Map<Span, Call>();
   for (const span of scenario.spans) {
     if (!included.has(span.phase) || !PROJECT_ROLES.has(span.fn.role)) continue;
     const parent = nearestProjectAncestor(span);
-    const above = parent ? chains.get(parent) : undefined;
+    const above = parent ? callOf.get(parent) : undefined;
     const { symbol } = span.fn;
     const call: Call = {
       depth: above ? above.depth + 1 : 0,
       symbol,
       path: above ? `${above.path} > ${symbol.localName.text}` : symbol.localName.text,
-      identity: above ? `${above.identity} > ${keyOf(symbol.key)}` : keyOf(symbol.key),
+      // A key is JSON ("[[...") and never starts with a digit: a root key is no caller's chain.
+      identity: numbered(above ? `${above.identity} ${keyOf(symbol.key)}` : keyOf(symbol.key)),
     };
-    chains.set(span, call);
+    callOf.set(span, call);
     calls.push(call);
   }
   return calls;

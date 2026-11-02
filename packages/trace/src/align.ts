@@ -29,12 +29,22 @@ interface TraceRow {
   values: Int32Array;
 }
 
-export function align<T>(before: T[], after: T[], key: (item: T) => string): Alignment<T> {
-  const a = before.map(key);
-  const b = after.map(key);
+export function align<T>(before: T[], after: T[], key: (item: T) => string | number): Alignment<T> {
+  // The search compares the same items again on every diagonal: numbers, not long keys.
+  const numbers = new Map<string | number, number>();
+  const numbered = (item: T): number => {
+    const itemKey = key(item);
+    let number = numbers.get(itemKey);
+    if (number === undefined) numbers.set(itemKey, (number = numbers.size));
+    return number;
+  };
+  const a = Int32Array.from(before, numbered);
+  const b = Int32Array.from(after, numbered);
   const n = a.length;
   const m = b.length;
   const max = Math.min(n + m, MAX_EDIT_DISTANCE);
+  // Out of reach: the search would run all `max` rounds before saying so.
+  if (fewestEdits(a, b, numbers.size) > max) return unaligned(before, after);
   const offset = max + 1;
   const v = new Int32Array(2 * max + 3);
   const trace: TraceRow[] = [];
@@ -54,6 +64,10 @@ export function align<T>(before: T[], after: T[], key: (item: T) => string): Ali
       if (x >= n && y >= m) return { steps: backtrack(trace, before, after, n, m), complete: true };
     }
   }
+  return unaligned(before, after);
+}
+
+function unaligned<T>(before: T[], after: T[]): Alignment<T> {
   return {
     steps: [
       ...before.map((item) => ({ op: Op.Removed, before: item, after: null })),
@@ -61,6 +75,19 @@ export function align<T>(before: T[], after: T[], key: (item: T) => string): Ali
     ],
     complete: false,
   };
+}
+
+/**
+ * A floor under the edit distance: every item one side has more of than the other is removed
+ * or added. Keys numbered 0 … `keys` - 1.
+ */
+function fewestEdits(a: Int32Array, b: Int32Array, keys: number): number {
+  const surplus = new Int32Array(keys);
+  for (const key of a) surplus[key]! += 1;
+  for (const key of b) surplus[key]! -= 1;
+  let edits = 0;
+  for (const count of surplus) edits += Math.abs(count);
+  return edits;
 }
 
 function backtrack<T>(trace: TraceRow[], before: T[], after: T[], n: number, m: number): Aligned<T>[] {

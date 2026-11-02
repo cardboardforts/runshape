@@ -55,4 +55,26 @@ describe("align", () => {
     expect(complete).toBe(false);
     expect(steps).toHaveLength(2 * MAX_EDIT_DISTANCE);
   });
+
+  test("it gives up at once when the items one side has more of are already past the limit, and only then", () => {
+    // Every surplus item is an edit, so no search can do better: half the incomplete alignments
+    // in a review of Runshape itself are known out of reach before the first round. A sequence
+    // reversed has no surplus at all, and is still searched to the limit before giving up.
+    const distinct = (count: number, name: string) => Array.from({ length: count }, (_, i) => `${name}${i}`);
+    const outcome = (before: string[], after: string[]) => {
+      const { steps, complete } = align(before, after, (s) => s);
+      return { complete, same: steps.filter((s) => s.op === Op.Same).length, edits: steps.filter((s) => s.op !== Op.Same).length };
+    };
+    const reversedPastTheLimit = distinct(MAX_EDIT_DISTANCE / 2 + 2, "call");
+
+    expect({
+      surplusAtTheLimit: outcome(distinct(MAX_EDIT_DISTANCE / 2, "old"), distinct(MAX_EDIT_DISTANCE / 2, "new")),
+      surplusPastTheLimit: outcome(distinct(MAX_EDIT_DISTANCE + 2, "old"), ["old0"]),
+      reorderedPastTheLimit: outcome(reversedPastTheLimit, [...reversedPastTheLimit].reverse()),
+    }).toEqual({
+      surplusAtTheLimit: { complete: true, same: 0, edits: MAX_EDIT_DISTANCE },
+      surplusPastTheLimit: { complete: false, same: 0, edits: MAX_EDIT_DISTANCE + 3 },
+      reorderedPastTheLimit: { complete: false, same: 0, edits: MAX_EDIT_DISTANCE + 4 },
+    });
+  });
 });
