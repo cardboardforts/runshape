@@ -37,7 +37,7 @@ recorded **scenario**. Three views come out of the same recordings:
 The same onion it's meant to show. Imports point inward only:
 
 ```
-recorders:  recorder/ (Python), recorder-go/, recorder-ts/: each writes the trace format
+recorders:  recorder/ (Python), recorder-go/, recorder-ts/, recorder-cs/: each writes the trace format
 kernel:     packages/kernel: the trace model and format (trace/), shared words, ports, the UI
             protocol
 modules:    packages/architecture (styles, zones, the system graph, advice), packages/trace
@@ -178,6 +178,7 @@ in a webview.
 | sandbox → host | **T/E**: the PR's tests leave links in /out so the host's next write (`runshape.json`, `recording.json`) lands on a script it later runs, or the dev server serves any file; or they fill the disk | after the container exits, every entry in /out must be a plain file or folder, totalling under 2 GB, or the recording is refused before the host reads or writes there (the reproduced attack is a test); the dev server resolves links and serves nothing outside the recordings; the worktree and the output are removed whatever the tests did to them (a broken `.git`, a folder made unreadable), so nothing they leave stops a later run | a sandboxed PR writes or reads any file the person can |
 | Python dependencies → sandbox | **T/E**: a PR's requirements install from somewhere of its own, or build an sdist whose setup.py runs with network | every line of `requirements.txt` must be a pinned release (`name==version`, a marker of plain characters, hashes) or nothing is installed: no option lines (another index, `-r`, `-e`), URLs or paths; a refusal names lines by number, never their text. requirements.txt (and package-lock.json) must be plain files: a link (to `~/.ssh/id_rsa`) isn't read. pip installs wheels only (`--only-binary=:all:`: no build step runs), from PyPI's index, its config files unread (`PIP_CONFIG_FILE=/dev/null`), on the same internal network whose proxy reaches only pypi.org and files.pythonhosted.org. Python and pip run isolated (`-I`) from /tmp, so a committed `argparse.py` or `venv/` can't stand in for Python's own; a commit that already has `.runshape-venv` (its own pip or `.pth` files) isn't installed. Not mitigated: transitive dependencies aren't pinned (no `--require-hashes`), so pip picks their versions from PyPI; they're still wheels from PyPI only. No requirements.txt, no sandboxed recording (poetry and uv locks aren't read yet) | the PR's code runs at install, with network |
 | Go modules → sandbox | **T/E**: a PR's go.mod downloads a toolchain and runs it, or fetches modules from a host of its own (a VCS, a private proxy) | `go mod download` only (Go runs no module code at download), with one toolchain (`GOTOOLCHAIN=local`), no workspace or go env file, nothing private (`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, `GOINSECURE` emptied, `GOVCS=*:off`), every module from proxy.golang.org checked against sum.golang.org, which are all the proxy reaches; a commit that already has `.runshape-gomod` (a module cache of its own) isn't installed. The tests then run from the module cache with `GOPROXY=off` and no network | a module or toolchain the checksum database never saw runs in the sandbox |
+| NuGet packages → sandbox (C#) | **T/E**: a PR's project files run code while there's a network (MSBuild evaluates a .csproj, Directory.Build.props/targets and committed obj/*.g.props, and a target can hook restore, run `Exec` or an inline task), or name a package source, fallback folder or package of their own | the install never evaluates the commit's MSBuild: the host reads each project's `packages.lock.json` as data (every .csproj must have one, a plain file; each entry a package id and a pinned version matching strict patterns, or nothing is fetched) and the image's `download-packages.sh` fetches exactly those, by a project it writes in /tmp (no Directory.Build files imported), with the recorder's own nuget.config (nuget.org only), through the proxy, which reaches only api.nuget.org. A commit that already has `.runshape-nuget` isn't installed. **What does run, and when:** the commit's MSBuild (its project files, its packages' build targets, analyzers and source generators) and its tests all run in the record step, with no network and /target read-only; restore there is offline and locked (`RestoreLockedMode`), so each package's hash is checked against its lock file and nothing outside them is used. Not mitigated: a package nuget.org serves is trusted as it's served (signed by nuget.org, hash-pinned by the lock file); a project targeting .NET 8 or 9 needs targeting packs the image hasn't got, so it records on the host | the PR's code runs at install, with network |
 | the project's settings → recorders (`runshape.json`'s `recorder`, its `.venv`) | **E**: a PR checked out here ships a `.venv/bin/python`, or names an interpreter, and recording `main` (yours, so on this machine) runs it | the settings come from the working tree, which is yours (accepted risk below); paths in them must stay inside the project, links resolved, and folders or tests can't start with `-` (options go in `args`, which pass to pytest as they are: the working tree's own); a Python reached through anything git tracks is never run, checked folder by folder, case-insensitively, as named and as resolved (a `.venv` that's a link to a committed folder too), and one that resolves inside the project must be ignored by git (a venv is never committed: a committed one is the commit's code); pytest's arguments and Go's packages reach the container as arguments, never spliced into its shell line | a committed script runs as the person, outside the sandbox |
 | `gh` → GitHub (`review-requests`) | **I**: the person's GitHub token | only `gh` holds it (its own login); runshape only reads PR lists, PR descriptions and issues (`gh pr view`, `gh issue view`) and fetches PR refs, writes nothing to GitHub, and never passes the token to a container | a token in a recording, a log or a container |
 | PR text, commit messages → `gh issue view` (the story) | **T/D**: a PR body or commit message (anyone's, an agent's) mentions `#--repo=…` or a thousand issues, to turn a mention into a flag or make every review a thousand requests | an id reaches gh only after matching `#N` or `owner/repo#N` whole, as one argument, never through a shell; at most 8 tickets are read per review (`MAX_TICKETS`), the rest listed as not read; another repository's issue (`owner/repo#N`) is read only when GitHub links it to the PR or the person allowed that repository, so a mention can't have the reviewer's login copy a private ticket into the review or reveal that it exists; gh and git calls time out (30 s, 120 s) and gh never prompts (`GH_PROMPT_DISABLED`); a ticket or PR that can't be read is listed with gh's reason (cut at 200 characters), never fatal | a crafted mention runs gh with flags of its author's choosing, or a review takes hours |
@@ -217,11 +218,11 @@ Accepted risks:
 - Which recorder (PLAN.md Phase 7): a project is a git repository's root, and its language is
   what `--recorder` says, else runshape.json's `recorder.language`, else what its root's files
   say (`go.mod`, `pytest.ini`/`pyproject.toml`/`requirements.txt`/`manage.py`/...,
-  `package.json`); a root that says two languages asks rather than guesses. A project in a
+  `package.json`, a `*.sln`/`*.slnx`/`*.csproj`); a root that says two languages asks rather than guesses. A project in a
   subfolder of a repository (a monorepo) isn't one yet. The settings are the working tree's,
   for every commit recorded. Python on the host runs with the working tree's `.venv` for
-  commits too (a checkout has none). The sandbox images are one Python (3.12) and one Go
-  (1.27.2): a project needing another records on the host. The Python sandbox needs a pinned
+  commits too (a checkout has none). The sandbox images are one Python (3.12), one Go
+  (1.27.2) and one .NET SDK (10.0.301): a project needing another records on the host. The Python sandbox needs a pinned
   `requirements.txt`, wheels only; the FastAPI example needs Postgres, so it records on the
   host only. TypeScript records with Runshape's own vitest and config (RUNSHAPE_INCLUDE and
   RUNSHAPE_TESTS from `recorder.source`/`tests`): jest isn't recorded, and plain JS only as far
@@ -263,6 +264,29 @@ Accepted risks:
   that function returns; Fuzz and Example functions run but aren't scenarios; a recorded call
   costs about 3 µs (a mutex and a stack read), so hot loops slow down a lot even past the
   per-caller limit.
+- The C# recorder (recorder-cs/): a Roslyn source rewrite, as Go's and TypeScript's are (parsed,
+  never compiled, so reading the code restores and builds nothing); chosen over a profiler or
+  EventPipe because those give no line marks or receivers without a native component per
+  platform, and over IL weaving because the rewrite keeps the source's line numbers in stack
+  traces and is reviewable as text. Methods, constructors, accessors and operators are frames;
+  lambdas and local functions mark lines through the method that wrote them (a static one marks
+  none), an expression-bodied lambda marks no line of its own; overloads are named by their
+  parameters, so adding an overload renames the one that was alone. A test is a method with
+  xUnit's, NUnit's or MSTest's test attribute; it fails when it throws (an MSTest
+  `[ExpectedException]` test is recorded as failed); a theory's case is named by its arguments.
+  A test class's constructor, `[SetUp]` and fixtures run outside the scenario and aren't
+  recorded. Calls are placed by async flow (AsyncLocal): awaited work, `Task.Run` and parallel
+  tests land under their caller; a thread started by hand (`new Thread`) isn't followed, and an
+  iterator's body hangs off whoever calls MoveNext. A test method that returns a Task without
+  being `async` ends its scenario when it returns the Task. Only projects targeting .NET 8 or
+  later are instrumented (others are copied as written, and said so); a test project for an
+  older .NET runs on the installed one (`DOTNET_ROLL_FORWARD=Major`). Code inside an `#if` for a
+  symbol other than DEBUG, TRACE or NET*_OR_GREATER isn't instrumented; top-level statements and
+  finalizers aren't recorded. SQL and HTTP calls come from DiagnosticListener: EF Core (any
+  provider), SqlClient and HttpClient; plain ADO.NET over a provider that announces nothing
+  (Microsoft.Data.Sqlite, Npgsql without EF) isn't seen. Objects are wired by their fields when
+  their constructor ends, or when first seen (a primary constructor has no body to end). ASP.NET
+  routes aren't read yet. Overhead: a lock per recorded call and per new line, not yet measured.
 - Routes (`packages/trace/src/routes.ts`): a request belongs to the route whose handler ran
   under it: the registered function itself, or for a registered class (Django REST) a method
   named for a verb or viewset action (`post`, `create`, …), else the first of its methods that

@@ -85,7 +85,7 @@ A `symbol` is `{namespace, container, name, kind, ownerType}`:
   `nested` (closures, lambdas, callbacks).
 - `ownerType`: the type whose box the code is drawn in (a method's class), or `null`.
 
-The TypeScript and Go recorders catalog the project's source, not its tests: a test appears as
+The TypeScript, Go and C# recorders catalog the project's source, not its tests: a test appears as
 the root span of its scenario, with role `test`.
 
 The manifest's `version` decides how every entry is read: a version 2 entry naming code by
@@ -99,8 +99,8 @@ line numbers or addresses in them.
 ## Limits and size
 
 A big suite records millions of calls: Runshape's own 381 tests write about 4 million spans and
-440 MB of scenario files. So that a hot loop can't fill a scenario, the TypeScript and Go
-recorders stop recording:
+440 MB of scenario files. So that a hot loop can't fill a scenario, the TypeScript, Go and
+C# recorders stop recording:
 
 | limit | default | what's left out |
 |---|---|---|
