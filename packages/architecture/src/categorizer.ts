@@ -100,7 +100,13 @@ interface FunctionFacts {
   symbol: CodeSymbol;
   file: string | null;
   firstLine: number;
+  /** Each once, in the order first met: each root's tree, depth first. */
   spans: Span[];
+  /**
+   * Its spans, each weighted by its depth + 1, as are the `own` counts: the walk this replaced
+   * visited every span once per span above it. Kept so the speed-up changed no output.
+   */
+  calls: number;
   /** Effects it had itself: effect id → "postgres: SELECT" → how many. */
   own: Map<string, Map<string, number>>;
   /** Functions that ran under it, by key. */
@@ -308,22 +314,26 @@ function placementOf(name: QualifiedName, rules: ZoneRules, top: Placement | nul
   };
 }
 
+/** One walk of each scenario's trees: each span once, at its weight (FunctionFacts.calls). */
 function functionFacts(run: Run): Map<string, FunctionFacts> {
   const facts = new Map<string, FunctionFacts>();
+  const weights = new Map<Span, number>();
   const visit = (span: Span): Set<string> => {
     const key = span.fn.symbol.key;
+    const weight = weights.get(span)!;
     let fact = facts.get(key);
     if (fact === undefined) {
-      fact = { symbol: span.fn.symbol, file: span.fn.file, firstLine: span.fn.firstLine, spans: [], own: new Map(), below: new Set(), executed: new Set() };
+      fact = { symbol: span.fn.symbol, file: span.fn.file, firstLine: span.fn.firstLine, spans: [], calls: 0, own: new Map(), below: new Set(), executed: new Set() };
       facts.set(key, fact);
     }
     fact.spans.push(span);
+    fact.calls += weight;
     for (const line of span.lines) fact.executed.add(line);
     for (const call of span.boundaryCalls) {
       const effect = effectOf(call);
       if (effect === null) continue;
       const labels = fact.own.get(effect.effect) ?? new Map<string, number>();
-      labels.set(effect.label, (labels.get(effect.label) ?? 0) + 1);
+      labels.set(effect.label, (labels.get(effect.label) ?? 0) + weight);
       fact.own.set(effect.effect, labels);
     }
     const below = new Set<string>();
@@ -334,7 +344,12 @@ function functionFacts(run: Run): Map<string, FunctionFacts> {
     for (const key of below) if (key !== span.fn.symbol.key) fact.below.add(key);
     return below;
   };
-  for (const scenario of run.scenarios) for (const span of scenario.spans) visit(span);
+  for (const scenario of run.scenarios) {
+    weights.clear();
+    // A parent starts, and is listed, before its children.
+    for (const span of scenario.spans) weights.set(span, 1 + (span.parent === null ? 0 : (weights.get(span.parent) ?? 0)));
+    for (const span of scenario.spans) if (span.parent === null) visit(span);
+  }
   return facts;
 }
 
@@ -454,7 +469,7 @@ function callableTraits(fact: FunctionFacts, transitive: Map<string, Map<string,
   const tags: Claim[] = [];
   const through = transitive.get(fact.symbol.key) ?? new Map<string, string[]>();
   const fieldWrites = source.fieldWrites(fact);
-  const calls = fact.spans.length;
+  const calls = fact.calls;
   for (const effect of EFFECTS) {
     const own = [...(fact.own.get(effect) ?? new Map<string, number>())].map(([label, count]) => `${label} ×${count} itself`);
     const fields = effect === "writes-state" ? fieldWrites : [];
