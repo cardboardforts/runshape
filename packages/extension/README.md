@@ -1,0 +1,1 @@
+This package holds all the infrastructure implementations used to run this project as a VSCode extension.

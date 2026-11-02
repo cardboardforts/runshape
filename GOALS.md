@@ -4,7 +4,7 @@ I am a human that worked at a company moving towards AI. The company pushed AI a
 
 The team I was on was in the "Generate everything and Review even harder" mode that I suspect many companies today are pushing into. It was not uncommon for me to wake up in the morning and spend the first 4 hours of my day doing code reviews for my teammates while babysitting claude as my own code was generating. The back half of my day was often spent reviewing my own generated code, verifying it, taking screenshots, recording logs, ect... Anything that I could attach to a pull request to make it easier on my team to review my work.
 
-The whole thing was very exhausting. I was burning out very hard. Cisco had some data on this showing that reviewers tend to start letting bugs through when they're asked to review over 400 lines of code in one sitting, and it gets really bad at over 450 lines of code per hour. Exact numbers and metrics have wildly varing definitions (450 lines of crud is nothing, 450 lines of cryptography will melt your brain), so large grain of salt on that one, but my lived experience proved that you can only review so much code before your brain feels like mush and you want to go lay face down on the floor somewhere quiet. There's also the aspect of "one function with 450 changes" being cognitavely easy. "450 functions with 1 small change each" will melt your face clean off.
+The whole thing was very exhausting. I was burning out very hard. Cisco had some data on this showing that reviewers tend to start letting bugs through when they're asked to review over 400 lines of code in one sitting, and it gets really bad at over 450 lines of code per hour. Exact numbers and metrics have wildly varing definitions (450 lines of crud is nothing, 450 lines of cryptography will melt your brain, 450 in one file/class is fine, 450 modifications across 100 classes is absurdly too much), so large grain of salt on that one, but my lived experience proved that you can only review so much code before your brain feels like mush and you want to go lay face down on the floor somewhere quiet. There's also the aspect of "one function with 450 changes" being cognitavely easy. "450 functions with 1 small change each" will melt your face clean off.
 
 ## Plan and attack
 So I started to attack the exhaustion like any other engineering problem. Break it down and figure out what I could automate. Automatic code reviewers like coderabbit and github copilot were already a part of the equation and did a good job, but what was my brain actually doing when I reviewed code?  And perhaps more importantly, what was I doing specifically when I was most tempted to LGTM and press the approve button, an act that would let bugs get past me. 
@@ -126,7 +126,7 @@ A type only moves into the kernel when a second module needs it. Until then it s
 The recorders (Go, Python, TypeScript) are separate processes in their own languages. The kernel's trace format is the contract they write to.
 
 #### Modules: values in, values out
-Each module is a small hexagon of its own that depends only on the kernel. Modules take values and return values. The app does the loading and saving.
+Each module is a small bundle of its own that depends only on the kernel. Modules take values and return values. The app does the loading and saving.
 
 - trace: `diff(Trace, Trace) → TraceDiff`
 - arch: `enhance(ArchTrace | null, Trace, LanguageModel) → ArchTrace`, `explainDiff(ArchTrace, ArchTrace, LanguageModel) → ExplainedArchDiff`
@@ -142,6 +142,8 @@ A file format only one module reads belongs to that module, with its own seriali
 #### Infra: adapters at the edge
 Infra implements the kernel's ports and does the actual IO: disk, git, `claude -p`, the Anthropic API, GitHub comments. It's split by the external system it talks to. A system only gets its own package when it brings in a dependency the other apps shouldn't have to carry. Infra is never imported by the kernel or by a module. It reaches them only by being injected from an app.
 
+I want this to run as a few different apps so maybe having an infra-cli and infra-vscode modules in the format of infra-[appname]. But that's not exactly a clean break and I could end up implementing stuff like posting github comments twice, so maybe having an infra-shared would also make sense? Maybe just infra-shared and let the app specific infra exist inside the app module itself like vscode.infra.
+
 #### Apps: the composition roots
 The extension, CLI and GitHub Action start everything. Each one picks its adapters (VS Code's file and model APIs inside the extension; disk and `claude -p` from the CLI; an API key and PR comments in GHA), loads what's needed, calls modules in order, and saves the results. Adapters that can only run inside one host (anything importing `vscode`) live in that host's package. The UI (2D and 3D renderers) is its own package and talks to the app over a protocol.
 
@@ -154,3 +156,82 @@ When a workflow like "load the last two ArchTraces, diff them, explain them, sav
 - Only apps (and `workflows`, for modules) import more than one of these.
 
 These get enforced by a lint rule in CI (dependency-cruiser or eslint-plugin-boundaries), not by me remembering them.
+
+
+
+
+# High level breakdown of Arch use cases.
+
+I should be able to scan a code base and gather architectural information according to the following categories:
+   Container - Modules, namespaces, packages, directories, files. Containers can be nested and create groups.
+   Types - classes, structs, interfaces, traits, enums.
+   Callables - free function, function, method, constructor, closure.
+   State - fields, properties, constants, globals, statics.
+   Metadata - attributes, annotations, decorators.
+
+I should be able to visualize the architectural information.
+
+Each item of architectural information should be enhanced with metadata that determines it's exact type.
+   Containers - Modules, namespaces, packages, directories, files, other? Maybe meta containers that can span other containers like something that would allow me to see all the Controllers in a project?
+   Types - (Some type of Wirf-Brocks role stereotypes + DDD Building blocks + Hexagonal Port/Adapter) Is this a DTO, domain object,  Relationship/index/collections, Orchestrator, Controller, handler, value object, record, config, entity, aggregate root, adapter, port, policy/domain service, use case/application service, event and probably a lot more.
+   Callables - (Functional Core Imperative shell, CQS) Pure vs Effectual, Query vs Command or a combination, Total validation or can fail/throw, Decision vs Orchestration.
+   State - mutable, immutable, global/static, cached maybe?, 
+   Metadata - Don't know what you'd enhance here. Ideas?
+
+I want to be able to configure it per project based on what makes sense. There should be built in generic definitions, but I should be able to tweak what they mean. I want to be able to load up the definitions and see a blurb of text that a llm like haiku or sonnet could quickly use to tune how I evaluate each chunk of code and what metadata it gets tagged with.
+
+I want to be able to create rules based on the metadata and have default rulesets based on named architecture best practices. 
+   Example: If I say that things in this container are using CQRS then I want a rule that calls out when a function in that containger is mixing query+command.
+   I also want to be able to not be so dogmatic about things and be able to relax the rules sometimes, or define my own rules for what makes sense in the code base.
+   Maybe have others define out of the box architecture rulesets when this gets released open source.
+
+
+# Demo
+
+This records a theoretical demo I'd like to give of the product.
+
+This is the intro to runshape and how you can use it.
+
+Runshape started from a problem, I was burning out. There were too many systems to maintain, and they were changing so quickly that it became very mentally taxing to stay on top of them.
+
+So I sat down and broke the problem down and came to the conclusion that what was causing my burnout was constantly having to read large walls of code in my head and then visualize what they were doing. 
+Questions like, what is this, when does this code run, what users does this effect, how does it interact with the other systems around it, should this code be here. A lot of what i was doing when I was jumping into new systems was creating abstractions in my head of what the code did at run time, then I'd have to visualize the shape of the system and how logic flowed through it.
+
+So like any good engineer I broke the problem down, attempted an implementation and that's what runshape has become.
+
+### Phase 1: Evaluating a new code base
+
+Lets see an example of a Go program. I like Go because it's very opininated and that makes it easy to understand what should go where. This go program has http handlers, grpc handlers, a scheduled task processor, integration test harnesses, and unit tests. Each has a different startup routine. When I first open runshape I can see these different ways that the code will run immediately and that alone is a big deal for the first time you open up a code base.
+
+In this code base you can look at the unit tests as a shape with a lot of lines going into the core of the system, however there's a few unit tests that seem to go into the http handlers, maybe those are fine, but that could be sloppy. Maybe I'll look into why that is and that's kinda the point of the tool. In this project maybe I want to keep my handlers thin and well tested by the integration tests, so I can move over and check the itegration tests and I see a bunch of lines going from the integration test into the http handlers and grpc handlers, but I notice by it's absense that there are some handlers that don't have any lines going to them. That could be sloppy as well maybe it's something to look into.
+
+If from the integration tests i click into the http handlers I can pick a test (use case) and explore how the http handlers look at run time. What objects/shapes are created when the program actually starts up? How does logic flow through middleware and into the handler, and then down into the core of the system? I can follow the traces, and I can see the relative timing of the traces. If I follow it long enough I can see it drop down into a database schema and examine what tables are effected and maybe what the actual shape of the data at rest is. I continue watching execution flow back up into the core region through the various services and then finally back to the http handler where it returns the data as output. I can examine the data that it returns and compare it with the data in the database.
+
+At any point in the process I can click on one of the shapes and examine the code that's backing it. If i see some data in the response I can dig in and find out how that data was derived in a service. Finding out where though is traditionally difficult and can involve bouncing through a bunch of stacks looking for a needle. Thankfully runshape also tags your code with what it's is. If what I suspect what I'm looking for is business logic then I can view functions in this trace that are doing business logic, if it's serialization logic I can check the serializers, if it's a validation error then I can quickly jump to just the code in the trace that handles validation.
+
+### Phase 2: Diffs and day to day
+
+This is all just phase 1 where we're using runshape to learn about a static system (which is valuable all on it's own!). The truly interesting part of runshape is when that data changes I can get a diff of all of this data. Lets take for example this simple diff where we added a phone number to our user registration. I can take a look at it and see that it looks like we've altered the http handler to add a new phone number field and we've added some validation to make it a required field on user setup and some logic to be sure it's a valid phone number. In addition we've updated the user profile object in core to add a phone number as well as a database migration that adds the phone number in a field to the database. There's also a user registration end to end test that was modified. I can click on the test and read the code diff to see that a phone number was added, and I can then trace how that phone number jumps into the handler, gets validated, added to the user profile, and is saved to the table in the database. But when I look at the user profile repository I see there are a few other callers into this function that aren't the user registration. I can see that create is called from an rpc endpoint as well as from a background task. Curious I check the RPC endpoint and notice that it doesn't have the phone number. I decide to leave a comment and specify that we're missing the phone number in the RPC endpoint and that should be added to this PR as well. Continuing the review I check what's going on from the background worker. We have a file upload that bulk creates new users and that file doesn't include phone numbers. This is problematic because phone number is set as a required field in the database so all bulk uploads will break if we merge this PR. I leave a comment directing attention to the bulk uploads and suggest that phone number should be a nullable field or to also update the bulk upload to send a blank phone number. Also I notice that the phone number validation is being done in the http handler and i'd like to move that down into the service layer so that it gets reused from the grpc and background workers. Once i'm done with the review I could opt to post all of my commentary back as comments on the github pull request, but I decide to be nice and direct my comments to a claude and ask it to make up a new branch that fixes up these issues and issue a pull request to this branch for me to review. That's one of my eight pull requests down, and I move on to the next one.
+
+### Phase 3: Customizing the architecture with Philosophy
+
+Reworite this. I should talk about a repo where you can setup default architectures for language-framework. Runshape should be able to consult an open source repo where you can get the basics for how things are normally setup. 
+Once you have normal, you can then customize it by company with local copies or by forking the repo and altering it locally, and then make micro adjustments with comments in the readme.md files. 
+--- 
+Humans are in charge of defining what makes sense to them. A lot of times what we call AI slop is really just code that's difficult to understand or code we just don't understand yet, however before we had agentic coding it was pretty common to look at someone elses code (or our own code from last year) and get very critical about how sloppy it was as well. Last years overly clever is this years human slop.
+
+The fewer 'clever' things going on in the code base the faster we're going to be able to understand it. But that doesn't mean that clever isn't always warranted. Sometimes you really do need to do complicated things, but those should be documented. 
+
+Second point is Django. I do a lot of Django and it's useful because it's a batteries included framework. The problem is that is has 20 years of tens of thousands of developers making different batteries with different ideas and philosophies. FastAPI is a little better, but it's still wild how many different ways there are to think about code and each one has it's merits. I like to say that there are two wrong answers for acrhitecture: picking all the answers or picking none. The more conflicting philosophies you have about your code base the harder it is for any one philosophy to take hold and simplify things for you. When you have an ai agent trained on every different philosophy on the internet you can get wildly different results depending on what it's doing and where it's workign in a code base. Different sections of a code base might look wildly different, example a django app where most things just use the normal out of the box stuff to do crud work and then there's this one model that gets it's rest endpoints half from the database and half from a network call. Suddenly you have a wildly different shape and that's ok. It should be immediately obvious and documented.
+
+That's why i decided that I wanted !-- runshape -- comments in local readme files that help explain what patterns should be used in a section of the code base and in the event that I don't understand what's going on, there's some comments left to help me get up to speed quickly. When runshape runs it evaluates what is normal, what is new, how the diff changes and if something is looking sloppish maybe it's there for a very good (and documented) reason but maybe the complexity isn't worth it and it should be refactored into a shape that's easier to understand. Write code that's meant to be readable taken to the next level.
+
+It also has customizable rules that an llm can use to determine the shape of the code, how to tag classes, and how it should all work together.
+
+Eventually I think I want the runshape rules to be contributed to their own repo where they can be publically maintained independantly of the runshape application code. I imagine that there could be a default django, fastapi, maybe a django-ninja starter. Something with base rules and maybe you'd eventually fork it to create a django-acme-co that specifies that at the Acme company this is the rules for how we do Django.
+
+### Phase 4: Having the AI consume this information
+
+The nature of AI slop is really just having the ai write things that the humans can't understand easily.  Our goal isn't to be inserted into this for the sake of it. Our goal is to understand. The better agentic coding can produce code that we can quickly understand without getting mentally fatigued the better we will all be. If we can give the AI some signals about what's going to be hard to visualize or conceptualize then the AI will naturally write code we consider to be 'slop free'.
+
+That's why running runshape produces ai consumable outputs. If we're adding a new abstraction that's company specific then we know 'how we do django around these parts'.

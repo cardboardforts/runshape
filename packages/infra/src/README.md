@@ -1,6 +1,8 @@
 # packages/infra/src
 
-The infra package is for abstracting how we File IO, LLM Skills, and Comments as well as other abstracted IO operations that might come up in the future.
+
+
+The infra package is for abstracting how we File IO, LLM Skills, Comments and Logs as well as other abstracted IO operations that might come up in the future.
 
 Why the low level abstractions?
 
@@ -9,6 +11,8 @@ File handling: Because this can run as a VSCode extension where we want to use t
 LLM: VSCode has an api that lets you talk to whatever installed llm model you have setup. If we're running locally we can use a local claude, if we're running in as a github action then we might need an api key.
 
 Comments: Sometimes when i'm reviewing a pull request I want my comments to get posted to github as pull request comments. When i'm working on my own stuff I want those comments to be collected and shipped off to a local LLM for a revision.
+
+Logs: This is going to run in a number of contexts and being able to pipe log and observability information will be important.
 
 All operations should be basic and lack domain terms. The domain of the module is the low level IO. Things like "ReadFile" and not "Read Trace File". If you see domain terms leaking down here it's probably a smell that some module above us isn't doing it's job correctly.
 
