@@ -27,12 +27,13 @@ export enum ComponentKind {
   External = "external",
 }
 
+/** Shared: a box named after code is made once per name (namedComponent), so never changed. */
 export interface ComponentRef {
-  id: string;
-  kind: ComponentKind;
-  label: string;
+  readonly id: string;
+  readonly kind: ComponentKind;
+  readonly label: string;
   /** The class or module, for source components. */
-  name: QualifiedName | null;
+  readonly name: QualifiedName | null;
 }
 
 const LANDMARK_COMPONENT_KIND: Record<LandmarkKind, ComponentKind> = {
@@ -138,12 +139,31 @@ function moduleHolding(name: QualifiedName, modules: string[]): QualifiedName | 
   return parsed.find((module) => module.equals(name) || module.holds(name)) ?? null;
 }
 
+/**
+ * Each name's box once, per name object: componentOf runs for every span, and a box made afresh
+ * is a new id string that every map keyed by it must hash again.
+ */
+const namedComponents: Record<ComponentKind.Class | ComponentKind.Module | ComponentKind.TestDouble, WeakMap<QualifiedName, ComponentRef>> = {
+  [ComponentKind.Class]: new WeakMap(),
+  [ComponentKind.Module]: new WeakMap(),
+  [ComponentKind.TestDouble]: new WeakMap(),
+};
+
+function namedComponent(kind: keyof typeof namedComponents, name: QualifiedName, label: (name: QualifiedName) => string): ComponentRef {
+  let ref = namedComponents[kind].get(name);
+  if (ref === undefined) {
+    ref = { id: `${NAMED_ID_PREFIXES[kind]}${name.text}`, kind, label: label(name), name };
+    namedComponents[kind].set(name, ref);
+  }
+  return ref;
+}
+
 function moduleComponent(module: QualifiedName): ComponentRef {
-  return { id: `${NAMED_ID_PREFIXES[ComponentKind.Module]}${module.text}`, kind: ComponentKind.Module, label: moduleLabel(module), name: module };
+  return namedComponent(ComponentKind.Module, module, moduleLabel);
 }
 
 function doubleComponent(owner: QualifiedName): ComponentRef {
-  return { id: `${NAMED_ID_PREFIXES[ComponentKind.TestDouble]}${owner.text}`, kind: ComponentKind.TestDouble, label: owner.last, name: owner };
+  return namedComponent(ComponentKind.TestDouble, owner, (name) => name.last);
 }
 
 /** app.db.repositories.users.UsersRepository for a method, else the module itself. */
@@ -173,7 +193,7 @@ export function classComponentId(type: QualifiedName): string {
 }
 
 function classComponent(type: QualifiedName): ComponentRef {
-  return { id: classComponentId(type), kind: ComponentKind.Class, label: type.last, name: type };
+  return namedComponent(ComponentKind.Class, type, (name) => name.last);
 }
 
 /** Code-unit order: localeCompare would sort by the recording machine's language. */

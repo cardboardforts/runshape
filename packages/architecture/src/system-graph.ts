@@ -1,4 +1,4 @@
-import { ArchitectureProfile, byCodeUnit, CLIENT_ID, ComparedGraphs, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, FixedZone, GraphEdge, GraphNode, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Smell, Span, SymbolKind, SystemGraph, ZoneId, ZoneSource } from "@runshape/kernel";
+import { ArchitectureProfile, byCodeUnit, CLIENT_ID, CodeSymbol, ComparedGraphs, ComponentKind, componentOf, ComponentRef, externalComponent, FINE_GROUPING, FixedZone, GraphEdge, GraphNode, Grouping, MIDDLEWARE_CHAIN_ID, Phase, QualifiedName, Run, Scenario, Smell, Span, SymbolKind, SystemGraph, ZoneId, ZoneSource } from "@runshape/kernel";
 
 import { forbiddenCall, zoneFromName } from "./profiles";
 import { RuleMatch, ZoneRules } from "./zones";
@@ -52,7 +52,8 @@ export function buildSystemGraph(run: Run, options: GraphOptions = {}): SystemGr
 class NodeTally {
   calls = 0;
   readonly scenarioIds = new Set<string>();
-  readonly objectIds = new Set<string>();
+  /** Object ids by scenario id: the instances it stands for, one per object per test. */
+  readonly objectIds = new Map<string, Set<number>>();
   calledByFramework = false;
   isRouteHandler = false;
   readonly externalSystems = new Set<string>();
@@ -60,6 +61,12 @@ class NodeTally {
   readonly members = new Map<string, QualifiedName>();
 
   constructor(readonly ref: ComponentRef) {}
+
+  instances(): number {
+    let count = 0;
+    for (const objects of this.objectIds.values()) count += objects.size;
+    return count;
+  }
 }
 
 class EdgeTally {
@@ -77,8 +84,12 @@ class EdgeTally {
 class GraphBuilder {
   private readonly nodes = new Map<string, NodeTally>();
   private readonly edges = new Map<string, EdgeTally>();
+  /** The same tallies by their ends: found per call without building the edge's id. */
+  private readonly edgesByEnds = new Map<string, Map<string, EdgeTally>>();
   /** QualifiedName keys. */
   private readonly routeHandlers: Set<string>;
+  /** isRouteHandler's answer per function: every span of it asks. */
+  private readonly routeHandlerFunctions = new Map<CodeSymbol, boolean>();
   private readonly inboundPackage: QualifiedName | null;
   private readonly middlewareCount: number;
 
@@ -104,7 +115,11 @@ class GraphBuilder {
       }
       node.calls += 1;
       node.scenarioIds.add(scenario.nodeid);
-      if (span.obj !== null) node.objectIds.add(`${scenario.nodeid}#${span.obj.id}`);
+      if (span.obj !== null) {
+        let objects = node.objectIds.get(scenario.nodeid);
+        if (objects === undefined) node.objectIds.set(scenario.nodeid, (objects = new Set()));
+        objects.add(span.obj.id);
+      }
       if (this.isRouteHandler(span)) node.isRouteHandler = true;
 
       const parent = span.parent;
@@ -150,7 +165,7 @@ class GraphBuilder {
         zoneReason: placement.reason,
         smells,
         calls: tally.calls,
-        instances: tally.objectIds.size,
+        instances: tally.instances(),
         scenarioIds: [...tally.scenarioIds].sort(),
       });
     }
@@ -229,11 +244,13 @@ class GraphBuilder {
 
   private edge(from: ComponentRef, to: ComponentRef, scenarioId: string, constructs: boolean): void {
     this.node(from);
-    const id = `${from.id}->${to.id}`;
-    let tally = this.edges.get(id);
+    let edgesFrom = this.edgesByEnds.get(from.id);
+    if (edgesFrom === undefined) this.edgesByEnds.set(from.id, (edgesFrom = new Map()));
+    let tally = edgesFrom.get(to.id);
     if (tally === undefined) {
       tally = new EdgeTally(from.id, to.id);
-      this.edges.set(id, tally);
+      edgesFrom.set(to.id, tally);
+      this.edges.set(`${from.id}->${to.id}`, tally);
     }
     tally.calls += 1;
     if (!constructs) tally.uses += 1;
@@ -252,7 +269,13 @@ class GraphBuilder {
   }
 
   private isRouteHandler(span: Span): boolean {
-    const path = span.fn.symbol.path;
+    const { symbol } = span.fn;
+    let answer = this.routeHandlerFunctions.get(symbol);
+    if (answer === undefined) this.routeHandlerFunctions.set(symbol, (answer = this.handlesRoute(symbol.path)));
+    return answer;
+  }
+
+  private handlesRoute(path: QualifiedName): boolean {
     if (this.routeHandlers.has(path.key)) return true;
     // Class-based views (Django/DRF) register the class; the span is one of its methods.
     const owner = path.parent();
