@@ -62,6 +62,59 @@ public class RecordingTests
         }
     }
 
+    [Fact]
+    public void A_linked_source_file_is_copied_as_a_link_and_never_read_or_rewritten_through()
+    {
+        // The copy keeps a link pointing where the original pointed (the Go recorder's rule): a
+        // rewrite written through it would land outside the copy, in the person's files.
+        var root = Directory.CreateTempSubdirectory("runshape-cs-link-").FullName;
+        var work = Directory.CreateTempSubdirectory("runshape-cs-work-").FullName;
+        var outside = Path.Combine(Directory.CreateTempSubdirectory("runshape-cs-outside-").FullName, "Elsewhere.cs");
+        try
+        {
+            var original = "namespace X; public class Elsewhere { public void Run() { } }";
+            File.WriteAllText(outside, original);
+            File.WriteAllText(Path.Combine(root, "Lib.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+            File.WriteAllText(Path.Combine(root, "Own.cs"), "namespace X; public class Own { public void Run() { } }");
+            File.CreateSymbolicLink(Path.Combine(root, "Linked.cs"), outside);
+
+            var prepared = Recording.Prepare(root, Directory.CreateDirectory(Path.Combine(work, "copy")).FullName, "/runtime/Runshape.Runtime.dll");
+
+            Assert.Equal(["Own.Run"], prepared.Catalog.Select(entry => $"{entry.Symbol.Container[0]}.{entry.Symbol.Name}"));
+            Assert.Equal(original, File.ReadAllText(outside));
+            Assert.NotNull(new FileInfo(Path.Combine(work, "copy", "Linked.cs")).LinkTarget);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(work, recursive: true);
+            Directory.Delete(Path.GetDirectoryName(outside)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_project_file_with_a_DTD_is_not_read_as_a_project()
+    {
+        // An entity could expand without bound, or read another file into the project's text.
+        var root = Directory.CreateTempSubdirectory("runshape-cs-dtd-").FullName;
+        var work = Directory.CreateTempSubdirectory("runshape-cs-work-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Lib.csproj"), "<!DOCTYPE Project [<!ENTITY x SYSTEM \"/etc/passwd\">]><Project>&x;</Project>");
+            File.WriteAllText(Path.Combine(root, "Own.cs"), "namespace X; public class Own { public void Run() { } }");
+
+            var prepared = Recording.Prepare(root, work, "/runtime/Runshape.Runtime.dll");
+
+            Assert.Empty(prepared.Catalog);
+            Assert.StartsWith("not read as a project: ", Assert.Single(prepared.Problems).Reason);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
     private static string NameOf(JsonElement symbol) =>
         string.Join(".", symbol.GetProperty("container").EnumerateArray().Select(part => part.GetString()).Append(symbol.GetProperty("name").GetString()));
 

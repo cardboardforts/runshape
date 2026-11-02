@@ -14,13 +14,27 @@ import { ContainerStep, readPlainFile, refuseCommitted, SandboxRecipe, SandboxRe
 const PACKAGES_NAME = ".runshape-nuget";
 const PACKAGES = `/target/${PACKAGES_NAME}`;
 const LOCK_FILE = "packages.lock.json";
-/** nuget.org's API: the service index and every package download are served from it. */
-const NUGET_HOSTS = ["api.nuget.org:443"];
+/**
+ * nuget.org's API: the service index, and every package download (its PackageBaseAddress is
+ * api.nuget.org/v3-flatcontainer/, which serves the .nupkg itself, no redirect). Checked on a
+ * real sandboxed recording of examples/cs-shop: with only this host allowed, every package came.
+ */
+export const NUGET_HOSTS = ["api.nuget.org:443"];
 /** Folders a project's files are never in: build output, and anything hidden (.git). */
 const SKIPPED = new Set(["bin", "obj", "node_modules"]);
 /** NuGet's package ids and versions, and nothing that could be read as another argument or as XML. */
 const PACKAGE_ID = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 const VERSION = /^[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9.-]+)?$/;
+/** Far past a real project's lock file (cs-shop's are 8 and 12 KB) and package count: past them, nothing is read or fetched. */
+const MAX_LOCK_FILE_BYTES = 1024 ** 2;
+const MAX_PACKAGES = 2000;
+/**
+ * The .NET the image's SDK targets without fetching anything: a project for another needs its
+ * targeting pack, which no lock file pins, so it can't restore offline (it records on the host).
+ */
+const SANDBOX_DOTNET_MAJOR = 10;
+/** A target framework that needs a targeting pack: net5.0-net9.0 (and their -platform forms), netcoreapp*. */
+const NEEDS_TARGETING_PACK = /^(net([5-9])\.\d+(-.*)?|netcoreapp\d+\.\d+)$/i;
 /** The .NET tools stay quiet, and keep what they write in /tmp (the root filesystem is read-only). */
 const DOTNET = ["DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_NOLOGO=1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1", "DOTNET_CLI_HOME=/tmp", "MSBUILDDISABLENODEREUSE=1"];
 
@@ -65,6 +79,7 @@ export function csharpSandbox(config: TestConfig): SandboxRecipe {
 export async function pinnedPackages(worktree: string): Promise<string[]> {
   const projects = await projectFolders(worktree, "");
   if (projects.length === 0) throw new SandboxRefusal("the commit has no .csproj: there's no project to record");
+  await refuseOlderFrameworks(worktree, projects);
   const packages = new Set<string>();
   const unlocked: string[] = [];
   for (const folder of projects) {
@@ -73,7 +88,7 @@ export async function pinnedPackages(worktree: string): Promise<string[]> {
       unlocked.push(folder === "" ? "." : folder);
       continue;
     }
-    const text = await readPlainFile(worktree, lockFile, `the commit has no ${lockFile}`);
+    const text = await readPlainFile(worktree, lockFile, `the commit has no ${lockFile}`, MAX_LOCK_FILE_BYTES);
     let lock: { dependencies?: Record<string, Record<string, { type?: string; resolved?: string }>> };
     try {
       lock = JSON.parse(text.replace(/^﻿/, "")) as typeof lock;
@@ -91,10 +106,38 @@ export async function pinnedPackages(worktree: string): Promise<string[]> {
     }
     if (refused > 0) throw new SandboxRefusal(`its ${lockFile} has ${refused} entries that aren't a package id and a pinned version: nothing is fetched`);
   }
+  if (packages.size > MAX_PACKAGES) throw new SandboxRefusal(`its lock files pin ${packages.size} packages, over ${MAX_PACKAGES}: nothing is fetched`);
   if (unlocked.length > 0) {
     throw new SandboxRefusal(`its projects in ${unlocked.join(", ")} have no ${LOCK_FILE}: their packages can't be fetched as pinned (set RestorePackagesWithLockFile and commit the lock files)`);
   }
   return [...packages].sort();
+}
+
+/**
+ * Target frameworks the sandbox can't restore offline, as the project files and the
+ * Directory.Build.props above them say (read as text, never evaluated): refused, naming them.
+ */
+async function refuseOlderFrameworks(worktree: string, projects: string[]): Promise<void> {
+  const files = new Set<string>();
+  for (const folder of projects) {
+    for (const entry of await readdir(join(worktree, folder), { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith(".csproj")) files.add(folder === "" ? entry.name : `${folder}/${entry.name}`);
+    }
+    const parts = folder === "" ? [] : folder.split("/");
+    for (let depth = 0; depth <= parts.length; depth += 1) files.add([...parts.slice(0, depth), "Directory.Build.props"].join("/"));
+  }
+  const older = new Set<string>();
+  for (const file of [...files].sort()) {
+    const entry = await lstat(join(worktree, file)).catch(() => null);
+    if (entry === null) continue;
+    const text = await readPlainFile(worktree, file, `the commit has no ${file}`, MAX_LOCK_FILE_BYTES);
+    for (const match of text.matchAll(/<TargetFrameworks?>([^<]*)<\/TargetFrameworks?>/g)) {
+      for (const framework of match[1]!.split(";").map((part) => part.trim())) if (NEEDS_TARGETING_PACK.test(framework)) older.add(framework.toLowerCase());
+    }
+  }
+  if (older.size > 0) {
+    throw new SandboxRefusal(`it targets ${[...older].sort().join(", ")}: the sandbox restores offline with .NET ${SANDBOX_DOTNET_MAJOR}'s SDK, which has no targeting pack for it (no lock file pins one), so record it on the host`);
+  }
 }
 
 /** The folders holding a .csproj, "/"-separated from the commit's root; links aren't followed. */

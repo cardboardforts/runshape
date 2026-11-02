@@ -80,12 +80,14 @@ export async function refuseCommitted(worktree: string, names: string[]): Promis
 
 /**
  * A file of the commit's the host reads before installing: a plain file, links not followed
- * (one pointing at ~/.ssh/id_rsa would put that in a refusal and the log).
+ * (one pointing at ~/.ssh/id_rsa would put that in a refusal and the log), and no bigger than
+ * `maxBytes` (a commit's 4 GB lockfile would otherwise be read whole, on the host).
  */
-export async function readPlainFile(worktree: string, name: string, missing: string): Promise<string> {
+export async function readPlainFile(worktree: string, name: string, missing: string, maxBytes: number): Promise<string> {
   const entry = await lstat(join(worktree, name)).catch(() => null);
   if (entry === null) throw new SandboxRefusal(missing);
   if (!entry.isFile()) throw new SandboxRefusal(`the commit's ${name} isn't a plain file (a link?): not read`);
+  if (entry.size > maxBytes) throw new SandboxRefusal(`the commit's ${name} is over ${maxBytes / 1024 ** 2} MB: not read`);
   return readFile(join(worktree, name), "utf8");
 }
 

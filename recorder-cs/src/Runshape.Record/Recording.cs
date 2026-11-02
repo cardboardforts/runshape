@@ -116,6 +116,12 @@ public static partial class Recording
             // Not under any project (a script, a sample), or under one the runtime can't join.
             if (project is null || project.Unsupported is not null) continue;
             var path = Path.Combine(work, file);
+            // A link in the copy points where the original pointed: rewriting it would write there.
+            if (new FileInfo(path).LinkTarget is not null)
+            {
+                problems.Add(new Problem(file, "a link: copied as it is, not instrumented"));
+                continue;
+            }
             var source = File.ReadAllText(path);
             try
             {
@@ -188,8 +194,10 @@ public static partial class Recording
 
     /// <summary>
     /// Runs the copy's tests. Node reuse and the shared compiler server are off, so nothing is
-    /// left running; DOTNET_ROLL_FORWARD lets a test project for an older .NET run on the
-    /// installed one (said in docs/design.md: it's the one difference from running them yourself).
+    /// left running. DOTNET_ROLL_FORWARD lets a test host built for an older .NET (8, 9) run on
+    /// the newest runtime installed, when its own isn't: that's the run, not the build, which
+    /// still needs the older .NET's targeting pack (restored from nuget.org on the host; the
+    /// sandbox has none, and refuses such projects before installing).
     /// </summary>
     private static (int ExitCode, string Output) DotnetTest(string work, IReadOnlyList<string> targets, string run, string table, bool locked)
     {
@@ -292,7 +300,7 @@ public static partial class Recording
             XDocument document;
             try
             {
-                document = XDocument.Load(full);
+                document = LoadProject(full, LoadOptions.None);
             }
             catch (Exception error)
             {
@@ -307,7 +315,18 @@ public static partial class Recording
             return new ProjectFile { Path = path, Folder = folder, IsTest = isTest, Unsupported = unsupported, FullPath = full };
         }
 
-        /// <summary>net8.0 and later (net10.0-windows too); not .NET Framework, .NET Standard, or .NET 5-7.</summary>
+        /// <summary>A project file as XML, with no DTD: an entity in one can't expand or read another file.</summary>
+        private static XDocument LoadProject(string path, LoadOptions options)
+        {
+            using var reader = System.Xml.XmlReader.Create(path, new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null });
+            return XDocument.Load(reader, options);
+        }
+
+        /// <summary>
+        /// Whether the runtime's DLL (net8.0) can be referenced: net8.0 and later (net10.0-windows
+        /// too); not .NET Framework, .NET Standard, or .NET 5-7. Building for one still needs its
+        /// targeting pack, which is a separate question (see DotnetTest).
+        /// </summary>
         private static bool RuntimeCanJoin(string framework)
         {
             var match = Regex.Match(framework, @"^net(\d+)\.\d+");
@@ -320,7 +339,7 @@ public static partial class Recording
         /// </summary>
         internal void ReferenceRuntime(string runtimeAssembly)
         {
-            var document = XDocument.Load(FullPath, LoadOptions.PreserveWhitespace);
+            var document = LoadProject(FullPath, LoadOptions.PreserveWhitespace);
             var ns = document.Root!.Name.Namespace;
             document.Root.Add(
                 new XElement(ns + "ItemGroup",

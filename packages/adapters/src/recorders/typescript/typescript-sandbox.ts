@@ -17,6 +17,9 @@ const PLAIN_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 /** npm 7+ lockfiles list every package with where it comes from; older ones don't. */
 const MIN_LOCKFILE_VERSION = 2;
 
+/** A big monorepo's lockfile is a few MB: one past this isn't read. */
+const MAX_LOCKFILE_BYTES = 32 * 1024 ** 2;
+
 export function typescriptSandbox(config: TestConfig): SandboxRecipe {
   return {
     language: "typescript",
@@ -68,7 +71,7 @@ async function refuseUnregisteredPackages(worktree: string): Promise<void> {
   if (await lstat(join(worktree, "npm-shrinkwrap.json")).then(() => true, () => false)) {
     throw new SandboxRefusal("it has an npm-shrinkwrap.json, which npm installs from instead of package-lock.json: not checked, so not installed");
   }
-  const text = await readPlainFile(worktree, "package-lock.json", "the commit has no package-lock.json: its dependencies can't be installed as locked");
+  const text = await readPlainFile(worktree, "package-lock.json", "the commit has no package-lock.json: its dependencies can't be installed as locked", MAX_LOCKFILE_BYTES);
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

@@ -15,7 +15,7 @@ import { describe, expect, test } from "vitest";
 import { removeAnyway } from "@runshape/infra";
 import { TestConfig } from "@runshape/kernel";
 import { CommandResult, CommandRunner, DockerRecorder, SandboxRecipe } from "../src/recorders/docker-recorder";
-import { csharpSandbox } from "../src/recorders/csharp/csharp-sandbox";
+import { csharpSandbox, NUGET_HOSTS } from "../src/recorders/csharp/csharp-sandbox";
 import { goSandbox } from "../src/recorders/go/go-sandbox";
 import { pythonSandbox } from "../src/recorders/python/python-sandbox";
 import { typescriptSandbox } from "../src/recorders/typescript/typescript-sandbox";
@@ -471,6 +471,32 @@ describe("a sandbox per language: the same container, network and checks; the im
       "the commit has its own .runshape-nuget, where the install puts what it fetches: not used, so not installed",
       "the commit has no .csproj: there's no project to record",
     ]);
+  });
+
+  test("C#: what the sandbox can't restore offline (a project for .NET 8 or 9, said in its .csproj or a Directory.Build.props above it), or won't read (a lock file over 1 MB, over 2000 packages), is refused before anything installs (second-model review)", async () => {
+    const many = Object.fromEntries(Array.from({ length: 2001 }, (_, i) => [`Package${i}`, "1.0.0"]));
+    const outcomes = await Promise.all([
+      sandboxFor(csharpSandbox(CSHARP), { "Directory.Build.props": "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>", "src/A/A.csproj": "<Project />", "src/A/packages.lock.json": lockOf({}) }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "B.csproj": "<Project><PropertyGroup><TargetFrameworks>net10.0;net9.0-windows</TargetFrameworks></PropertyGroup></Project>", "packages.lock.json": lockOf({}) }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "C.csproj": "<Project />", "packages.lock.json": " ".repeat(1024 ** 2 + 1) }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "D.csproj": "<Project />", "packages.lock.json": lockOf(many) }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "E.csproj": "<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>", "packages.lock.json": lockOf({ xunit: "2.9.3" }) }).record(),
+    ]);
+
+    expect(outcomes).toEqual([
+      "it targets net8.0: the sandbox restores offline with .NET 10's SDK, which has no targeting pack for it (no lock file pins one), so record it on the host",
+      "it targets net9.0-windows: the sandbox restores offline with .NET 10's SDK, which has no targeting pack for it (no lock file pins one), so record it on the host",
+      "the commit's packages.lock.json is over 1 MB: not read",
+      "its lock files pin 2001 packages, over 2000: nothing is fetched",
+      "recorded",
+    ]);
+    // Every package comes from api.nuget.org itself (its flat container serves the .nupkg, no
+    // redirect): checked on a real sandboxed recording of examples/cs-shop with only this host let through.
+    expect(NUGET_HOSTS).toEqual(["api.nuget.org:443"]);
+  });
+
+  test("Python: a requirements.txt over 1 MB isn't read", async () => {
+    expect(await sandboxFor(pythonSandbox(PYTHON), { "requirements.txt": "#".repeat(1024 ** 2 + 1) }).record()).toBe("the commit's requirements.txt is over 1 MB: not read");
   });
 
   test("Go: a commit with no go.mod at its root has no module to record", async () => {

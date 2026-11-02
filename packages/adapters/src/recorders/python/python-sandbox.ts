@@ -5,6 +5,8 @@ import { TestConfig } from "@runshape/kernel";
 import { ContainerStep, readPlainFile, refuseCommitted, SandboxRecipe, SandboxRefusal } from "../docker-recorder";
 
 const REQUIREMENTS = "requirements.txt";
+/** Far past any real requirements.txt: one bigger isn't read. */
+const MAX_REQUIREMENTS_BYTES = 1024 ** 2;
 /** Where the install puts the commit's environment, inside its folder: the record step reads it there. */
 const VENV_NAME = ".runshape-venv";
 const VENV = `/target/${VENV_NAME}`;
@@ -61,7 +63,7 @@ export function pythonSandbox(config: TestConfig): SandboxRecipe {
 
 /** Every line of requirements.txt a pinned release from PyPI: nothing else is installed. */
 export async function refuseUnpinnedRequirements(worktree: string): Promise<void> {
-  const text = await readPlainFile(worktree, REQUIREMENTS, `the commit has no ${REQUIREMENTS}: its dependencies can't be installed as pinned (a lockfile of poetry's or uv's isn't read yet)`);
+  const text = await readPlainFile(worktree, REQUIREMENTS, `the commit has no ${REQUIREMENTS}: its dependencies can't be installed as pinned (a lockfile of poetry's or uv's isn't read yet)`, MAX_REQUIREMENTS_BYTES);
   // A trailing backslash continues a line (poetry export writes hashes so): numbered by where each starts.
   const refused: number[] = [];
   let logical = "";
