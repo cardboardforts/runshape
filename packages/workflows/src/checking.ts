@@ -36,7 +36,8 @@ export const DEFAULT_CHECK_RULES = {
   [CheckRule.NewViolations]: CheckSeverity.Block,
   [CheckRule.CategorizerErrors]: CheckSeverity.Block,
   [CheckRule.CategorizerWarnings]: CheckSeverity.Warn,
-  [CheckRule.LlmPlacements]: CheckSeverity.Block,
+  // A person approves a model's placement in the diff, during human review: said, not blocked.
+  [CheckRule.LlmPlacements]: CheckSeverity.Warn,
   [CheckRule.MoreExternalCalls]: CheckSeverity.Block,
   // One recording a side: a time past the noise bands is worth a look, not proof (cost.ts).
   [CheckRule.Slower]: CheckSeverity.Warn,
@@ -157,10 +158,10 @@ export function checkFindings(bundle: ReviewBundle, rules: CheckRules, { gate }:
   }
   const { rules: zoneRules, regions } = bundle.architecture;
   for (const rule of [...zoneRules.added, ...zoneRules.changed.map((change) => change.after)]) {
-    if (rule.by === "llm") add(CheckRule.LlmPlacements, rule.match, `placed in ${rule.zone} by a model ("by": "llm") in this branch: a person approves it`);
+    if (rule.by === "llm") add(CheckRule.LlmPlacements, rule.match, `placed in ${rule.zone} by a model ("by": "llm") in this branch: awaiting your approval in the diff`);
   }
   for (const region of [...regions.added, ...regions.changed.map((change) => change.after)]) {
-    if (region.by === "llm") add(CheckRule.LlmPlacements, region.path, `a region (${region.style}) a model drew ("by": "llm") in this branch: a person approves it`);
+    if (region.by === "llm") add(CheckRule.LlmPlacements, region.path, `a region (${region.style}) a model drew ("by": "llm") in this branch: awaiting your approval in the diff`);
   }
   for (const workflow of bundle.cost?.workflows ?? []) {
     if (workflow.sides !== WorkflowSides.Both) continue;

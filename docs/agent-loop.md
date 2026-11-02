@@ -19,7 +19,7 @@ are only warnings, 0 for nothing. Under `--gate` warnings exit 0, so a push goes
 | `new-violations` | block | A call between two boxes the style forbids that the base didn't make (the bundle's `violations`). |
 | `categorizer-errors` | block | A new categorizer finding of severity `error` (docs/categorizer.md). |
 | `categorizer-warnings` | warn | A new categorizer finding of severity `warn`. |
-| `llm-placements` | block | A zone rule or region added or changed in the branch with `"by": "llm"`: a person approves it. |
+| `llm-placements` | warn | A zone rule or region added or changed in the branch with `"by": "llm"`: awaiting your approval in the diff, during human review (decided 2026-10-16: approving the merge approves the placements), so it never blocks by default. |
 | `more-external-calls` | block | A workflow both sides ran makes more external calls than `allowedExternalCallIncrease` more. |
 | `slower` | warn | A workflow past both of cost.ts's noise bands (10 ms and 50%), from one recording a side. |
 | `uncommitted` | warn | The working tree has uncommitted changes. Always blocks under `--gate`. |

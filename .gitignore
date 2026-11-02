@@ -14,3 +14,5 @@ examples/heapspace/
 examples/.pg-venv/
 examples/.pgdata/
 .vscode-test/
+# dotnet restore writes these beside the C# recorder's probe when its tests run: test litter, not source.
+recorder-cs/testdata/probe/**/packages.lock.json

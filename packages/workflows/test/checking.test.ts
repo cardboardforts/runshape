@@ -69,7 +69,7 @@ describe("checkFindings", () => {
     const workflow = bundle.cost!.workflows.find((w) => w.sides === WorkflowSides.Both)!;
     workflow.externalCalls = { before: 3, after: 4 };
 
-    const configured = readCheckRules(JSON.stringify({ check: { rules: { slower: "block", "llm-placements": "warn", uncommitted: "off" }, allowedExternalCallIncrease: 1 } }));
+    const configured = readCheckRules(JSON.stringify({ check: { rules: { slower: "block", "llm-placements": "off", uncommitted: "off" }, allowedExternalCallIncrease: 1 } }));
     expect({
       defaults: shown(checkFindings(bundle, DEFAULTS, { gate: false })),
       // Before human review, uncommitted changes always block: the check has to be of the commit pushed.
@@ -79,14 +79,12 @@ describe("checkFindings", () => {
     }).toMatchInlineSnapshot(`
       {
         "configured": [
-          "warn llm-placements: app.services.**: placed in core by a model ("by": "llm") in this branch: a person approves it",
-          "warn llm-placements: app/db: a region (layered) a model drew ("by": "llm") in this branch: a person approves it",
           "block slower: test_user_can_create_article: 10.6 ms → 25.3 ms (past both 10 ms and 50%; one recording a side)",
         ],
         "defaults": [
           "warn uncommitted: the working tree: has uncommitted changes: the check isn't of a commit anyone can review",
-          "block llm-placements: app.services.**: placed in core by a model ("by": "llm") in this branch: a person approves it",
-          "block llm-placements: app/db: a region (layered) a model drew ("by": "llm") in this branch: a person approves it",
+          "warn llm-placements: app.services.**: placed in core by a model ("by": "llm") in this branch: awaiting your approval in the diff",
+          "warn llm-placements: app/db: a region (layered) a model drew ("by": "llm") in this branch: awaiting your approval in the diff",
           "block more-external-calls: test_user_can_create_article: 3 → 4 external calls (more than 0 more)",
           "warn slower: test_user_can_create_article: 10.6 ms → 25.3 ms (past both 10 ms and 50%; one recording a side)",
         ],
@@ -109,7 +107,7 @@ describe("readCheckRules", () => {
           "severities": {
             "categorizer-errors": "block",
             "categorizer-warnings": "warn",
-            "llm-placements": "block",
+            "llm-placements": "warn",
             "more-external-calls": "block",
             "new-violations": "block",
             "now-failing": "block",
