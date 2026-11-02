@@ -219,6 +219,10 @@ interface RareSpanFacts {
  * has something in it, sized to fit once its scenario is parsed (settle), its one running
  * interval without an array, and what few spans have (a coroutine's slices, a request, boundary
  * calls) in one object apart.
+ *
+ * Its lists (children, lines, boundaryCalls, runs) and resumes and request are getters on the
+ * prototype, not own fields: spread, JSON.stringify, Object.keys and toEqual don't see them.
+ * Read them by name. `runs` builds a new list for a plain call on every read.
  */
 export class Span {
   private childList: Span[] | null = null;

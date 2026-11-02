@@ -13,12 +13,14 @@ export function buildTimeline(scenario: Scenario, phases: Phase[] = [Phase.Call]
     while ((rowBusyUntil[depth] ?? -Infinity) > span.startUs) depth += 1;
     rowBusyUntil[depth] = Math.max(rowBusyUntil[depth] ?? -Infinity, span.endUs);
     depthOf.set(span, depth);
+    // A getter that builds a list for a plain call: read once.
+    const runs = span.runs;
     bars.push({
       spanId: span.id,
       depth,
       startUs: span.startUs,
       endUs: Math.max(span.endUs, span.startUs),
-      runs: span.runs.length > 0 ? span.runs : [[span.startUs, span.endUs]],
+      runs: runs.length > 0 ? runs : [[span.startUs, span.endUs]],
       label: span.request ? `${span.request.method} ${span.request.path}` : span.fn.symbol.localName.text,
       componentId: componentOf(span, grouping).id,
       role: span.fn.role,
