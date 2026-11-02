@@ -1,4 +1,4 @@
-import { FunctionRef, Phase, Role, Run, Scenario, Span } from "@runshape/kernel";
+import { FunctionInfo, FunctionRef, Phase, Role, Run, Scenario, Span } from "@runshape/kernel";
 
 import { Moves } from "./moves";
 import { requestRouteLabel } from "./routes";
@@ -310,6 +310,16 @@ function functionCosts(run: Run, scenarios: Scenario[], phases: Set<Phase>, keys
     if (!tallies.has(key)) tallies.set(key, notRun());
     return tallies.get(key)!;
   };
+  // A function's calls mostly run the same lines: each sequence's path worked out once.
+  const paths = new Map<FunctionInfo, Map<string, string>>();
+  const pathOfSpan = (span: Span): string => {
+    let byLines = paths.get(span.fn);
+    if (byLines === undefined) paths.set(span.fn, (byLines = new Map()));
+    const lines = span.lines.join(",");
+    let path = byLines.get(lines);
+    if (path === undefined) byLines.set(lines, (path = pathOf(run, span, byText)));
+    return path;
+  };
   for (const scenario of scenarios) {
     for (const span of scenario.spans) {
       const key = keyOf(span.fn.symbol.key);
@@ -317,13 +327,13 @@ function functionCosts(run: Run, scenarios: Scenario[], phases: Set<Phase>, keys
       const fn = tally(key);
       fn.calls += 1;
       const durationUs = span.endUs - span.startUs;
-      if (!ancestorKeys(span.parent, keyOf).has(key)) {
+      if (!calledWithin(span.parent, key, keyOf)) {
         fn.outermostCalls += 1;
         fn.timeUs += durationUs;
       }
       // A coroutine's children can overlap its own waits: never below nothing.
       fn.selfTimeUs += Math.max(0, durationUs - span.children.reduce((total, child) => total + child.endUs - child.startUs, 0));
-      fn.paths.add(pathOf(run, span, byText));
+      fn.paths.add(pathOfSpan(span));
     }
     for (const call of scenario.boundaryCalls) {
       if (!phases.has(call.phase)) continue;
@@ -331,6 +341,12 @@ function functionCosts(run: Run, scenarios: Scenario[], phases: Set<Phase>, keys
     }
   }
   return tallies;
+}
+
+/** Whether `from` or a span above it ran the function `key` names (recursion's inner calls). */
+function calledWithin(from: Span | null, key: string, keyOf: (key: string) => string): boolean {
+  for (let span = from; span !== null; span = span.parent) if (keyOf(span.fn.symbol.key) === key) return true;
+  return false;
 }
 
 function ancestorKeys(from: Span | null, keyOf: (key: string) => string): Set<string> {
