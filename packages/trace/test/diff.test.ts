@@ -210,7 +210,7 @@ describe("diffRuns", () => {
   test("a scenario's hops are its replay's calls and external calls, each once, by label", async () => {
     // The diff reads hops off the spans rather than building the replay for every scenario (a
     // review of Runshape itself spent most of its time there); the two must agree.
-    for (const fixture of ["django-feed-fix", "fastapi", "go-shop"]) {
+    for (const fixture of ["django-feed-fix", "fastapi", "go-shop"] as const) {
       const run = await fixtureRuns(fixture).latest();
       const nothingRecorded = Object.assign(Object.create(Object.getPrototypeOf(run)), run, { scenarios: [] });
       const grouping = { collapseMiddleware: true };
