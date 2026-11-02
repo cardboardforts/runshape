@@ -18,14 +18,15 @@
   ],
   "scripts": {
     "build": "npm run build -w packages/webview && npm run build -w packages/extension && npm run build -w packages/cli",
-    "test": "vitest run && go -C recorder-go test ./...",
+    "test": "vitest run && go -C recorder-go test ./... && sh recorder-cs/test.sh",
     "typecheck": "npm run typecheck --workspaces && tsc -p recorder-ts && go -C recorder-go vet ./...",
     "test:e2e": "npm run build && npm run test:e2e -w packages/extension",
     "view-diff": "sh tools/view-diff/view-diff.sh",
     "self-review": "sh recorder-ts/self-review.sh",
     "runshape": "npm run --silent build -w packages/cli && node packages/cli/dist/runshape.mjs",
     "record-go": "go -C recorder-go run ./cmd/runshape-go record",
-    "run-go": "go -C recorder-go run ./cmd/runshape-go run"
+    "run-go": "go -C recorder-go run ./cmd/runshape-go run",
+    "record-cs": "dotnet run --project recorder-cs/src/Runshape.Record -c Release -- record"
   },
   "devDependencies": {
     "typescript": "5.9.3",

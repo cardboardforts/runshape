@@ -8,6 +8,8 @@ import { chooseTestConfig, Hashing, Recorder, RecorderLanguage, RecordTarget, Re
 const RULES_FILE = "runshape.json";
 
 import { DockerRecorder, SandboxRecipe, sandboxVersion } from "./docker-recorder";
+import { CSharpRecorder } from "./csharp/csharp-recorder";
+import { csharpSandbox } from "./csharp/csharp-sandbox";
 import { GoRecorder } from "./go/go-recorder";
 import { goSandbox } from "./go/go-sandbox";
 import { PythonRecorder } from "./python/python-recorder";
@@ -34,12 +36,14 @@ const HOST_RECORDERS: Record<RecorderLanguage, new (home: string, root: string, 
   typescript: TypeScriptRecorder,
   python: PythonRecorder,
   go: GoRecorder,
+  csharp: CSharpRecorder,
 };
 
 const SANDBOX_RECIPES: Record<RecorderLanguage, (config: TestConfig) => SandboxRecipe> = {
   typescript: typescriptSandbox,
   python: pythonSandbox,
   go: goSandbox,
+  csharp: csharpSandbox,
 };
 
 export function projectRecorders(config: TestConfig, places: RecorderPlaces): ProjectRecorders {

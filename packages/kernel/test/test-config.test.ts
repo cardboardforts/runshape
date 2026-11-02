@@ -19,12 +19,23 @@ const problemsOf = (run: () => unknown): string[] => {
 };
 
 describe("chooseTestConfig", () => {
-  test("detected from the root's files: the realworld apps are Python, go-shop Go, Runshape TypeScript", () => {
+  test("detected from the root's files: the realworld apps are Python, go-shop Go, cs-shop C#, Runshape TypeScript", () => {
     const django = chooseTestConfig(undefined, ["manage.py", "pytest.ini", "requirements.txt", "README.md"]);
     const goShop = chooseTestConfig(undefined, ["go.mod", "cmd", "internal"]);
+    // A solution or project file is named after its project: matched by extension, in any case.
+    const csShop = chooseTestConfig(undefined, ["CsShop.slnx", "nuget.config"]);
+    const oneProject = chooseTestConfig(undefined, ["Tool.CSPROJ"]);
     const runshape = chooseTestConfig(undefined, ["package.json", "package-lock.json", "PLAN.md"]);
 
-    expect([django, goShop, runshape].map((config) => `${config.language} (${config.chosenBy})`)).toEqual(["python (pytest.ini)", "go (go.mod)", "typescript (package.json)"]);
+    expect([django, goShop, csShop, oneProject, runshape].map((config) => `${config.language} (${config.chosenBy})`)).toEqual([
+      "python (pytest.ini)",
+      "go (go.mod)",
+      "csharp (CsShop.slnx)",
+      "csharp (Tool.CSPROJ)",
+      "typescript (package.json)",
+    ]);
+    // A bare extension, or one that only starts the name's last part, isn't a solution.
+    expect(problemsOf(() => chooseTestConfig(undefined, [".sln", "notes.sln.txt"]))).toHaveLength(1);
     expect(django).toEqual({ language: "python", chosenBy: "pytest.ini", source: [], tests: [], args: [], interpreter: null });
   });
 
@@ -38,9 +49,9 @@ describe("chooseTestConfig", () => {
 
   test("a root that says two languages, or none, asks for the setting rather than guessing", () => {
     expect([problemsOf(() => chooseTestConfig(undefined, ["package.json", "pyproject.toml"])), problemsOf(() => chooseTestConfig(undefined, ["README.md"]))]).toEqual([
-      ["its root looks like more than one language, typescript (package.json), python (pyproject.toml): set recorder.language in runshape.json, or pass --recorder=<typescript|python|go>"],
+      ["its root looks like more than one language, typescript (package.json), python (pyproject.toml): set recorder.language in runshape.json, or pass --recorder=<typescript|python|go|csharp>"],
       [
-        "nothing at the project's root says its language (go.mod, pyproject.toml, pytest.ini, setup.py, setup.cfg, requirements.txt, manage.py, tox.ini, package.json): set recorder.language in runshape.json, or pass --recorder=<typescript|python|go>",
+        "nothing at the project's root says its language (go.mod, pyproject.toml, pytest.ini, setup.py, setup.cfg, requirements.txt, manage.py, tox.ini, package.json, *.sln, *.slnx, *.csproj): set recorder.language in runshape.json, or pass --recorder=<typescript|python|go|csharp>",
       ],
     ]);
   });
@@ -57,7 +68,10 @@ describe("chooseTestConfig", () => {
       "recorder.args only applies to Python (pytest's arguments)",
       "recorder.interpreter only applies to Python",
     ]);
-    expect(problemsOf(() => chooseTestConfig({ language: "cobol" }, [], "rust"))).toEqual(["--recorder=rust isn't one of: typescript, python, go"]);
+    expect(problemsOf(() => chooseTestConfig({ language: "csharp", source: ["src"], tests: ["tests/Shop.Tests"] }, []))).toEqual([
+      "recorder.source doesn't apply to C#: the recorder instruments every project that isn't a test project",
+    ]);
+    expect(problemsOf(() => chooseTestConfig({ language: "cobol" }, [], "rust"))).toEqual(["--recorder=rust isn't one of: typescript, python, go, csharp"]);
     // A folder or test that starts with "-" would reach pytest as an option (-p loads a plugin);
     // args are where options go, deliberately (examples/record.sh's -n0 --no-cov).
     expect(problemsOf(() => chooseTestConfig({ language: "python", source: ["-pevil"], tests: ["--rootdir=/"], args: ["-n0"] }, []))).toEqual([

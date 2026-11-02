@@ -1,9 +1,9 @@
 // What a recorder is handed: which language's recorder runs the project's tests, and how. The
-// recorders (recorder/, recorder-ts/, recorder-go/) are separate processes in their own
+// recorders (recorder/, recorder-ts/, recorder-go/, recorder-cs/) are separate processes in their own
 // languages; this is the contract on the way in, as the trace format is on the way out.
 
 /** The languages with a recorder. Each value is the word runshape.json and --recorder use. */
-export const RECORDER_LANGUAGES = ["typescript", "python", "go"] as const;
+export const RECORDER_LANGUAGES = ["typescript", "python", "go", "csharp"] as const;
 export type RecorderLanguage = (typeof RECORDER_LANGUAGES)[number];
 
 /** The section of runshape.json that holds the recorder's settings. */
@@ -16,7 +16,7 @@ export interface TestConfig {
   chosenBy: string;
   /** Folders holding the code to record, relative to the project: empty leaves it to the project's own settings. */
   source: string[];
-  /** Which tests run: pytest's paths, Go's packages, vitest's globs. Empty: all of them. */
+  /** Which tests run: pytest's paths, Go's packages, vitest's globs, dotnet test's solutions or projects. Empty: all of them. */
   tests: string[];
   /** More arguments for the test runner, as given (pytest's `-n0 --no-cov`). Python only. */
   args: string[];
@@ -29,6 +29,7 @@ export const HOW_TO_RECORD: Record<RecorderLanguage, string> = {
   typescript: "record one with `npm run runshape -- record working`",
   python: "record one by running your tests with `pytest --runshape` (or `npm run runshape -- record working`)",
   go: "record one with `npm run record-go -- <module>` (or `npm run runshape -- record working`)",
+  csharp: "record one with `npm run record-cs -- <project>` (or `npm run runshape -- record working`)",
 };
 
 export class TestConfigError extends Error {
@@ -39,13 +40,21 @@ export class TestConfigError extends Error {
 
 /**
  * Which project files say which language, checked at the project's root. A file several
- * languages' projects carry (a Makefile, a Dockerfile) says nothing, so isn't here.
+ * languages' projects carry (a Makefile, a Dockerfile) says nothing, so isn't here. "*.sln"
+ * matches any name with that extension: a solution is named after its project.
  */
 const LANGUAGE_MARKERS: Record<RecorderLanguage, string[]> = {
   go: ["go.mod"],
   python: ["pyproject.toml", "pytest.ini", "setup.py", "setup.cfg", "requirements.txt", "manage.py", "tox.ini"],
   typescript: ["package.json"],
+  csharp: ["*.sln", "*.slnx", "*.csproj"],
 };
+
+function isMarker(marker: string, file: string): boolean {
+  if (!marker.startsWith("*.")) return file === marker;
+  const extension = marker.slice(1);
+  return file.length > extension.length && file.toLowerCase().endsWith(extension);
+}
 
 const SETTINGS = new Set(["language", "source", "tests", "args", "interpreter"]);
 
@@ -68,8 +77,7 @@ export function chooseTestConfig(section: unknown, rootFiles: readonly string[],
     if (isLanguage(settings.language)) [language, chosenBy] = [settings.language, "runshape.json"];
     else problems.push(`runshape.json's ${TEST_CONFIG_SECTION}.language "${String(settings.language)}" isn't one of: ${RECORDER_LANGUAGES.join(", ")}`);
   } else {
-    const present = new Set(rootFiles);
-    const found = RECORDER_LANGUAGES.map((candidate) => ({ candidate, files: LANGUAGE_MARKERS[candidate].filter((file) => present.has(file)) })).filter((entry) => entry.files.length > 0);
+    const found = RECORDER_LANGUAGES.map((candidate) => ({ candidate, files: LANGUAGE_MARKERS[candidate].flatMap((marker) => rootFiles.filter((file) => isMarker(marker, file))) })).filter((entry) => entry.files.length > 0);
     const said = found.map((entry) => `${entry.candidate} (${entry.files.join(", ")})`).join(", ");
     if (found.length === 1) [language, chosenBy] = [found[0]!.candidate, found[0]!.files[0]!];
     else if (found.length === 0) problems.push(`nothing at the project's root says its language (${Object.values(LANGUAGE_MARKERS).flat().join(", ")}): set ${TEST_CONFIG_SECTION}.language in runshape.json, or pass --recorder=<${RECORDER_LANGUAGES.join("|")}>`);
@@ -91,6 +99,7 @@ export function chooseTestConfig(section: unknown, rootFiles: readonly string[],
   }
   // What a language's recorder can't take: said, rather than silently dropped.
   if (language === "go" && source.length > 0) problems.push(`${TEST_CONFIG_SECTION}.source doesn't apply to Go: the recorder instruments the whole module`);
+  if (language === "csharp" && source.length > 0) problems.push(`${TEST_CONFIG_SECTION}.source doesn't apply to C#: the recorder instruments every project that isn't a test project`);
   if (language !== "python" && language !== null && args.length > 0) problems.push(`${TEST_CONFIG_SECTION}.args only applies to Python (pytest's arguments)`);
   if (language !== "python" && language !== null && interpreter !== null) problems.push(`${TEST_CONFIG_SECTION}.interpreter only applies to Python`);
   if (problems.length > 0 || language === null) throw new TestConfigError(problems);

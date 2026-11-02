@@ -15,6 +15,7 @@ import { describe, expect, test } from "vitest";
 import { removeAnyway } from "@runshape/infra";
 import { TestConfig } from "@runshape/kernel";
 import { CommandResult, CommandRunner, DockerRecorder, SandboxRecipe } from "../src/recorders/docker-recorder";
+import { csharpSandbox } from "../src/recorders/csharp/csharp-sandbox";
 import { goSandbox } from "../src/recorders/go/go-sandbox";
 import { pythonSandbox } from "../src/recorders/python/python-sandbox";
 import { typescriptSandbox } from "../src/recorders/typescript/typescript-sandbox";
@@ -323,6 +324,18 @@ describe("a sandbox per language: the same container, network and checks; the im
   const HARDENING = new Set(["--rm", "--user", "--cap-drop", "--security-opt", "--read-only", "--tmpfs", "--memory", "--pids-limit", "--ulimit"]);
   const PYTHON: TestConfig = { language: "python", chosenBy: "pytest.ini", source: ["conduit"], tests: ["tests"], args: ["-k", "journey"], interpreter: null };
   const GO: TestConfig = { language: "go", chosenBy: "go.mod", source: [], tests: ["./..."], args: [], interpreter: null };
+  const CSHARP: TestConfig = { language: "csharp", chosenBy: "CsShop.slnx", source: [], tests: ["tests/Shop.Tests"], args: [], interpreter: null };
+  /** A lock file as dotnet writes it: packages, and another project of the solution. */
+  const lockOf = (packages: Record<string, string>) =>
+    JSON.stringify({
+      version: 1,
+      dependencies: {
+        "net10.0": {
+          ...Object.fromEntries(Object.entries(packages).map(([id, version]) => [id, { type: "Direct", resolved: version, contentHash: "x" }])),
+          shop: { type: "Project" },
+        },
+      },
+    });
 
   /** The commit checked out with these files; the record step leaves a recording. */
   function sandboxFor(recipe: SandboxRecipe, files: Record<string, string>) {
@@ -420,6 +433,43 @@ describe("a sandbox per language: the same container, network and checks; the im
       "the commit's package-lock.json isn't a plain file (a link?): not read",
       "its package-lock.json isn't valid JSON: its dependencies can't be checked before installing",
       "its requirements.txt has lines that aren't a pinned release (name==version), which could install from elsewhere or build from source: line 1",
+    ]);
+  });
+
+  test("C#: exactly the packages the lock files pin, fetched by the recorder's own project (none of the commit's MSBuild runs with a network); restored offline in locked mode and recorded", async () => {
+    const { steps, record } = sandboxFor(csharpSandbox(CSHARP), {
+      "CsShop.slnx": "<Solution />",
+      "src/Shop/Shop.csproj": "<Project />",
+      "src/Shop/packages.lock.json": lockOf({ "Microsoft.EntityFrameworkCore.Sqlite": "10.0.9" }),
+      "tests/Shop.Tests/Shop.Tests.csproj": "<Project />",
+      "tests/Shop.Tests/packages.lock.json": lockOf({ xunit: "2.9.3", "Microsoft.EntityFrameworkCore.Sqlite": "10.0.9" }),
+      "tests/Shop.Tests/bin/Debug/Old.csproj": "<Project />",
+    });
+    const dotnet = "-e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 -e DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 -e DOTNET_CLI_HOME=/tmp -e MSBUILDDISABLENODEREUSE=1";
+
+    expect({ outcome: await record(), steps: steps() }).toEqual({
+      outcome: "recorded",
+      steps: [
+        "runshape-proxy-.incoming-abc -e HOME=/tmp --network bridge -e RUNSHAPE_PROXY_ALLOW=api.nuget.org:443 --workdir /runshape runshape-recorder-cs:0123456789abcdef node recorder-ts/sandbox/registry-proxy.mjs",
+        `runshape-install-.incoming-abc -e HOME=/tmp --network runshape-install-.incoming-abc ${dotnet} -e HTTPS_PROXY=http://runshape-proxy-.incoming-abc:3128 -e HTTP_PROXY=http://runshape-proxy-.incoming-abc:3128 -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target --workdir /tmp runshape-recorder-cs:0123456789abcdef /runshape/recorder-cs/sandbox/download-packages.sh Microsoft.EntityFrameworkCore.Sqlite@10.0.9 xunit@2.9.3`,
+        `runshape-record-.incoming-abc -e HOME=/tmp --network none -v <root>/.runshape/worktrees/sandbox-.incoming-abc:/target:ro -v <root>/.runshape/recordings/.incoming-abc:/out ${dotnet} -e NUGET_PACKAGES=/target/.runshape-nuget --workdir /runshape runshape-recorder-cs:0123456789abcdef sh -c dotnet /runshape/bin/runshape-cs.dll record -out /out -run run -locked /target "$@" > /out/run.log 2>&1 || true sh tests/Shop.Tests`,
+      ],
+    });
+  });
+
+  test("C#: a project without a lock file, a lock entry that isn't a plain id and version, a committed package folder or no project at all: nothing is fetched", async () => {
+    const outcomes = await Promise.all([
+      sandboxFor(csharpSandbox(CSHARP), { "src/Shop/Shop.csproj": "<Project />", "tests/T/T.csproj": "<Project />", "tests/T/packages.lock.json": lockOf({}) }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "Shop.csproj": "<Project />", "packages.lock.json": lockOf({ xunit: "2.9.3", "evil\" /><Exec": "1.0", ok: "1.0 --source http://evil" }) }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "Shop.csproj": "<Project />", "packages.lock.json": lockOf({}), ".runshape-nuget/xunit/2.9.3/x": "" }).record(),
+      sandboxFor(csharpSandbox(CSHARP), { "README.md": "" }).record(),
+    ]);
+
+    expect(outcomes).toEqual([
+      "its projects in src/Shop have no packages.lock.json: their packages can't be fetched as pinned (set RestorePackagesWithLockFile and commit the lock files)",
+      "its packages.lock.json has 2 entries that aren't a package id and a pinned version: nothing is fetched",
+      "the commit has its own .runshape-nuget, where the install puts what it fetches: not used, so not installed",
+      "the commit has no .csproj: there's no project to record",
     ]);
   });
 

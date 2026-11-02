@@ -16,6 +16,8 @@ export * from "./library/review-store";
 export * from "./library/revision-requests";
 export * from "./models/language-models";
 export * from "./project/project-files";
+export * from "./recorders/csharp/csharp-recorder";
+export * from "./recorders/csharp/csharp-sandbox";
 export * from "./recorders/docker-recorder";
 export * from "./recorders/go/go-recorder";
 export * from "./recorders/python/python-recorder";

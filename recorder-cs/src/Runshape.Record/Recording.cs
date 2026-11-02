@@ -17,7 +17,9 @@ public sealed record RecordOptions(
     /// <summary>What dotnet test runs (solutions, projects, folders), relative to the root; empty: the root's one solution or project.</summary>
     IReadOnlyList<string> Tests,
     /// <summary>The runtime's DLL, which each instrumented project references.</summary>
-    string RuntimeAssembly);
+    string RuntimeAssembly,
+    /// <summary>Restore only what the lock files pin (the sandbox: its packages were fetched by them).</summary>
+    bool Locked = false);
 
 public sealed record Problem(string File, string Reason);
 
@@ -51,7 +53,7 @@ public static partial class Recording
             var table = Path.Combine(work, ".runshape-functions.json");
             File.WriteAllBytes(table, JsonSerializer.SerializeToUtf8Bytes(new { functions = prepared.Functions, types = prepared.Types }, Json));
             var createdAt = DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm:sszzz");
-            var (exitCode, output) = DotnetTest(work, target, run, table);
+            var (exitCode, output) = DotnetTest(work, target, run, table, options.Locked);
             log.Write(output);
             var scenarios = ScenarioIndex(run);
             var sessionProblems = TestProblems(output);
@@ -189,14 +191,15 @@ public static partial class Recording
     /// left running; DOTNET_ROLL_FORWARD lets a test project for an older .NET run on the
     /// installed one (said in docs/design.md: it's the one difference from running them yourself).
     /// </summary>
-    private static (int ExitCode, string Output) DotnetTest(string work, IReadOnlyList<string> targets, string run, string table)
+    private static (int ExitCode, string Output) DotnetTest(string work, IReadOnlyList<string> targets, string run, string table, bool locked)
     {
         var output = new System.Text.StringBuilder();
         var exitCode = 0;
         foreach (var target in targets)
         {
             var start = new ProcessStartInfo("dotnet") { WorkingDirectory = work, RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var argument in new[] { "test", target, "--nologo", "-nodeReuse:false", "-p:UseSharedCompilation=false" }) start.ArgumentList.Add(argument);
+            string[] arguments = ["test", target, "--nologo", "-nodeReuse:false", "-p:UseSharedCompilation=false", .. locked ? new[] { "-p:RestoreLockedMode=true" } : []];
+            foreach (var argument in arguments) start.ArgumentList.Add(argument);
             start.Environment["RUNSHAPE_RUN_DIR"] = Path.GetFullPath(run);
             start.Environment["RUNSHAPE_FUNCTIONS"] = table;
             start.Environment["DOTNET_ROLL_FORWARD"] = "Major";
