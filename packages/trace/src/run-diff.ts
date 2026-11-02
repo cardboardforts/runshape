@@ -1,6 +1,5 @@
-import { ArchitectureProfile, Change, CodeSymbol, ComparedGraphs, componentOf, FINE_GROUPING, FunctionChange, FunctionRef, functionRef, GraphEdge, GraphNode, Grouping, Outcome, Phase, renamedComponent, renamedComponentId, Role, Run, RunDiff, Scenario, ScenarioDiff, StepKind } from "@runshape/kernel";
+import { Change, CodeSymbol, ComparedGraphs, ComponentRef, componentOf, externalComponent, FINE_GROUPING, FunctionChange, functionRef, GraphNode, Grouping, Phase, renamedComponent, renamedComponentId, Renaming, Role, Run, RunDiff, Scenario, ScenarioDiff, Span } from "@runshape/kernel";
 import { detectMoves, Moves } from "./moves";
-import { buildReplay } from "./replay";
 
 export interface DiffOptions {
   phases?: Phase[];
@@ -16,7 +15,9 @@ export function diffRuns(before: Run, after: Run, graphs: ComparedGraphs, option
   const { before: graphBefore, after: graphAfter } = graphs;
   const moves = options.moves ?? detectMoves(before, after);
   // The base's boxes under head's names: a moved module is the same box, not one gone and one new.
-  const headId = (id: string) => renamedComponentId(id, moves);
+  const baseBoxes = new BoxRenamer(moves);
+  const headBoxes = new BoxRenamer(Moves.none());
+  const headId = baseBoxes.id;
   // Code merged into a box that already existed: the base's boxes that now share an id are one.
   const nodesBefore = combined(
     graphBefore.nodes.map((node) => ({ ...node, id: headId(node.id) })),
@@ -49,9 +50,13 @@ export function diffRuns(before: Run, after: Run, graphs: ComparedGraphs, option
   // Only catalogued functions: import-time module code that happened to run mid-request
   // isn't something a reviewer can act on.
   const catalogued = new Set([...before.catalog.map((fn) => moves.headKey(fn.symbol.key)), ...after.catalog.map((fn) => fn.symbol.key)]);
+  const [textBefore, textAfter] = lineTexts(before, after);
+  const scenariosBefore = firstById(before.scenarios);
+  const scenariosAfter = firstById(after.scenarios);
   for (const id of scenarioIds) {
-    const [textBefore, textAfter] = lineTexts(before, after);
-    scenarios.push(diffScenario(before.scenario(moves.baseScenarioId(id)) ?? null, after.scenario(id) ?? null, phases, grouping, catalogued, textBefore, textAfter, moves));
+    const beforeSide: Side = { scenario: scenariosBefore.get(moves.baseScenarioId(id)) ?? null, boxes: baseBoxes, lineText: textBefore, headKey: moves.headKey };
+    const afterSide: Side = { scenario: scenariosAfter.get(id) ?? null, boxes: headBoxes, lineText: textAfter, headKey: (key) => key };
+    scenarios.push(diffScenario(beforeSide, afterSide, phases, grouping, catalogued));
   }
   return { caveats: caveatsFor(before, after), nodes, edges, scenarios, profile: graphAfter.profile, moved: moves.describe() };
 }
@@ -70,22 +75,31 @@ function caveatsFor(before: Run, after: Run): string[] {
   return caveats;
 }
 
-function diffScenario(
-  before: Scenario | null,
-  after: Scenario | null,
-  phases: Phase[],
-  grouping: Grouping,
-  catalogued: Set<string>,
-  sourcesBefore: LineText,
-  sourcesAfter: LineText,
-  moves: Moves,
-): ScenarioDiff {
+/** One side of a scenario's comparison, and how to read its names as head's. */
+interface Side {
+  scenario: Scenario | null;
+  boxes: BoxRenamer;
+  lineText: LineText;
+  /** A CodeSymbol.key as head names that function. */
+  headKey: (key: string) => string;
+}
+
+/** As Run.scenario(id), the first with that id, without a scan per lookup. */
+function firstById(scenarios: Scenario[]): Map<string, Scenario> {
+  const byId = new Map<string, Scenario>();
+  for (const scenario of scenarios) if (!byId.has(scenario.nodeid)) byId.set(scenario.nodeid, scenario);
+  return byId;
+}
+
+function diffScenario(beforeSide: Side, afterSide: Side, phases: Phase[], grouping: Grouping, catalogued: Set<string>): ScenarioDiff {
+  const before = beforeSide.scenario;
+  const after = afterSide.scenario;
   const either = (after ?? before) as Scenario;
-  const hops = differenceOfSets(hopsOf(before, phases, grouping, moves), hopsOf(after, phases, grouping, Moves.none()));
+  const hops = differenceOfSets(hopsOf(before, phases, grouping, beforeSide.boxes), hopsOf(after, phases, grouping, afterSide.boxes));
   const statements = differenceOfCounts(statementsOf(before, phases), statementsOf(after, phases));
   const functionsChanged = diffReachedLines(
-    reachedLines(before, phases, sourcesBefore, moves.headKey),
-    reachedLines(after, phases, sourcesAfter, (key) => key),
+    reachedLines(before, phases, beforeSide.lineText, beforeSide.headKey),
+    reachedLines(after, phases, afterSide.lineText, afterSide.headKey),
     catalogued,
   );
   const outcomeBefore = before?.outcome ?? null;
@@ -115,23 +129,73 @@ function diffScenario(
   };
 }
 
-/** "middleware -> ArticlesFeedAPIView": each distinct hop between components, by label. */
-/** `moves` renames the base's boxes as head names them; Moves.none() on the head side. */
-function hopsOf(scenario: Scenario | null, phases: Phase[], grouping: Grouping, moves: Moves): Set<string> {
+/**
+ * "middleware -> ArticlesFeedAPIView": each distinct hop between components, by label. The
+ * replay's call and external steps (buildReplay), read from the spans: a set of hops needs
+ * neither the replay's order nor its labels. `boxes` renames the base's boxes as head names them.
+ */
+function hopsOf(scenario: Scenario | null, phases: Phase[], grouping: Grouping, boxes: BoxRenamer): Set<string> {
   const hops = new Set<string>();
   if (scenario === null) return hops;
+  // A parent's box is asked for once per child: worked out once per span.
+  const components = new Map<Span, ComponentRef>();
+  const component = (span: Span): ComponentRef => {
+    let ref = components.get(span);
+    if (ref === undefined) {
+      ref = componentOf(span, grouping);
+      components.set(span, ref);
+    }
+    return ref;
+  };
   const labels = new Map<string, string>();
   for (const span of scenario.spans) {
-    const ref = renamedComponent(componentOf(span, grouping), moves);
+    const ref = boxes.component(component(span));
     labels.set(ref.id, ref.label);
   }
-  for (const step of buildReplay(scenario, phases, grouping)) {
-    if (step.kind === StepKind.Return) continue;
-    const from = renamedComponentId(step.from, moves);
-    const to = step.kind === StepKind.External ? step.to.replace(/^external:/, "") : renamedComponentId(step.to, moves);
-    hops.add(`${labels.get(from) ?? from} -> ${labels.get(to) ?? to}`);
+  const label = (id: string) => labels.get(id) ?? id;
+  const included = new Set(phases);
+  for (const span of scenario.spans) {
+    if (!included.has(span.phase) || span.parent === null) continue;
+    const from = component(span.parent).id;
+    const to = component(span).id;
+    if (from === to) continue;
+    hops.add(`${label(boxes.id(from))} -> ${label(boxes.id(to))}`);
+  }
+  for (const call of scenario.boundaryCalls) {
+    if (!included.has(call.phase) || call.caller === null) continue;
+    hops.add(`${label(boxes.id(component(call.caller).id))} -> ${label(call.system)}`);
   }
   return hops;
+}
+
+/**
+ * One side's boxes under head's names, each renamed once per comparison: every scenario of a
+ * run meets the same few hundred boxes.
+ */
+class BoxRenamer {
+  private readonly ids = new Map<string, string>();
+  private readonly components = new Map<string, ComponentRef>();
+
+  constructor(private readonly renaming: Renaming) {}
+
+  id = (id: string): string => {
+    let renamed = this.ids.get(id);
+    if (renamed === undefined) {
+      renamed = renamedComponentId(id, this.renaming);
+      this.ids.set(id, renamed);
+    }
+    return renamed;
+  };
+
+  /** Keyed by id: a box's id is its kind and its name's text, all renamedComponent reads. */
+  component(ref: ComponentRef): ComponentRef {
+    let renamed = this.components.get(ref.id);
+    if (renamed === undefined) {
+      renamed = renamedComponent(ref, this.renaming);
+      this.components.set(ref.id, renamed);
+    }
+    return renamed;
+  }
 }
 
 /** SQL (or URL) text per external call, whitespace-normalised so reformatting isn't a change. */
@@ -169,7 +233,24 @@ function lineTexts(before: Run, after: Run): [LineText, LineText] {
     }
     return `${text}#${occurrence}`;
   };
-  return [byText(before), byText(after)];
+  return [remembered(byText(before)), remembered(byText(after))];
+}
+
+/**
+ * Each line worked out once per run: a function's lines are met again in every span of it, in
+ * every scenario, and counting a line's occurrences reads the function from its top.
+ */
+function remembered(lineText: LineText): LineText {
+  const byFile = new Map<string | null, Map<number, Map<number, string>>>();
+  return (file, line, functionFirstLine) => {
+    let byFunction = byFile.get(file);
+    if (byFunction === undefined) byFile.set(file, (byFunction = new Map()));
+    let byLine = byFunction.get(functionFirstLine);
+    if (byLine === undefined) byFunction.set(functionFirstLine, (byLine = new Map()));
+    let text = byLine.get(line);
+    if (text === undefined) byLine.set(line, (text = lineText(file, line, functionFirstLine)));
+    return text;
+  };
 }
 
 /**

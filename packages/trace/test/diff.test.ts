@@ -8,7 +8,8 @@ import { describe, expect, test } from "vitest";
 
 import { diffOf } from "./graphs";
 
-import { Change } from "@runshape/kernel";
+import { Change, componentOf, Phase, StepKind } from "@runshape/kernel";
+import { buildReplay } from "../src";
 import { fixtureRuns } from "../../kernel/test/fixtures";
 
 async function loadFeedFix() {
@@ -204,6 +205,28 @@ describe("diffRuns", () => {
         "Recorded by different recorder versions (0.1.0 → 0.2.0); some differences may come from the recorder, not the code.",
       ]
     `);
+  });
+
+  test("a scenario's hops are its replay's calls and external calls, each once, by label", async () => {
+    // The diff reads hops off the spans rather than building the replay for every scenario (a
+    // review of Runshape itself spent most of its time there); the two must agree.
+    for (const fixture of ["django-feed-fix", "fastapi", "go-shop"]) {
+      const run = await fixtureRuns(fixture).latest();
+      const nothingRecorded = Object.assign(Object.create(Object.getPrototypeOf(run)), run, { scenarios: [] });
+      const grouping = { collapseMiddleware: true };
+
+      const diff = diffOf(nothingRecorded, run, { grouping });
+
+      for (const scenario of diff.scenarios) {
+        const recorded = run.scenario(scenario.id)!;
+        const labels = new Map(recorded.spans.map((span) => [componentOf(span, grouping).id, componentOf(span, grouping).label]));
+        const label = (id: string) => labels.get(id) ?? id.replace(/^external:/, "");
+        const fromReplay = buildReplay(recorded, [Phase.Call], grouping)
+          .filter((step) => step.kind !== StepKind.Return)
+          .map((step) => `${label(step.from)} -> ${label(step.to)}`);
+        expect(scenario.hopsAdded, `${fixture} ${scenario.id}`).toEqual([...new Set(fromReplay)].sort());
+      }
+    }
   });
 
   test("with only one recording there is nothing to compare against", async () => {
