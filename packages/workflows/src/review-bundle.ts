@@ -1,5 +1,5 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
-import { ArchitectureDiff, Change, Grouping, Op, Phase, Placement, PlacementChange, plainMarkdown, QualifiedName, RegionSummary, ReviewHighlights, ReviewSummary, RouteMapDiff, Run, ZoneRule } from "@runshape/kernel";
+import { ArchitectureDiff, Change, ComparedGraphs, Grouping, Op, Phase, Placement, PlacementChange, plainMarkdown, QualifiedName, RegionSummary, ReviewHighlights, ReviewSummary, RouteMapDiff, Run, ZoneRule } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildPlacements, CategorizedItem, categorize, checkTagRules, claimText, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
 import { buildThreads, CostDiff, detectMoves, diffCost, diffRouteMaps, diffRuns, groupThreads, Measure, Moves, reviewMarkdown, reviewOfDiff, routeCostChanges, WorkflowCost, WorkflowSides, ChangedFunction, ThreadKind, Threads, TimeVerdict, workflowCostChanged } from "@runshape/trace";
 
@@ -66,6 +66,20 @@ export interface ReviewBundle {
   story?: ReviewStory;
   /** The categorizer on head: the changed code's tags, the findings head adds, proposed zones for new code. */
   categories: BundleCategories;
+  /** Calls head makes that its style forbids and the base didn't make (or didn't forbid). Absent from bundles saved before they were kept. */
+  violations?: BundleViolation[];
+}
+
+/** A call between two boxes of the system graph that the style forbids (an inner zone calling out). */
+export interface BundleViolation {
+  /** The boxes' labels, as the viewer draws them: names from the code. */
+  from: string;
+  to: string;
+  fromZone: string;
+  toZone: string;
+  calls: number;
+  /** Why the style forbids it. */
+  violation: string;
 }
 
 /** Added after version 1's first release: readers treat it as optional. */
@@ -126,7 +140,26 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     cost: diffCost(base, head, threads, { phases: BUNDLE_OPTIONS.phases, moves }),
     ...(input.story === undefined ? {} : { story: input.story }),
     categories: bundleCategories(input, baseRules, architecture, threads, moves, placed),
+    violations: newViolations(graphs),
   };
+}
+
+/**
+ * Head's forbidden calls the base didn't have, by the two boxes' ids: a call the base made and
+ * its rules allowed reads as new once forbidden. Renamed boxes aren't recognised (a moved
+ * module's old violation reads as new).
+ */
+function newViolations(graphs: ComparedGraphs): BundleViolation[] {
+  const before = new Set(graphs.before.edges.filter((edge) => edge.violation !== null).map((edge) => `${edge.from}\n${edge.to}`));
+  const nodes = new Map(graphs.after.nodes.map((node) => [node.id, node]));
+  const fresh: BundleViolation[] = [];
+  for (const edge of graphs.after.edges) {
+    if (edge.violation === null || before.has(`${edge.from}\n${edge.to}`)) continue;
+    const from = nodes.get(edge.from);
+    const to = nodes.get(edge.to);
+    fresh.push({ from: from?.label ?? edge.from, to: to?.label ?? edge.to, fromZone: from?.zone ?? "", toZone: to?.zone ?? "", calls: edge.calls, violation: edge.violation });
+  }
+  return fresh;
 }
 
 function bundleCategories(input: BundleInput, baseRules: ZoneRules, architecture: ArchitectureDiff, threads: Threads, moves: Moves, placed: { base: ArchitectureSnapshot; head: ArchitectureSnapshot }): BundleCategories {
@@ -217,6 +250,7 @@ export function reviewBundleMarkdown(bundle: ReviewBundle): string {
     ...costMarkdown(bundle.cost),
     ...threadsMarkdown(bundle.threads),
     ...architectureMarkdown(bundle.architecture, bundle.baseRulesKnown),
+    ...violationsMarkdown(bundle.violations),
     ...categoriesMarkdown(bundle.categories),
     ...routesMarkdown(bundle.routes),
   ];
@@ -256,6 +290,16 @@ function categoriesMarkdown(categories: BundleCategories | undefined): string[] 
     if (proposals.length > SHOWN_PROPOSALS) out.push(`and ${proposals.length - SHOWN_PROPOSALS} more (review.json lists them all)`);
     out.push("");
   }
+  return out;
+}
+
+/** "New calls the style forbids": absent from bundles saved before they were kept, and when there are none. */
+function violationsMarkdown(violations: BundleViolation[] | undefined): string[] {
+  if (violations === undefined || violations.length === 0) return [];
+  const out = [`### New calls the style forbids (${violations.length})`, ""];
+  for (const v of violations.slice(0, SHOWN_FINDINGS)) out.push(`- ${code(v.from)} (${v.fromZone}) → ${code(v.to)} (${v.toZone}), ${v.calls} call${v.calls === 1 ? "" : "s"}: ${v.violation}`);
+  if (violations.length > SHOWN_FINDINGS) out.push(`- and ${violations.length - SHOWN_FINDINGS} more (review.json lists them all)`);
+  out.push("");
   return out;
 }
 
