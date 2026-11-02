@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from "vitest";
 
-import { QualifiedName, TraceDirectory } from "@runshape/kernel";
-import { CategorizedItem, Categorization, categorize, checkTagRules, failureOn, Finding, newFindings, ZoneRules } from "../src";
+import { BoundaryCall, CodeSymbol, FunctionInfo, Outcome, Phase, QualifiedName, Role, Run, Scenario, Span, SymbolKind, TraceDirectory } from "@runshape/kernel";
+import { CategorizedItem, Categorization, categorize, checkTagRules, failureOn, Finding, Kind, newFindings, ZoneRules } from "../src";
 import { fixtureFiles, fixtureRuns } from "../../kernel/test/fixtures";
 
 /** One line per item: kind/subkind name [region|style|zone] then lens=role(by confidence: evidence). */
@@ -55,32 +55,32 @@ describe("categorize", () => {
         "type/type example\\.com.shop.internal.web.statusRecorder [|hexagonal|inbound-adapter]
           ports-and-adapters=primary-adapter (detected 0.9: placed in inbound-adapter by rule example\\.com.shop.internal.web.** (user))",
         "callable/function example\\.com.shop.internal.app.New [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 8 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 4 recorded calls)
           cqs=query (detected 0.7: returns a value (line 17); no recorded write)",
         "callable/function example\\.com.shop.internal.orders.NewService [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 12 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 4 recorded calls)
           cqs=query (detected 0.7: returns a value (line 26); no recorded write)",
         "callable/method example\\.com.shop.internal.orders.Order.Problems [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 10 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 2 recorded calls)
           cqs=query (detected 0.7: returns a value (line 56); no recorded write)",
         "callable/method example\\.com.shop.internal.orders.Order.TotalCents [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 6 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 2 recorded calls)
           cqs=query (detected 0.7: returns a value (line 36); no recorded write)",
         "callable/method example\\.com.shop.internal.orders.Service.Get [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 8 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 2 recorded calls)
           cqs=query (detected 0.7: returns a value (line 45); no recorded write)",
         "callable/method example\\.com.shop.internal.orders.Service.Place [|hexagonal|core]
           effect=writes-state (detected 0.85: writes field nextID (line 35); writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save)
           cqs=both (detected 0.7: returns a value (line 33); writes field nextID (line 35))
           failure=can-fail (detected 0.6: fmt.Errorf at line 38, not run by the tests)",
         "callable/method example\\.com.shop.internal.storage.MemoryRepository.Find [|hexagonal|outbound-adapter]
-          effect=pure (detected 0.4: no boundary call or field write in 10 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 2 recorded calls)
           cqs=query (detected 0.7: returns a value (line 35); no recorded write)",
         "callable/method example\\.com.shop.internal.storage.MemoryRepository.Save [|hexagonal|outbound-adapter]
           effect=writes-state (detected 0.85: writes field orders (line 25))
           cqs=command (detected 0.7: no executed return with a value: the return lines that ran hand back nothing; writes field orders (line 25))",
         "callable/function example\\.com.shop.internal.storage.NewMemoryRepository [|hexagonal|outbound-adapter]
-          effect=pure (detected 0.4: no boundary call or field write in 12 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 4 recorded calls)
           cqs=query (detected 0.7: returns a value (line 18); no recorded write)",
         "callable/method example\\.com.shop.internal.web.Handler.ServeHTTP [|hexagonal|inbound-adapter]
           effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.orders.Service.Place; writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
@@ -91,7 +91,7 @@ describe("categorize", () => {
           ports-and-adapters=primary-adapter (detected 0.85: the framework routes POST /orders to it)
           effect=writes-state (detected 0.85: writes a field through example\\.com.shop.internal.orders.Service.Place; writes a field through example\\.com.shop.internal.storage.MemoryRepository.Save; writes a field through example\\.com.shop.internal.web.statusRecorder.WriteHeader)",
         "callable/function example\\.com.shop.internal.web.NewHandler [|hexagonal|inbound-adapter]
-          effect=pure (detected 0.4: no boundary call or field write in 12 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 4 recorded calls)
           cqs=query (detected 0.7: returns a value (line 28); no recorded write)",
         "callable/method example\\.com.shop.internal.web.statusRecorder.WriteHeader [|hexagonal|inbound-adapter]
           effect=writes-state (detected 0.85: writes field status (line 83))
@@ -178,6 +178,40 @@ describe("categorize", () => {
     });
   });
 
+  test("a call deep in the stack is counted once: its query once, its calls once, however many callers sit above it", () => {
+    // The first version walked every span's whole subtree from every span, so a call six deep
+    // was counted six times: "postgres: SELECT ×6 itself" for one query. Evidence must be honest.
+    const span = (id: number, namespace: string, name: string, parent: Span | null, role = Role.Source) => {
+      const fn: FunctionInfo = { role, symbol: new CodeSymbol(["app", namespace], [], name, SymbolKind.Function, null), file: null, firstLine: 1, landmarkKind: null };
+      const made = new Span(id, fn, parent, null, Phase.Call, id, 1);
+      parent?.addChild(made);
+      made.stoppedAt(100 - id);
+      return made;
+    };
+    const test = span(1, "tests", "test_profile", null, Role.Test);
+    const route = span(2, "routes", "get_profile", test);
+    const service = span(3, "services", "load_profile", route);
+    const policy = span(4, "services", "check_access", service);
+    const find = span(5, "repositories", "find_user", policy);
+    const normalize = span(6, "repositories", "normalize", find);
+    const select: BoundaryCall = { system: "postgres", operation: "query", statement: "SELECT * FROM users", startUs: 5, caller: find, phase: Phase.Call };
+    find.addBoundaryCall(select);
+    const spans = [test, route, service, policy, find, normalize];
+    const run = new Run("/app", "2026-11-02", "python", "3.12", "cpython", null, [], [new Scenario("tests/test_profile.py::test_profile", Outcome.Passed, 100, spans, [], [select], [])], []);
+
+    const effects = categorize(run, ZoneRules.none()).items.filter((item) => item.kind === Kind.Callable).map((item) => `${item.name}: ${item.tags.filter((tag) => tag.lens === "effect").flatMap((tag) => tag.evidence).join("; ")}`);
+
+    expect(effects).toMatchInlineSnapshot(`
+      [
+        "app.repositories.find_user: postgres: SELECT ×1 itself",
+        "app.repositories.normalize: no boundary call or field write in 1 recorded call; this recording keeps no source, so field writes aren't seen",
+        "app.routes.get_profile: postgres: SELECT through app.repositories.find_user",
+        "app.services.check_access: postgres: SELECT through app.repositories.find_user",
+        "app.services.load_profile: postgres: SELECT through app.repositories.find_user",
+      ]
+    `);
+  });
+
   test("a finding the base already had under an old name isn't new: renames are recognised, so a rename doesn't read as fresh drift", async () => {
     const run = await fixtureRuns("go-shop").latest();
     const rules = ZoneRules.parse(JSON.stringify({ ...GO_SHOP_RULES, taxonomy: { rules: [{ id: "cqrs-no-mixed-callable", match: "example\\.com.shop.**" }] } }));
@@ -220,21 +254,21 @@ describe("categorize", () => {
           cqs=both (detected 0.7: returns a value (line 85); postgres: WITH through app.db.repositories.articles.ArticlesRepository.create_article)
           failure=can-fail (detected 0.85: raise at line 72, ran in the tests)",
         "callable/method app.db.repositories.users.UsersRepository.create_user [|hexagonal|core]
-          effect=writes-state (detected 0.95: postgres: INSERT ×24 itself; writes a field through app.models.domain.users.UserInDB.change_password)
+          effect=writes-state (detected 0.95: postgres: INSERT ×9 itself; writes a field through app.models.domain.users.UserInDB.change_password)
           io=direct-io (detected 0.95: postgres: INSERT)
-          cqs=both (detected 0.7: returns a value (line 48); postgres: INSERT ×24 itself)",
+          cqs=both (detected 0.7: returns a value (line 48); postgres: INSERT ×9 itself)",
         "callable/method app.db.repositories.users.UsersRepository.get_user_by_email [|hexagonal|core]
-          effect=reads-state (detected 0.95: postgres: SELECT ×11 itself)
+          effect=reads-state (detected 0.95: postgres: SELECT ×2 itself)
           io=direct-io (detected 0.95: postgres: SELECT)
           cqs=query (detected 0.7: returns a value (line 13); no recorded write)
           failure=can-fail (detected 0.85: raise at line 15, ran in the tests)",
         "callable/method app.db.repositories.users.UsersRepository.get_user_by_username [|hexagonal|core]
-          effect=reads-state (detected 0.95: postgres: SELECT ×192 itself)
+          effect=reads-state (detected 0.95: postgres: SELECT ×33 itself)
           io=direct-io (detected 0.95: postgres: SELECT)
           cqs=query (detected 0.7: returns a value (line 23); no recorded write)
           failure=can-fail (detected 0.85: raise at line 25, ran in the tests)",
         "callable/function app.services.articles._normalize_title [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 20 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 2 recorded calls)
           cqs=query (detected 0.7: returns a value (line 38); no recorded write)",
         "callable/function app.services.articles.check_article_exists [|hexagonal|core]
           effect=reads-state (detected 0.95: postgres: SELECT through app.db.repositories.articles.ArticlesRepository.get_article_by_slug; postgres: SELECT through app.db.repositories.articles.ArticlesRepository.get_favorites_count_for_article_by_slug; postgres: SELECT through app.db.repositories.articles.ArticlesRepository.get_tags_for_article_by_slug; postgres: SELECT through app.db.repositories.users.UsersRepository.get_user_by_username)
@@ -244,7 +278,7 @@ describe("categorize", () => {
           cqs=query (detected 0.7: returns a value (line 26); no recorded write)
           failure=can-fail (detected 0.85: raise at line 25, ran in the tests)",
         "callable/function app.services.articles.get_slug_for_article [|hexagonal|core]
-          effect=pure (detected 0.4: no boundary call or field write in 18 recorded calls)
+          effect=pure (detected 0.4: no boundary call or field write in 2 recorded calls)
           cqs=query (detected 0.7: returns a value (line 34); no recorded write)",
       ]
     `);
@@ -290,7 +324,7 @@ describe("categorize", () => {
         "type/class conduit.apps.articles.views.ArticleViewSet [|mvc|controller]
           mvc-family=controller (detected 0.95: placed in controller by rule conduit.apps.*.views.** (user); the framework routes GET,POST /api/^^articles, GET,POST /api/^^articles\\.(?P<format>[a-z0-9]+)/?, GET,PUT /api/^^articles/(?P<slug>[^/.]+), GET,PUT /api/^^articles/(?P<slug>[^/.]+)\\.(?P<format>[a-z0-9]+)/? to it; its name matches *ViewSet)",
         "callable/method conduit.apps.articles.views.ArticleViewSet.list [|mvc|controller]
-          effect=reads-state (detected 0.95: sqlite: SELECT ×36 itself; sqlite: SELECT through conduit.apps.articles.serializers.ArticleSerializer.get_favorites_count)
+          effect=reads-state (detected 0.95: sqlite: SELECT ×3 itself; sqlite: SELECT through conduit.apps.articles.serializers.ArticleSerializer.get_favorites_count)
           io=direct-io (detected 0.95: sqlite: SELECT)",
       ]
     `);
