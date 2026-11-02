@@ -1,4 +1,4 @@
-import { Change, CodeSymbol, ComparedGraphs, ComponentRef, componentOf, externalComponent, FINE_GROUPING, FunctionChange, functionRef, GraphNode, Grouping, Phase, renamedComponent, renamedComponentId, Renaming, Role, Run, RunDiff, Scenario, ScenarioDiff, Span } from "@runshape/kernel";
+import { Change, CodeSymbol, ComparedGraphs, ComponentRef, componentOf, FINE_GROUPING, FunctionChange, functionRef, GraphNode, Grouping, Phase, renamedComponent, renamedComponentId, Renaming, Role, Run, RunDiff, Scenario, ScenarioDiff, Span } from "@runshape/kernel";
 import { detectMoves, Moves } from "./moves";
 
 export interface DiffOptions {
