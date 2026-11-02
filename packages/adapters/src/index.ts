@@ -5,11 +5,13 @@
 // requests for a local agent), and the project's own working tree (project/). Each implements
 // a port the kernel declares, and is wired in by an app.
 export * from "./git/git-cli";
+export * from "./git/git-hooks";
 export * from "./git/git-repository";
 export * from "./github/issues";
 export * from "./github/pull-requests";
 export * from "./github/review-comments";
 export * from "./library/arrangement-file";
+export * from "./library/check-store";
 export * from "./library/library";
 export * from "./library/recording-store";
 export * from "./library/review-store";

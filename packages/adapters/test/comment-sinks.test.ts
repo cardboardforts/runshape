@@ -13,6 +13,7 @@ import { describe, expect, test } from "vitest";
 import { FinishedReview, ReviewVerdict } from "@runshape/kernel";
 import { NodeFiles } from "@runshape/infra";
 import { GhPullRequestReview, GITHUB_REVIEW_BODY_LIMIT } from "../src/github/review-comments";
+import { CheckStore } from "../src/library/check-store";
 import { ReviewStore } from "../src/library/review-store";
 import { RevisionRequestFile } from "../src/library/revision-requests";
 import { fakeGh } from "./fake-gh";
@@ -187,6 +188,42 @@ describe("RevisionRequestFile", () => {
           "verdict": "request-changes",
           "version": 1,
         },
+      }
+    `);
+  });
+});
+
+describe("CheckStore", () => {
+  test("keeps the last check and the person's OK whole; none is null, one that isn't JSON is refused with where it is", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "runshape-checks-"));
+    const store = new CheckStore(new NodeFiles(directory), ".runshape/checks");
+    const before = { last: await store.last(), bypass: await store.bypass() };
+    await store.saveLast({ format: "runshape-check", passed: false });
+    await store.saveBypass({ format: "runshape-check-bypass", ok: "fine" });
+    const saved = { last: await store.last(), bypass: await store.bypass(), files: readdirSync(directory).sort() };
+    writeFileSync(join(directory, "bypass.json"), "{");
+    expect({ before, saved, shownLast: store.shownLast, broken: await store.bypass().catch((error: Error) => error.message) }).toMatchInlineSnapshot(`
+      {
+        "before": {
+          "bypass": null,
+          "last": null,
+        },
+        "broken": ".runshape/checks/bypass.json isn't JSON (Expected property name or '}' in JSON at position 1 (line 1 column 2)): move it aside",
+        "saved": {
+          "bypass": {
+            "format": "runshape-check-bypass",
+            "ok": "fine",
+          },
+          "files": [
+            "bypass.json",
+            "last.json",
+          ],
+          "last": {
+            "format": "runshape-check",
+            "passed": false,
+          },
+        },
+        "shownLast": ".runshape/checks/last.json",
       }
     `);
   });

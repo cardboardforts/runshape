@@ -178,3 +178,24 @@ export interface Library {
   readonly reviews: KeptReviews;
   overview(): Promise<LibraryOverview>;
 }
+
+/**
+ * Port: the last check and the person's OK to go past what it found (.runshape/checks). What's
+ * in them is the check workflow's; this keeps them, whole or not at all.
+ */
+export interface KeptChecks {
+  /** The last check's result; null before the first. */
+  last(): Promise<unknown>;
+  saveLast(result: unknown): Promise<void>;
+  /** The person's OK to go past a check's findings; null when there's none. */
+  bypass(): Promise<unknown>;
+  saveBypass(bypass: unknown): Promise<void>;
+  /** Where the last result is, as a person finds it from the project's root. */
+  readonly shownLast: string;
+}
+
+/** Port: what runs `check --gate` before a branch leaves this machine (git's pre-push hook). */
+export interface PushGate {
+  /** Where it was installed and whether it replaced Runshape's own; or why not (someone else's hook is there). */
+  install(): Promise<{ where: string; replaced: boolean } | { refused: string }>;
+}
