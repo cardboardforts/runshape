@@ -1,7 +1,7 @@
 // One comparison, saved: the contract every reader of a review uses (docs/review-bundle.md).
 import { ArchitectureDiff, Change, Grouping, Op, Phase, Placement, PlacementChange, plainMarkdown, QualifiedName, RegionSummary, ReviewHighlights, ReviewSummary, RouteMapDiff, Run, ZoneRule } from "@runshape/kernel";
 import { ArchitectureSnapshot, buildPlacements, CategorizedItem, categorize, checkTagRules, claimText, comparedGraphs, diffArchitecture, expectedZonesIn, Finding, Kind, newFindings, ROLE_LENSES, ZoneRules } from "@runshape/architecture";
-import { buildReview, buildThreads, CostDiff, detectMoves, diffCost, diffRouteMaps, diffRuns, groupThreads, Measure, Moves, reviewMarkdown, routeCostChanges, WorkflowCost, WorkflowSides, ChangedFunction, ThreadKind, Threads, TimeVerdict, workflowCostChanged } from "@runshape/trace";
+import { buildThreads, CostDiff, detectMoves, diffCost, diffRouteMaps, diffRuns, groupThreads, Measure, Moves, reviewMarkdown, reviewOfDiff, routeCostChanges, WorkflowCost, WorkflowSides, ChangedFunction, ThreadKind, Threads, TimeVerdict, workflowCostChanged } from "@runshape/trace";
 
 import { NoteKind, ReviewStory, storyIsEmpty } from "./story";
 
@@ -107,7 +107,9 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
   const graphs = comparedGraphs(base, head, { ...BUNDLE_OPTIONS, rules, baseRules });
   const placed = { base: buildPlacements(base, baseRules, rules.profile), head: buildPlacements(head, rules) };
   const architecture = diffArchitecture(placed.base, placed.head, moves);
-  const threads = buildThreads(base, head, diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves }), { phases: BUNDLE_OPTIONS.phases, moves, digest: input.digest });
+  // One diff for both: the threads and the review read the same comparison.
+  const diff = diffRuns(base, head, graphs, { ...BUNDLE_OPTIONS, moves });
+  const threads = buildThreads(base, head, diff, { phases: BUNDLE_OPTIONS.phases, moves, digest: input.digest });
   return {
     format: REVIEW_FORMAT,
     version: REVIEW_VERSION,
@@ -116,7 +118,7 @@ export function buildReviewBundle(input: BundleInput): ReviewBundle {
     head: input.headSide,
     options: BUNDLE_OPTIONS,
     baseRulesKnown: input.baseRules !== null,
-    review: withoutQueryText(buildReview(base, head, graphs, { ...BUNDLE_OPTIONS, moves })),
+    review: withoutQueryText(reviewOfDiff(base, head, diff, { phases: BUNDLE_OPTIONS.phases, moves })),
     // Both placed in head's style: a style change is one change, not every class moving.
     architecture,
     routes: bundleRoutes(diffRouteMaps(base, head, { phases: BUNDLE_OPTIONS.phases, moves })),

@@ -1,4 +1,4 @@
-import { Change, ComparedGraphs, FINE_GROUPING, Grouping, Op, Outcome, Phase, REVIEW_ORDER, ReviewCategory, ReviewItem, ReviewSummary, Run, SymbolKind } from "@runshape/kernel";
+import { Change, ComparedGraphs, FINE_GROUPING, Grouping, Op, Outcome, Phase, REVIEW_ORDER, ReviewCategory, ReviewItem, ReviewSummary, Run, RunDiff, SymbolKind } from "@runshape/kernel";
 import { diffExecution } from "./execution-diff";
 import { detectMoves, Moves } from "./moves";
 import { diffRuns } from "./run-diff";
@@ -10,7 +10,11 @@ export function buildReview(base: Run, head: Run, graphs: ComparedGraphs, option
   const phases = options.phases ?? [Phase.Call];
   const grouping = options.grouping ?? FINE_GROUPING;
   const moves = options.moves ?? detectMoves(base, head);
-  const diff = diffRuns(base, head, graphs, { phases, grouping, moves });
+  return reviewOfDiff(base, head, diffRuns(base, head, graphs, { phases, grouping, moves }), { phases, moves });
+}
+
+/** buildReview, from the runs' diff already made (diffRuns, with these phases and moves). */
+export function reviewOfDiff(base: Run, head: Run, diff: RunDiff, { phases, moves }: { phases: Phase[]; moves: Moves }): ReviewSummary {
   const items: ReviewItem[] = [];
 
   for (const scenario of diff.scenarios) {
