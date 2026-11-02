@@ -15,6 +15,7 @@
  * fixture recording (go-shop's, five tests) instead of running vitest for a minute.
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,7 +104,7 @@ async function run(
   const pullRequests = { requestingMyReview: async () => requested, repository: async () => "origin", story: async (number: number) => story(number) };
   const repository = new GitRepository(new GitCli(root));
   const library = projectLibrary(root, repository);
-  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing, typescriptSandbox(RUNSHAPE_CONFIG))), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets, reviewDrafts: library.reviews, commentSinks: { github: (pr) => new GhPullRequestReview(root, pr, gh), agent: revisions }, checks: new CheckStore(new NodeFiles(join(root, ".runshape", "checks")), join(".runshape", "checks")), pushGate: new GitPushGate(new GitCli(root), root, INVOCATION), invocation: INVOCATION, printProgress: (line) => progress.push(line) });
+  const code = await runRecordings(argv, { root, repository, library, arrangements: new ArrangementFile(root), project: new NodeProjectFiles(root), hashing: nodeHashing, checkSandboxed: assertPlainRecording, recorder, sandbox: async () => (sandboxVersions.push(await sandboxVersion(repository, nodeHashing, typescriptSandbox(RUNSHAPE_CONFIG))), sandbox), print: (line) => lines.push(line), logger, now: () => NOW, models, pullRequests, tickets, reviewDrafts: library.reviews, commentSinks: { github: (pr) => new GhPullRequestReview(root, pr, gh), agent: revisions }, checks: new CheckStore(new NodeFiles(join(root, ".runshape", "checks")), join(".runshape", "checks")), pushGate: new GitPushGate(new GitCli(root), root, INVOCATION), invocation: INVOCATION, printProgress: (line) => progress.push(line), ask: terminal.typed === null ? null : async (question) => (terminal.asked.push(question), terminal.typed!), readFile: (path) => readFile(path, "utf8") });
   return { code, lines, logs, recorder, model, chosen, sandbox, sandboxVersions, progress };
 }
 
@@ -365,98 +366,142 @@ describe("each recording keeps its commit's architecture", () => {
 });
 
 /**
- * The Django feed fix, undone: commits record as the fixed app, the working tree as the broken
- * one, so a branch here breaks the follower's feed test.
+ * The Django feed fix, undone: main's commits record as the fixed app, the working tree and the
+ * branch's commits as the broken one, so a branch here breaks the follower's feed test.
  */
 class FeedRecorder extends FixtureRecorder {
+  /** Commits that record as the broken app, besides the working tree. */
+  readonly broken = new Set<string>();
   override async record(target: RecordTarget, outDirectory: string): Promise<void> {
     this.recorded.push(target.kind === "working" ? "working" : target.commit.slice(0, 7));
     cpSync(join(FIXTURES, "django-feed-fix"), outDirectory, { recursive: true });
-    writeFileSync(join(outDirectory, "latest.json"), JSON.stringify({ run: target.kind === "working" ? "before" : "after" }));
+    const broken = target.kind === "working" || this.broken.has(target.commit);
+    writeFileSync(join(outDirectory, "latest.json"), JSON.stringify({ run: broken ? "before" : "after" }));
   }
 }
 
+/** Who's at the terminal for `check --bypass`: no one (an agent's shell), or a person who types this. */
+const terminal: { typed: string | null; asked: string[] } = { typed: null, asked: [] };
+
 describe("runshape check: before a branch goes to human review", () => {
-  test("a branch that breaks a test: check fails, --json says so for an agent, and only the person's OK gets it past the gate", async () => {
+  test("a branch that breaks a test: check fails, --json says so for an agent, and only a person at a terminal gets it past the gate", async () => {
     const { root, commits } = repository();
+    const head = commits.third!;
     const recorder = new FeedRecorder();
+    // The gate checks the commit pushed: the branch's isn't on main, so it records in the sandbox.
+    const sandbox = new FeedRecorder(false, "docker:runshape-recorder:test");
+    sandbox.broken.add(head);
+    const gateRun = (argv: string[]) => run(root, argv, recorder, new FakeModel(), sandbox);
+    // A draft the person keeps uncommitted: nothing to do with the commit pushed.
+    writeFileSync(join(root, "GOALS.md"), "my own notes");
+
     const checked = await run(root, ["check"], recorder);
     const asJson = await run(root, ["check", "main", "--json"], recorder);
-    const gate = await run(root, ["check", "--gate"], recorder);
-    const noWords = await run(root, ["check", "--bypass"], recorder);
-    const bypass = await run(root, ["check", "--bypass", "--", "Jane:", "the feed bug is ticket 12, fine for now"], recorder);
-    const passed = await run(root, ["check", "--gate"], recorder);
-    const elsewhere = await run(root, ["list", "--gate"], recorder);
+    const gate = await gateRun(["check", "--gate"]);
+    terminal.typed = null;
+    const agentTries = await gateRun(["check", "--bypass", "--", "the", "person", "said", "so"]);
+    terminal.typed = "2";
+    const wrongCount = await gateRun(["check", "--bypass", "--", "Jane:", "fine"]);
+    terminal.typed = "1";
+    const bypass = await gateRun(["check", "--bypass", "--", "Jane:", "the feed bug is ticket 12, fine for now"]);
+    terminal.typed = null;
+    const passed = await gateRun(["check", "--gate", `--head=${head}`]);
+    // CI: the PR body's line is the OK, and only it.
+    const okLine = bypass.lines.at(-1)!.replace(/^For the PR body \(CI reads this line\): /, "");
+    const withLine = join(root, "..", "pr-body-with-line.md");
+    const without = join(root, "..", "pr-body-without.md");
+    writeFileSync(withLine, `Breaks the feed on purpose.\n\n${okLine}\n`);
+    writeFileSync(without, "Breaks the feed on purpose.\n");
+    const ciWith = await gateRun(["check", "--gate", `--head=${head}`, `--pr-body-file=${withLine}`]);
+    const ciWithout = await gateRun(["check", "--gate", `--head=${head}`, `--pr-body-file=${without}`]);
+    const usage = await Promise.all([["list", "--gate"], ["check", "main", "feature", "--gate"], ["check", "--head=abc", "--gate"], ["check", `--head=${head}`]].map(async (argv) => (await run(root, argv, recorder)).lines[0]));
+
     const result = JSON.parse(asJson.lines.join("\n"));
-    const head = commits.third!;
-    const tidy = (lines: string[]) => lines.map((line) => line.replaceAll(head.slice(0, 12), "<head>").replaceAll(head.slice(0, 7), "<head>").replaceAll(commits.second!.slice(0, 12), "<main>").replaceAll(commits.second!.slice(0, 7), "<main>"));
+    const tidy = (lines: string[]) => lines.map((line) => line.replaceAll(head, "<head>").replaceAll(head.slice(0, 12), "<head>").replaceAll(head.slice(0, 7), "<head>").replaceAll(commits.second!.slice(0, 12), "<main>").replaceAll(commits.second!.slice(0, 7), "<main>"));
     expect({
-      checked: { code: checked.code, lines: tidy(checked.lines) },
+      checked: { code: checked.code, lines: tidy(checked.lines).filter((line) => !line.startsWith("record") && !line.startsWith("open") && !line.startsWith("review:")) },
       // --json: the result alone on stdout; recording's progress went to stderr.
-      json: { code: asJson.code, passed: result.passed, blocking: result.blocking, findings: result.findings.map((f: { rule: string; subject: string }) => `${f.rule}: ${f.subject}`), progress: asJson.progress.length > 0 },
-      gate: gate.code,
-      noWords: noWords.lines,
+      json: { code: asJson.code, passed: result.passed, findings: result.findings.map((f: { id: string }) => f.id), progress: asJson.progress.length > 0 },
+      gate: { code: gate.code, sandboxed: sandbox.recorded, lines: tidy(gate.lines).filter((line) => line.startsWith("check") || line.startsWith("  ")) },
+      agentTries: agentTries.lines,
+      wrongCount: { code: wrongCount.code, last: wrongCount.lines.at(-1), asked: terminal.asked[0] },
       bypass: { code: bypass.code, lines: tidy(bypass.lines) },
-      passed: { code: passed.code, lines: tidy(passed.lines).slice(-2) },
-      elsewhere: elsewhere.lines[0],
+      passed: { code: passed.code, lines: tidy(passed.lines).filter((line) => line.startsWith("PASSED")) },
+      ci: { withLine: ciWith.code, without: ciWithout.code },
+      usage,
       logged: passed.logs.filter((line) => line.includes("check.")).map((line) => line.replace(/^.*?level=/, "level=").replace(/duration_ms=\d+/, "duration_ms=…").replaceAll(head, "<head>")),
-      kept: readdirSync(join(root, ".runshape", "checks")).sort(),
     }).toMatchInlineSnapshot(`
       {
+        "agentTries": [
+          "runshape: a bypass is the person's to give, at a terminal: this shell has none (an agent's or CI's). Tell them the findings; they run check --bypass themselves",
+        ],
         "bypass": {
           "code": 0,
           "lines": [
-            "Recorded the OK for <head>, past 1 blocking finding:",
-            "  now-failing: test_follower_sees_followed_authors_in_their_feed",
-            "The gate lets this commit through with exactly these; anything new, or another commit, is checked afresh.",
+            "The check of <head> found 1 blocking finding:",
+            "  now-failing-5d0d8fc409360b7b: test_follower_sees_followed_authors_in_their_feed: passed before, xfailed now",
+            "Recorded the OK for <head>. The gate lets this commit through with exactly these; anything new, or another commit, is checked afresh.",
+            "For the PR body (CI reads this line): Runshape bypass: <head> now-failing-5d0d8fc409360b7b",
           ],
         },
         "checked": {
           "code": 1,
           "lines": [
-            "recording main (<main> Second)…",
-            "recorded <main>: 8 tests, 0 failed",
-            "recording the working tree (feature)…",
-            "recorded working: 8 tests, 0 failed",
-            "review: .runshape/reviews/<main>..working/review.md",
-            "open http://localhost:5173/demo/index.html?base=<main>&head=working (npm run dev -w packages/webview)",
-            "check: main (<main>) .. the working tree (<head>): 1 blocking, 1 warning",
-            "  BLOCK now-failing: test_follower_sees_followed_authors_in_their_feed: passed before, xfailed now",
-            "  warn  categorizer-warnings: conduit.apps.articles.views.ArticleViewSet.retrieve: io-outside-allowed-zones: does I/O itself in a zone its style keeps free of it",
+            "check: main (<main>) .. the working tree (<head>): 1 blocking, 2 warnings",
+            "  BLOCK now-failing-5d0d8fc409360b7b: test_follower_sees_followed_authors_in_their_feed: passed before, xfailed now",
+            "  warn  uncommitted-f52d44c0215c06dc: the working tree: has uncommitted changes: the check isn't of a commit anyone can review",
+            "  warn  categorizer-warnings-fe83825f033d4a03: conduit.apps.articles.views.ArticleViewSet.retrieve: io-outside-allowed-zones: does I/O itself in a zone its style keeps free of it",
             "rules: the defaults (the base has no runshape.json)",
             "result: .runshape/checks/last.json; review: .runshape/reviews/<main>..working",
             "Not ready for review. Fix what blocks, or tell the person exactly these findings;",
-            "only with their OK: runshape check --bypass -- <who said it's fine, in their words>",
+            "only with their OK, typed by them at a terminal: runshape check --bypass -- <who said it's fine, in their words>",
           ],
         },
-        "elsewhere": "runshape: --gate only applies to check",
-        "gate": 1,
+        "ci": {
+          "withLine": 0,
+          "without": 1,
+        },
+        "gate": {
+          "code": 1,
+          "lines": [
+            "check --gate: main (<main>) .. <head>: 1 blocking, 1 warning",
+            "  1 warning (\`check\` without --gate lists them; .runshape/checks/last.json has them all)",
+            "  BLOCK now-failing-5d0d8fc409360b7b: test_follower_sees_followed_authors_in_their_feed: passed before, xfailed now",
+          ],
+          "sandboxed": [
+            "44271d3",
+            "0d865e1",
+          ],
+        },
         "json": {
-          "blocking": 1,
           "code": 1,
           "findings": [
-            "now-failing: test_follower_sees_followed_authors_in_their_feed",
-            "categorizer-warnings: conduit.apps.articles.views.ArticleViewSet.retrieve",
+            "now-failing-5d0d8fc409360b7b",
+            "uncommitted-f52d44c0215c06dc",
+            "categorizer-warnings-fe83825f033d4a03",
           ],
           "passed": false,
           "progress": true,
         },
-        "kept": [
-          "bypass.json",
-          "last.json",
-        ],
         "logged": [
-          "level=warn run=r1 gate=true event=check.bypassed head=<head> review=44271d30c124..working passed=true blocking=1 warnings=1 findings="now-failing: test_follower_sees_followed_authors_in_their_feed" duration_ms=…",
-        ],
-        "noWords": [
-          "runshape: check --bypass -- <who said it's fine, in their words>: a bypass records the person's OK",
+          "level=warn run=r1 gate=true event=check.bypassed head=<head> review=44271d30c124-sandbox..0d865e177e74-sandbox passed=true blocking=1 warnings=1 findings="now-failing-5d0d8fc409360b7b test_follower_sees_followed_authors_in_their_feed" ok="Jane: the feed bug is ticket 12, fine for now" duration_ms=…",
         ],
         "passed": {
           "code": 0,
           "lines": [
             "PASSED WITH A BYPASS: 1 blocking finding gone past with the OK given 2026-10-14T12:00:00.000Z: "Jane: the feed bug is ticket 12, fine for now"",
-            "For the PR body: Runshape check bypassed on <head> (now-failing: test_follower_sees_followed_authors_in_their_feed). OK: "Jane: the feed bug is ticket 12, fine for now"",
           ],
+        },
+        "usage": [
+          "runshape: --gate only applies to check",
+          "runshape: --gate checks a commit: name it with --head=<commit>, not as a second name",
+          "runshape: --head takes a commit's full hash (git rev-parse <ref>)",
+          "runshape: --head only applies with --gate",
+        ],
+        "wrongCount": {
+          "asked": "To OK going past exactly these, type how many there are (1): ",
+          "code": 1,
+          "last": "runshape: not recorded: that isn't the number of findings",
         },
       }
     `);
@@ -464,31 +509,33 @@ describe("runshape check: before a branch goes to human review", () => {
 
   test("a review that can't be made fails closed, and the hook is installed for the push", async () => {
     const { root } = repository();
-    const failed = await run(root, ["check", "main", "--gate"], new FixtureRecorder(true));
+    const failed = await run(root, ["check", "main", "--gate"], new FixtureRecorder(true), new FakeModel(), new FixtureRecorder(true, "docker:runshape-recorder:test"));
     const hook = await run(root, ["check", "--install-hook"]);
     expect({
-      failed: { code: failed.code, lines: failed.lines.filter((line) => !line.startsWith("recording")) },
-      hook: { code: hook.code, lines: hook.lines.map((line) => line.replace(root, "<root>")), runs: readFileSync(join(root, ".git", "hooks", "pre-push"), "utf8").split("\n").at(-2) },
+      failed: { code: failed.code, lines: failed.lines.filter((line) => !line.startsWith("recording") && !line.includes("in the sandbox")) },
+      hook: { code: hook.code, lines: hook.lines.map((line) => line.replace(root, "<root>")), runs: readFileSync(join(root, ".git", "hooks", "pre-push"), "utf8").split("\n").filter((line) => line.includes("check --gate --head")) },
     }).toMatchInlineSnapshot(`
       {
         "failed": {
           "code": 1,
           "lines": [
-            "check --gate: main (?) .. the working tree (0d865e1): 1 blocking, 0 warnings",
-            "  BLOCK review-not-made: main .. working: recording main (44271d30c124 Second) failed: vitest crashed",
+            "check --gate: main (?) .. 0d865e177e74: 1 blocking, 0 warnings",
+            "  BLOCK review-not-made-e41fff19d9caeac0: main .. 0d865e177e7455f95911ca5ea5a4262ae7333d44: recording main (44271d30c124-sandbox Second) failed: vitest crashed",
             "rules: none: there was no review to check",
             "result: .runshape/checks/last.json",
             "Not ready for review. Fix what blocks, or tell the person exactly these findings;",
-            "only with their OK: runshape check --bypass -- <who said it's fine, in their words>",
+            "only with their OK, typed by them at a terminal: runshape check --bypass -- <who said it's fine, in their words>",
           ],
         },
         "hook": {
           "code": 0,
           "lines": [
-            "Installed <root>/.git/hooks/pre-push: \`check --gate\` runs before every push of the branch checked out, and a failing check stops it.",
+            "Installed <root>/.git/hooks/pre-push: \`check --gate\` runs on every commit a push sends, and a failing check stops the push.",
             "\`git push --no-verify\` skips it, unrecorded: run the check in CI too (docs/agent-loop.md).",
           ],
-          "runs": "exec runshape-for-tests check --gate",
+          "runs": [
+            "  runshape-for-tests --project="$top" check --gate --head="$commit" </dev/null || exit 1",
+          ],
         },
       }
     `);

@@ -20,6 +20,13 @@ export interface CommandDependencies extends Omit<RecordingsDependencies, "compa
   pushGate: PushGate;
   /** How a shell in this project runs Runshape: what the hook runs and an agent is told to run. */
   invocation: string;
+  /**
+   * Asks the person at the terminal and returns what they typed; null when no person is there
+   * (stdin isn't a terminal: an agent's shell, CI). A bypass needs one.
+   */
+  ask: ((question: string) => Promise<string>) | null;
+  /** A file's text, for --pr-body-file. */
+  readFile: (path: string) => Promise<string>;
   /** Where progress goes while --json keeps what's printed for the result (stderr). */
   printProgress: (line: string) => void;
 }
@@ -189,7 +196,7 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
         return 0;
       }
       case "check":
-        return await check(names, text, flags, recordings, dependencies);
+        return await check(names, text, flags, flagValues, recordings, dependencies);
       case "review":
         return await review(names, text, flags, flagValues, dependencies);
       case "forget":
@@ -209,15 +216,15 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module", "--pr", "--approve", "--request-changes", "--post", "--gate", "--bypass", "--install-hook"]);
-const CHECK_FLAGS = new Set(["--gate", "--bypass", "--install-hook"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module", "--pr", "--approve", "--request-changes", "--post", "--gate", "--bypass", "--install-hook", "--head", "--pr-body-file"]);
+const CHECK_FLAGS = new Set(["--gate", "--bypass", "--install-hook", "--head", "--pr-body-file"]);
 const REVIEW_FLAGS = new Set(["--pr", "--approve", "--request-changes", "--post"]);
 /** Before anyone's at work, after most of a day's pushes. */
 const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
-const CHECK_USAGE = "check [<base>] [<head>] [--gate] [--json] | check --bypass -- <the person's OK, in their words> | check --install-hook";
+const CHECK_USAGE = "check [<base>] [<head>] [--json] | check [<base>] --gate [--head=<commit>] [--pr-body-file=<file>] [--json] | check --bypass -- <the person's OK, in their words> | check --install-hook";
 const REVIEW_USAGE = "review <base>..<head> [check <n>... | comment <n|change> -- <text> | send github|agent [--approve|--request-changes] [--pr=N] [--post]]";
 const USAGE =
   `usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | ${CHECK_USAGE} | ${REVIEW_USAGE} | schedule [--at=HH:MM] | forget <id>`;
@@ -289,7 +296,7 @@ async function review(names: string[], text: string[] | null, flags: Set<string>
 }
 
 function checkingOf(recordings: Recordings, dependencies: CommandDependencies): Checking {
-  return new Checking(recordings, dependencies.library.store, dependencies.checks, dependencies.repository, dependencies.logger, dependencies.now);
+  return new Checking(recordings, dependencies.library.store, dependencies.checks, dependencies.repository, dependencies.logger, dependencies.now, (text) => dependencies.hashing.sha256(text));
 }
 
 /**
@@ -298,42 +305,77 @@ function checkingOf(recordings: Recordings, dependencies: CommandDependencies): 
  * the working tree. `--bypass` records the person's OK past the last check's findings;
  * `--install-hook` makes `check --gate` run before every push.
  */
-async function check(names: string[], text: string[] | null, flags: Set<string>, recordings: Recordings, dependencies: CommandDependencies): Promise<number> {
+async function check(names: string[], text: string[] | null, flags: Set<string>, flagValues: Map<string, string | null>, recordings: Recordings, dependencies: CommandDependencies): Promise<number> {
   const { print } = dependencies;
   const checking = checkingOf(recordings, dependencies);
   const modes = ["--bypass", "--install-hook"].filter((flag) => flags.has(flag));
-  if (modes.length > 1 || (modes.length === 1 && (names.length > 0 || flags.has("--gate") || flags.has("--json")))) throw new UsageError(`${modes[0]} is a command of its own: ${CHECK_USAGE}`);
+  const gateOnly = ["--head", "--pr-body-file"].filter((flag) => flags.has(flag));
+  if (modes.length > 1 || (modes.length === 1 && (names.length > 0 || flags.has("--gate") || flags.has("--json") || gateOnly.length > 0))) throw new UsageError(`${modes[0]} is a command of its own: ${CHECK_USAGE}`);
+  if (gateOnly.length > 0 && !flags.has("--gate")) throw new UsageError(`${gateOnly.join(", ")} only ${gateOnly.length === 1 ? "applies" : "apply"} with --gate`);
   if (text !== null && !flags.has("--bypass")) throw new UsageError(`text after -- is a bypass's: ${CHECK_USAGE}`);
   if (flags.has("--install-hook")) {
     const installed = await checking.installGate(dependencies.pushGate);
     if ("refused" in installed) throw new UsageError(installed.refused);
     const { where, replaced } = installed;
-    print(`${replaced ? "Replaced" : "Installed"} ${where}: \`check --gate\` runs before every push of the branch checked out, and a failing check stops it.`);
+    print(`${replaced ? "Replaced" : "Installed"} ${where}: \`check --gate\` runs on every commit a push sends, and a failing check stops the push.`);
     print("`git push --no-verify` skips it, unrecorded: run the check in CI too (docs/agent-loop.md).");
     return 0;
   }
-  if (flags.has("--bypass")) {
-    if (text === null || text.join(" ").trim() === "") throw new UsageError("check --bypass -- <who said it's fine, in their words>: a bypass records the person's OK");
-    const bypass = await checking.bypass(text.join(" "));
-    print(`Recorded the OK for ${bypass.head.slice(0, 12)}, past ${bypass.findings.length} blocking finding${bypass.findings.length === 1 ? "" : "s"}:`);
-    for (const finding of bypass.findings) print(`  ${finding.rule}: ${finding.subject}`);
-    print("The gate lets this commit through with exactly these; anything new, or another commit, is checked afresh.");
-    return 0;
-  }
+  if (flags.has("--bypass")) return bypass(text, checking, dependencies);
+  if (flags.has("--gate") && names.length > 1) throw new UsageError("--gate checks a commit: name it with --head=<commit>, not as a second name");
   if (names.length > 2) throw new UsageError(`check [<base>] [<head>]\n${CHECK_USAGE}`);
   const base = names[0] ?? (await checking.defaultBase());
   if (base === null) throw new UsageError("check against what? Name the base (check main), or say which branch is merged code (see `list`)");
-  const head = names[1] ?? WORKING_TREE_ID;
+  let head = names[1] ?? WORKING_TREE_ID;
+  let expectedHead: string | undefined;
+  let prBody: string | undefined;
+  if (flags.has("--gate")) {
+    // The gate checks the commit being pushed, never the working tree: what's uncommitted here
+    // isn't what's offered for review. Recorded here when it's on main, else in the sandbox.
+    const given = flagValues.get("--head") ?? null;
+    if (flags.has("--head") && (given === null || !FULL_COMMIT.test(given))) throw new UsageError("--head takes a commit's full hash (git rev-parse <ref>)");
+    expectedHead = given ?? (await checking.commitOf("HEAD"));
+    head = expectedHead;
+    if (flags.has("--pr-body-file")) {
+      const file = flagValues.get("--pr-body-file") ?? null;
+      if (file === null) throw new UsageError("--pr-body-file takes a file holding the pull request's body");
+      prBody = await dependencies.readFile(file);
+    }
+  }
   if (flags.has("--sandbox") && head === WORKING_TREE_ID) throw new UsageError("--sandbox checks commits: name the head (the working tree is yours, recorded on this machine without it)");
   let exit = 1;
   await recordings.exclusively(async () => {
-    const result = await checking.check(base, head, { gate: flags.has("--gate") });
+    const result = await checking.check(base, head, { gate: flags.has("--gate"), ...(expectedHead === undefined ? {} : { expectedHead }), ...(prBody === undefined ? {} : { prBody }) });
     if (flags.has("--json")) print(JSON.stringify(result, null, 2));
     else for (const line of checkText(result, dependencies.checks.shownLast)) print(line);
     exit = checkExitCode(result);
   });
   return exit;
 }
+
+/**
+ * `check --bypass -- <words>`: the person's OK past the last check's blocking findings. Asked at
+ * a terminal: they read the findings and type how many they're OKing. A shell with no terminal
+ * (an agent's, CI's) can't give one.
+ */
+async function bypass(text: string[] | null, checking: Checking, dependencies: CommandDependencies): Promise<number> {
+  const { print } = dependencies;
+  if (text === null || text.join(" ").trim() === "") throw new UsageError("check --bypass -- <who said it's fine, in their words>: a bypass records the person's OK");
+  if (dependencies.ask === null) {
+    throw new UsageError("a bypass is the person's to give, at a terminal: this shell has none (an agent's or CI's). Tell them the findings; they run check --bypass themselves");
+  }
+  const { head, findings } = await checking.bypassable();
+  print(`The check of ${head.slice(0, 12)} found ${findings.length} blocking finding${findings.length === 1 ? "" : "s"}:`);
+  for (const finding of findings) print(`  ${finding.id}: ${finding.subject}: ${finding.message}`);
+  const typed = (await dependencies.ask(`To OK going past exactly these, type how many there are (${findings.length}): `)).trim();
+  if (typed !== String(findings.length)) throw new UsageError("not recorded: that isn't the number of findings");
+  const recorded = await checking.bypass(text.join(" "));
+  print(`Recorded the OK for ${recorded.head.slice(0, 12)}. The gate lets this commit through with exactly these; anything new, or another commit, is checked afresh.`);
+  print(`For the PR body (CI reads this line): Runshape bypass: ${recorded.head} ${recorded.findings.map((f) => f.id).join(" ")}`);
+  return 0;
+}
+
+const FULL_COMMIT = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 
 /** --pr=N, else the pull request the review is of. */
 async function pullRequestOf(name: string, given: string | null, flagged: boolean, reviewing: Reviewing): Promise<number> {

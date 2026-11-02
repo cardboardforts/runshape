@@ -2,6 +2,8 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,9 +62,9 @@ try {
 const library = projectLibrary(root, repository);
 const REVISIONS = join(".runshape", "revisions");
 const CHECKS = join(".runshape", "checks");
-// How a shell in this project runs this CLI: npm in Runshape's checkout, pointed at the project.
-// The pre-push hook runs it.
-const invocation = `npm --prefix ${shellWord(home)} run --silent runshape -- --project=${shellWord(root)}`;
+// How a shell runs this CLI: npm in Runshape's checkout. The pre-push hook adds the project
+// (the worktree it runs in) and the commits being pushed.
+const invocation = `npm --prefix ${shellWord(home)} run --silent runshape --`;
 process.exitCode = await runRecordings(choice.argv, {
   root,
   repository,
@@ -74,6 +76,9 @@ process.exitCode = await runRecordings(choice.argv, {
   pushGate: new GitPushGate(new GitCli(root), root, invocation),
   invocation,
   printProgress: (line) => console.error(line),
+  // Only a person at a terminal can OK a bypass: no terminal, no asking.
+  ask: process.stdin.isTTY ? (question) => askAtTerminal(question) : null,
+  readFile: (path) => readFile(resolve(typedIn, path), "utf8"),
   arrangements: new ArrangementFile(root),
   project: new NodeProjectFiles(root),
   hashing: nodeHashing,
@@ -88,3 +93,12 @@ process.exitCode = await runRecordings(choice.argv, {
   // GitHub Issues, through the same gh login. Jira and the like are TicketSource adapters still to write.
   tickets: [new GhIssues(root)],
 });
+
+async function askAtTerminal(question: string): Promise<string> {
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await terminal.question(question);
+  } finally {
+    terminal.close();
+  }
+}

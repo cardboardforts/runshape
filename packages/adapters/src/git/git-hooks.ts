@@ -16,27 +16,32 @@ const EXECUTABLE = 0o755;
 export class HookRefused extends Error {}
 
 /**
- * The hook's text. It gates the branch checked out: a push of another branch is refused,
- * since the check records the working tree (yours, here) rather than a commit (which would
- * record in the sandbox). Deletions and tags push no code to review. `git push --no-verify`
- * skips every hook: the check in CI is what catches that.
+ * The hook's text. It runs `check --gate --head=<commit>` on each distinct commit a push sends,
+ * by whatever name it's pushed (a branch, another branch, HEAD~1, a raw hash), in the worktree
+ * it runs in. Deletions send no code; tags are skipped and said (a tag names a commit a branch
+ * push gates, or a release). `git push --no-verify` skips every hook: CI's check catches that.
  */
 export function prePushHook(invocation: string): string {
   return `#!/bin/sh
 ${RUNSHAPE_HOOK_MARK} (installed by \`runshape check --install-hook\`; remove this file to stop it).
-# Runs \`check --gate\` on the branch checked out before it's pushed for review; it fails closed.
-# To go past what it finds, the person who'll review is told the findings and says it's fine:
-#   ${invocation} check --bypass -- <their words>
-head=$(git rev-parse HEAD) || exit 1
+# Runs \`check --gate\` on each commit this push sends, before it goes for review; it fails closed.
+# Deletions send nothing and are skipped; tags are skipped, and said.
+# To go past what it finds, the person who'll review is told the findings and, at their terminal:
+#   ${invocation} --project=<this repository> check --bypass -- <their words>
+top=$(git rev-parse --show-toplevel) || exit 1
+# The check runs git of its own in $top: git's variables for this hook would point it elsewhere.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX GIT_NAMESPACE
+commits=""
 while read -r local_ref local_sha remote_ref remote_sha; do
-  case "$local_ref" in refs/heads/*) ;; *) continue ;; esac
+  # A deletion: its local commit is all zeros, and it sends no code.
   case "$local_sha" in *[!0]*) ;; *) continue ;; esac
-  if [ "$local_sha" != "$head" ]; then
-    echo "runshape: the check runs on the branch checked out; check out $local_ref to push it (or push it with --no-verify, unchecked)" >&2
-    exit 1
-  fi
+  case "$remote_ref" in refs/tags/*) echo "runshape: $remote_ref is a tag: not checked" >&2; continue ;; esac
+  case " $commits " in *" $local_sha "*) ;; *) commits="$commits $local_sha" ;; esac
 done
-exec ${invocation} check --gate
+for commit in $commits; do
+  ${invocation} --project="$top" check --gate --head="$commit" </dev/null || exit 1
+done
+exit 0
 `;
 }
 

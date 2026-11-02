@@ -1,8 +1,9 @@
 // `runshape check`: is this branch ready for a person to review? It records what's missing,
 // compares the branch with where it left the base, and turns the review into findings, each
 // one blocking or a warning by runshape.json's `check` section (the base's: a branch can't
-// loosen its own gate). A check that can't be made blocks: the gate fails closed. A person's
-// OK to go past what's left is kept beside the result, naming exactly the findings it covers.
+// loosen its own gate, and one that tries is blocked). A check that can't be made blocks: the
+// gate fails closed. A person's OK to go past what's left names exactly the commit and the
+// findings it covers.
 import { KeptChecks, KeptRecordings, Logger, Outcome, PushGate, Repository, ReviewCategory, WORKING_TREE_ID } from "@runshape/kernel";
 import { TIME_NOISE_FLOOR_US, TIME_NOISE_RATIO, TimeVerdict, WorkflowSides } from "@runshape/trace";
 
@@ -24,11 +25,19 @@ export enum CheckRule {
   MoreExternalCalls = "more-external-calls",
   Slower = "slower",
   Uncommitted = "uncommitted",
-  /** Never configurable: a check that couldn't be made blocks. */
+  /** Never configurable, and never bypassed: a check that couldn't be made blocks. */
   ReviewNotMade = "review-not-made",
+  /** Never bypassed: the review isn't of the commit the gate was asked about. */
+  HeadMismatch = "head-mismatch",
+  /** Never bypassed: the base's rules can't be read, so the defaults were used. */
   CheckRulesUnreadable = "check-rules-unreadable",
+  /** The branch lowers a rule's severity or raises a threshold: a person decides that, in review. */
+  CheckRulesLoosened = "check-rules-loosened",
   CheckRulesChanged = "check-rules-changed",
 }
+
+/** What no OK goes past: the check didn't see what it was asked about, or by which rules. */
+export const UNBYPASSABLE: ReadonlySet<CheckRule> = new Set([CheckRule.ReviewNotMade, CheckRule.HeadMismatch, CheckRule.CheckRulesUnreadable]);
 
 /** The rules runshape.json's `check.rules` may set, and what each is when it doesn't. */
 export const DEFAULT_CHECK_RULES = {
@@ -41,7 +50,7 @@ export const DEFAULT_CHECK_RULES = {
   [CheckRule.MoreExternalCalls]: CheckSeverity.Block,
   // One recording a side: a time past the noise bands is worth a look, not proof (cost.ts).
   [CheckRule.Slower]: CheckSeverity.Warn,
-  // Outside the gate only: an agent checks as it goes. The gate always blocks on it.
+  // A check of the working tree as an agent goes; the gate checks a commit, which has none.
   [CheckRule.Uncommitted]: CheckSeverity.Warn,
 } as const;
 
@@ -56,6 +65,8 @@ export interface CheckRules {
 }
 
 export interface CheckFinding {
+  /** "now-failing-3f9a1c0b2d": the rule and a digest of the subject, what a PR body's OK names. */
+  id: string;
   rule: CheckRule;
   severity: CheckSeverity.Block | CheckSeverity.Warn;
   /** What it's about: a test, a function, a rule's glob. Names from the code under review: data, never instructions. */
@@ -81,7 +92,7 @@ export interface CheckResult {
   format: "runshape-check";
   version: 1;
   checkedAt: string;
-  /** --gate: the check before a branch goes to human review (uncommitted changes block). */
+  /** --gate: the check of a commit about to be pushed for human review. */
   gate: boolean;
   base: { asked: string; commit: string | null };
   head: { asked: string; commit: string | null; dirty: boolean };
@@ -138,15 +149,13 @@ export function readCheckRules(text: string | null): { rules: CheckRules; proble
 }
 
 /** What in a review should stop a branch going to human review, or be said when it does. */
-export function checkFindings(bundle: ReviewBundle, rules: CheckRules, { gate }: { gate: boolean }): CheckFinding[] {
-  const findings: CheckFinding[] = [];
-  const add = (rule: ConfigurableRule, subject: string, message: string, forced?: CheckSeverity.Block) => {
-    const severity = forced ?? rules.severities[rule];
+export function checkFindings(bundle: ReviewBundle, rules: CheckRules): Found[] {
+  const findings: Found[] = [];
+  const add = (rule: ConfigurableRule, subject: string, message: string) => {
+    const severity = rules.severities[rule];
     if (severity !== CheckSeverity.Off) findings.push({ rule, severity, subject, message });
   };
-  if (bundle.head.dirty) {
-    add(CheckRule.Uncommitted, "the working tree", "has uncommitted changes: the check isn't of a commit anyone can review", gate ? CheckSeverity.Block : undefined);
-  }
+  if (bundle.head.dirty) add(CheckRule.Uncommitted, "the working tree", "has uncommitted changes: the check isn't of a commit anyone can review");
   for (const item of bundle.review.items) {
     const newAndFailing = item.category === ReviewCategory.Added && item.outcomeAfter !== null && FAILING.has(item.outcomeAfter);
     if (item.category === ReviewCategory.NowFailing || newAndFailing) add(CheckRule.NowFailing, item.name, `${item.outcomeBefore ?? "new"} before, ${item.outcomeAfter} now`);
@@ -177,6 +186,36 @@ export function checkFindings(bundle: ReviewBundle, rules: CheckRules, { gate }:
   return findings;
 }
 
+/** A finding before it has its id. */
+export type Found = Omit<CheckFinding, "id">;
+
+const SEVERITY_RANK: Record<CheckSeverity, number> = { [CheckSeverity.Off]: 0, [CheckSeverity.Warn]: 1, [CheckSeverity.Block]: 2 };
+
+/** Where head's rules are looser than the base's: a severity lowered (a rule removed falls to its default), a threshold raised. */
+export function loosenedRules(base: CheckRules, head: CheckRules): Found[] {
+  const found: Found[] = [];
+  for (const rule of Object.keys(DEFAULT_CHECK_RULES) as ConfigurableRule[]) {
+    const [before, after] = [base.severities[rule], head.severities[rule]];
+    if (SEVERITY_RANK[after] < SEVERITY_RANK[before]) found.push({ rule: CheckRule.CheckRulesLoosened, severity: CheckSeverity.Block, subject: `check.rules.${rule}`, message: `${before} on the base, ${after} in this branch: loosening the gate is for a person to approve` });
+  }
+  if (head.allowedExternalCallIncrease > base.allowedExternalCallIncrease) {
+    found.push({ rule: CheckRule.CheckRulesLoosened, severity: CheckSeverity.Block, subject: "check.allowedExternalCallIncrease", message: `${base.allowedExternalCallIncrease} on the base, ${head.allowedExternalCallIncrease} in this branch: loosening the gate is for a person to approve` });
+  }
+  return found;
+}
+
+/** A PR body's OK, as the person wrote it: "Runshape bypass: <commit> <finding id>...". */
+const PR_BODY_BYPASS = /^Runshape bypass: ([0-9a-f]{40}|[0-9a-f]{64})((?: [a-z-]+-[0-9a-f]+)+)\s*$/gm;
+
+/** The finding ids a PR body OKs for this commit; none when it says nothing about it. */
+export function prBodyBypass(body: string, head: string): Set<string> {
+  const ids = new Set<string>();
+  for (const match of body.matchAll(PR_BODY_BYPASS)) {
+    if (match[1] === head) for (const id of match[2]!.trim().split(" ")) ids.add(id);
+  }
+  return ids;
+}
+
 /** What `check` needs of the recordings workflow: compare two names, recording what's missing. */
 export interface Comparer {
   compare(base: string, head: string, options: { againstTip: boolean }): Promise<{ review: { bundle: ReviewBundle; name: string }; base: { id: string }; head: { id: string } }>;
@@ -184,6 +223,14 @@ export interface Comparer {
 
 /** A bypass couldn't be recorded: said to the person as it is. */
 export class BypassRefused extends Error {}
+
+export interface CheckOptions {
+  gate: boolean;
+  /** The commit the gate was asked about (the one being pushed): the review must be of it. */
+  expectedHead?: string;
+  /** A PR's body, read for "Runshape bypass:" lines instead of the OK kept here (CI). */
+  prBody?: string;
+}
 
 export class Checking {
   constructor(
@@ -193,6 +240,8 @@ export class Checking {
     private readonly repository: Repository,
     private readonly logger: Logger,
     private readonly now: () => Date,
+    /** Hashing's sha256: each finding's id. */
+    private readonly digest: (text: string) => string,
   ) {}
 
   /** The base when none is named: the branch of merged code. */
@@ -200,11 +249,17 @@ export class Checking {
     return this.repository.mergedBranch();
   }
 
+  /** The commit a name resolves to, for --gate's head. */
+  async commitOf(name: string): Promise<string> {
+    return (await this.repository.resolve(name)).commit;
+  }
+
   /**
-   * Compares, finds, and keeps the result as last.json. With blocking findings, a bypass for
-   * this very commit that names every one of them lets it pass, and says so.
+   * Compares, finds, and keeps the result as last.json. With blocking findings, an OK for this
+   * very commit that names every one of them lets it pass, and says so.
    */
-  async check(baseName: string, headName: string, { gate }: { gate: boolean }): Promise<CheckResult> {
+  async check(baseName: string, headName: string, options: CheckOptions): Promise<CheckResult> {
+    const { gate } = options;
     const started = this.now().getTime();
     const log = this.logger.with({ gate });
     let result: CheckResult;
@@ -213,55 +268,68 @@ export class Checking {
       const { bundle, name } = compared.review;
       const [baseText, headText] = await Promise.all([this.recordings.keptRules(compared.base.id), this.recordings.keptRules(compared.head.id)]);
       const base = readCheckRules(baseText);
-      const findings = checkFindings(bundle, base.rules, { gate });
-      if (base.problems.length > 0) findings.unshift({ rule: CheckRule.CheckRulesUnreadable, severity: CheckSeverity.Block, subject: "runshape.json", message: `the base's check section can't be read, so the defaults were used: ${base.problems.join("; ")}` });
       const head = readCheckRules(headText);
-      if (JSON.stringify(head.section) !== JSON.stringify(base.section)) {
-        findings.push({ rule: CheckRule.CheckRulesChanged, severity: CheckSeverity.Warn, subject: "runshape.json", message: "this branch changes the check's rules: they apply once it's merged; this check used the base's" });
+      const found: Found[] = [];
+      if (options.expectedHead !== undefined && bundle.head.commit !== options.expectedHead) {
+        found.push({ rule: CheckRule.HeadMismatch, severity: CheckSeverity.Block, subject: options.expectedHead, message: `the review is of ${bundle.head.commit}, not the commit asked about` });
       }
-      result = this.result(gate, { asked: baseName, commit: bundle.base.commit }, { asked: headName, commit: bundle.head.commit, dirty: bundle.head.dirty }, name, baseText === null ? "the defaults (the base has no runshape.json)" : `the base's runshape.json (${bundle.base.commit.slice(0, 12)})`, findings);
+      if (base.problems.length > 0) found.push({ rule: CheckRule.CheckRulesUnreadable, severity: CheckSeverity.Block, subject: "runshape.json", message: `the base's check section can't be read, so the defaults were used: ${base.problems.join("; ")}` });
+      const loosened = loosenedRules(base.rules, head.rules);
+      found.push(...loosened, ...checkFindings(bundle, base.rules));
+      if (loosened.length === 0 && JSON.stringify(head.section) !== JSON.stringify(base.section)) {
+        found.push({ rule: CheckRule.CheckRulesChanged, severity: CheckSeverity.Warn, subject: "runshape.json", message: "this branch changes the check's rules: they apply once it's merged; this check used the base's" });
+      }
+      result = this.result(gate, { asked: baseName, commit: bundle.base.commit }, { asked: headName, commit: bundle.head.commit, dirty: bundle.head.dirty }, name, baseText === null ? "the defaults (the base has no runshape.json)" : `the base's runshape.json (${bundle.base.commit.slice(0, 12)})`, found);
     } catch (error) {
       // Whatever stopped the comparison, the gate fails closed on it, and the log has the stack.
       const reason = error instanceof Error ? error.message : String(error);
       log.log("error", "check.review_not_made", { error: reason, stack: error instanceof Error ? (error.stack ?? null) : null });
-      const headCommit = await this.repository.resolve(headName === WORKING_TREE_ID ? "HEAD" : headName).then((summary) => summary.commit, () => null);
-      const finding: CheckFinding = { rule: CheckRule.ReviewNotMade, severity: CheckSeverity.Block, subject: `${baseName} .. ${headName}`, message: reason };
+      const headCommit = options.expectedHead ?? (await this.repository.resolve(headName === WORKING_TREE_ID ? "HEAD" : headName).then((summary) => summary.commit, () => null));
+      const finding: Found = { rule: CheckRule.ReviewNotMade, severity: CheckSeverity.Block, subject: `${baseName} .. ${headName}`, message: reason };
       result = this.result(gate, { asked: baseName, commit: null }, { asked: headName, commit: headCommit, dirty: false }, null, "none: there was no review to check", [finding]);
     }
-    if (!result.passed) result = await this.withBypass(result);
+    if (!result.passed) result = await this.withBypass(result, options.prBody);
     await this.checks.saveLast(result);
     const blocking = result.findings.filter((f) => f.severity === CheckSeverity.Block);
-    // Rules and subjects, not messages: enough to grep for, and to know what a bypass went past.
+    // Ids, rules and subjects, not messages: enough to grep for, and to know what a bypass went past.
     log.log(result.passed && result.bypassed === null ? "info" : "warn", result.bypassed === null ? "check.done" : "check.bypassed", {
       head: result.head.commit,
       review: result.review,
       passed: result.passed,
       blocking: blocking.length,
       warnings: result.findings.length - blocking.length,
-      findings: blocking.map((f) => `${f.rule}: ${f.subject}`).join("; "),
+      findings: blocking.map((f) => `${f.id} ${f.subject}`).join("; "),
+      ...(result.bypassed === null ? {} : { ok: result.bypassed.ok }),
       duration_ms: this.now().getTime() - started,
     });
     return result;
   }
 
   /**
-   * Records the person's OK to go past the last check's blocking findings, for that commit
-   * only. Refused unless the last check is of the commit checked out, with nothing
-   * uncommitted, and something blocked.
+   * The last check's blocking findings, if a person may OK them: the check is of a commit
+   * (not uncommitted changes), something blocked, and nothing that blocked is unbypassable.
    */
-  async bypass(ok: string): Promise<CheckBypass> {
+  async bypassable(): Promise<{ head: string; findings: CheckFinding[] }> {
     const last = asCheckResult(await this.checks.last());
     if (last === null) throw new BypassRefused("there's no check to go past: run `check` first, and tell the person what it found");
-    const working = await this.repository.workingTree();
-    if (last.head.commit !== working.commit || working.dirty || last.head.dirty) {
-      throw new BypassRefused(`the last check (${last.head.commit?.slice(0, 12) ?? "no commit"}) isn't of what's checked out (${working.commit.slice(0, 12)}${working.dirty ? ", with uncommitted changes" : ""}): commit, run \`check\` again, and tell the person what it found`);
-    }
+    if (last.head.commit === null || last.head.dirty) throw new BypassRefused("the last check isn't of a commit (it had uncommitted changes, or none): commit, run `check` again, and tell the person what it found");
     const blocking = last.findings.filter((f) => f.severity === CheckSeverity.Block);
     if (blocking.length === 0) throw new BypassRefused("the last check found nothing blocking: there's nothing to go past");
+    const never = blocking.filter((f) => UNBYPASSABLE.has(f.rule));
+    if (never.length > 0) throw new BypassRefused(`no OK goes past ${never.map((f) => f.rule).join(", ")}: the check didn't see what it was asked about. Fix that and check again`);
+    return { head: last.head.commit, findings: blocking };
+  }
+
+  /**
+   * Records the person's OK to go past the last check's blocking findings, for that commit
+   * only. The app asks the person (bypassable() says what to show them); this records it.
+   */
+  async bypass(ok: string): Promise<CheckBypass> {
+    const { head, findings } = await this.bypassable();
     if (ok.trim() === "") throw new BypassRefused("whose OK, and what did they say? check --bypass -- <their words>");
-    const bypass: CheckBypass = { format: BYPASS_FORMAT, version: 1, head: working.commit, findings: blocking, ok: ok.trim(), at: this.now().toISOString() };
+    const bypass: CheckBypass = { format: BYPASS_FORMAT, version: 1, head, findings, ok: ok.trim(), at: this.now().toISOString() };
     await this.checks.saveBypass(bypass);
-    this.logger.log("warn", "check.bypass_recorded", { head: working.commit, findings: blocking.map((f) => `${f.rule}: ${f.subject}`).join("; ") });
+    this.logger.log("warn", "check.bypass_recorded", { head, findings: findings.map((f) => `${f.id} ${f.subject}`).join("; "), ok: bypass.ok });
     return bypass;
   }
 
@@ -278,13 +346,27 @@ export class Checking {
     return asCheckResult(await this.checks.last());
   }
 
-  private result(gate: boolean, base: CheckResult["base"], head: CheckResult["head"], review: string | null, rulesFrom: string, findings: CheckFinding[]): CheckResult {
+  private result(gate: boolean, base: CheckResult["base"], head: CheckResult["head"], review: string | null, rulesFrom: string, found: Found[]): CheckResult {
+    // Blockers first: under --gate they're what the person reads.
+    const findings = [...found]
+      .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
+      .map((f) => ({ id: `${f.rule}-${this.digest(`${f.rule}\n${f.subject}`).slice(0, FINDING_ID_DIGITS)}`, ...f }));
     const blocking = findings.filter((f) => f.severity === CheckSeverity.Block).length;
     return { format: CHECK_FORMAT, version: 1, checkedAt: this.now().toISOString(), gate, base, head, review, rulesFrom, findings, blocking, bypassed: null, passed: blocking === 0 };
   }
 
-  /** Passes when the kept OK is for this commit and names every blocking finding left. */
-  private async withBypass(result: CheckResult): Promise<CheckResult> {
+  /**
+   * Passes when an OK is for this commit and names every blocking finding left: the PR body's
+   * when one is given (CI), else the one kept here. Nothing unbypassable is ever gone past.
+   */
+  private async withBypass(result: CheckResult, prBody: string | undefined): Promise<CheckResult> {
+    const blocking = result.findings.filter((f) => f.severity === CheckSeverity.Block);
+    if (result.head.commit === null || result.head.dirty || blocking.some((f) => UNBYPASSABLE.has(f.rule))) return result;
+    if (prBody !== undefined) {
+      const named = prBodyBypass(prBody, result.head.commit);
+      if (!blocking.every((f) => named.has(f.id))) return result;
+      return { ...result, bypassed: { format: BYPASS_FORMAT, version: 1, head: result.head.commit, findings: blocking, ok: "the PR body's Runshape bypass line", at: this.now().toISOString() }, passed: true };
+    }
     let saved: unknown;
     try {
       saved = await this.checks.bypass();
@@ -294,13 +376,15 @@ export class Checking {
       return result;
     }
     const bypass = asBypass(saved);
-    if (bypass === null || result.head.commit === null || bypass.head !== result.head.commit || result.head.dirty) return result;
-    const covered = new Set(bypass.findings.map(identity));
-    const blocking = result.findings.filter((f) => f.severity === CheckSeverity.Block);
-    if (!blocking.every((f) => covered.has(identity(f)))) return result;
+    if (bypass === null || bypass.head !== result.head.commit) return result;
+    const covered = new Set(bypass.findings.map((f) => f.id));
+    if (!blocking.every((f) => covered.has(f.id))) return result;
     return { ...result, bypassed: bypass, passed: true };
   }
 }
+
+/** Hex digits of a finding's id: enough that a crafted name can't collide with an OKed one by chance. */
+const FINDING_ID_DIGITS = 16;
 
 /** `check`'s exit code, by the worst finding left. */
 export enum CheckExit {
@@ -319,30 +403,36 @@ export function checkExitCode(result: CheckResult): CheckExit {
 
 /** The check's human text: what was compared, each finding, and what to do next. */
 export function checkText(result: CheckResult, shownAt: string): string[] {
-  const side = (s: { asked: string; commit: string | null }) => (s.asked === WORKING_TREE_ID ? `the working tree (${s.commit?.slice(0, 7) ?? "?"})` : `${s.asked} (${s.commit?.slice(0, 7) ?? "?"})`);
+  const side = (s: { asked: string; commit: string | null }) => {
+    const short = s.commit?.slice(0, 7) ?? "?";
+    if (s.asked === WORKING_TREE_ID) return `the working tree (${short})`;
+    return FULL_COMMIT.test(s.asked) ? s.asked.slice(0, 12) : `${s.asked} (${short})`;
+  };
   const warnings = result.findings.length - result.blocking;
   const lines = [`check${result.gate ? " --gate" : ""}: ${side(result.base)} .. ${side(result.head)}: ${result.blocking} blocking, ${warnings} warning${warnings === 1 ? "" : "s"}`];
-  for (const f of result.findings) lines.push(`  ${f.severity === CheckSeverity.Block ? "BLOCK" : "warn "} ${f.rule}: ${f.subject}: ${f.message}`);
+  // Under --gate, a push's output: the count of warnings, then only what blocks.
+  if (result.gate && warnings > 0) lines.push(`  ${warnings} warning${warnings === 1 ? "" : "s"} (\`check\` without --gate lists them; ${shownAt} has them all)`);
+  for (const f of result.findings) {
+    if (result.gate && f.severity !== CheckSeverity.Block) continue;
+    lines.push(`  ${f.severity === CheckSeverity.Block ? "BLOCK" : "warn "} ${f.id}: ${f.subject}: ${f.message}`);
+  }
   lines.push(`rules: ${result.rulesFrom}`, `result: ${shownAt}${result.review === null ? "" : `; review: .runshape/reviews/${result.review}`}`);
   if (result.bypassed !== null) {
     lines.push(`PASSED WITH A BYPASS: ${result.blocking} blocking finding${result.blocking === 1 ? "" : "s"} gone past with the OK given ${result.bypassed.at}: "${result.bypassed.ok}"`);
-    lines.push(`For the PR body: Runshape check bypassed on ${result.head.commit?.slice(0, 12)} (${result.findings.filter((f) => f.severity === CheckSeverity.Block).map((f) => `${f.rule}: ${f.subject}`).join("; ")}). OK: "${result.bypassed.ok}"`);
+    lines.push(`For the PR body (CI reads this line): Runshape bypass: ${result.head.commit} ${result.findings.filter((f) => f.severity === CheckSeverity.Block).map((f) => f.id).join(" ")}`);
   } else if (result.passed) {
     lines.push("Ready for review: nothing blocks.");
   } else {
     lines.push(
       "Not ready for review. Fix what blocks, or tell the person exactly these findings;",
-      "only with their OK: runshape check --bypass -- <who said it's fine, in their words>",
+      "only with their OK, typed by them at a terminal: runshape check --bypass -- <who said it's fine, in their words>",
     );
   }
   return lines;
 }
 
+const FULL_COMMIT = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const FAILING = new Set<string>([Outcome.Failed, Outcome.Error, Outcome.UnexpectedPass]);
-
-function identity(finding: CheckFinding): string {
-  return `${finding.rule}\n${finding.subject}`;
-}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

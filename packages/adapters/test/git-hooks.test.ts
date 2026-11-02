@@ -1,92 +1,134 @@
 /**
- * The pre-push hook: `runshape check --gate` runs before a branch leaves for review, and a
- * failing check stops the push (the user's rule: the check is required before human review).
- * Proved with real git pushing to a real bare remote; the check itself is a stand-in script
- * that says what it was asked and exits as told, so this is about the hook, not the check.
+ * The pre-push hook: `runshape check --gate` runs on every commit a push sends before it goes
+ * for review, and a failing check stops the push (the user's rule: the check is required before
+ * human review). Whatever name a commit is pushed by (a branch, another branch, HEAD~1, a raw
+ * hash) it's checked; deletions send no code; tags are skipped and said. The hook runs in the
+ * worktree it's pushed from, with git's own variables for the hook cleared, so a hook shared by
+ * every worktree checks the right one. Proved with real git and a real bare remote; the check
+ * is a stand-in that writes what it was asked and exits as told.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
 import { GitCli } from "../src/git/git-cli";
-import { installPrePushHook, shellWord } from "../src/git/git-hooks";
+import { GitPushGate, installPrePushHook, shellWord } from "../src/git/git-hooks";
 import { commitIn, gitIn } from "./repository";
 
 function project() {
-  const root = mkdtempSync(join(tmpdir(), "runshape-hook-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "runshape-hook-")));
   const remote = mkdtempSync(join(tmpdir(), "runshape-hook-remote-"));
   execFileSync("git", ["init", "--quiet", "--bare", remote]);
   const git = gitIn(root);
   git("init", "--quiet", "-b", "main");
   commitIn(root, "first");
   git("remote", "add", "origin", remote);
-  git("push", "--quiet", "origin", "main");
+  git("push", "--quiet", "--no-verify", "origin", "main");
   git("checkout", "--quiet", "-b", "agent");
   commitIn(root, "the agent's change");
-  // The stand-in check: records its arguments, exits with CHECK_EXIT.
+  commitIn(root, "and another");
+  // The stand-in check: appends what it was asked, and whether git's hook variables reached it.
   const asked = join(root, "..", `${root.split("/").pop()}-asked.txt`);
   const check = join(root, "..", `${root.split("/").pop()}-check.sh`);
-  writeFileSync(check, `#!/bin/sh\necho "$@" > ${shellWord(asked)}\nexit "\${CHECK_EXIT:-0}"\n`, { mode: 0o755 });
-  return { root, git, asked, invocation: `${shellWord(check)} --project=${shellWord(root)}` };
+  writeFileSync(check, `#!/bin/sh\necho "$@ GIT_DIR=\${GIT_DIR-unset}" >> ${shellWord(asked)}\nexit "\${CHECK_EXIT:-0}"\n`, { mode: 0o755 });
+  return { root, git, asked, invocation: shellWord(check) };
 }
 
-function push(root: string, ref: string, exit: number) {
-  const pushed = spawnSync("git", ["push", "--quiet", "origin", ref], { cwd: root, encoding: "utf8", env: { ...process.env, CHECK_EXIT: String(exit) } });
-  return { status: pushed.status, stderr: pushed.stderr.trim().split("\n").filter((line) => line.startsWith("runshape")) };
+/** Pushes, returning what the check was asked (paths and commits named) and what the push said. */
+function push(root: string, asked: string, args: string[], { exit = 0, env = {} }: { exit?: number; env?: Record<string, string> } = {}) {
+  writeFileSync(asked, "");
+  const pushed = spawnSync("git", ["push", "--quiet", "origin", ...args], { cwd: root, encoding: "utf8", env: { ...process.env, CHECK_EXIT: String(exit), ...env } });
+  const git = gitIn(root);
+  const named = (line: string) => line.replaceAll(root, "<root>").replace(/[0-9a-f]{40}/g, (sha) => (sha === git("rev-parse", "agent") ? "<agent>" : sha === git("rev-parse", "agent~1") ? "<agent~1>" : sha === git("rev-parse", "main") ? "<main>" : "<other>"));
+  return {
+    status: pushed.status,
+    asked: readFileSync(asked, "utf8").trim().split("\n").filter(Boolean).map(named),
+    said: pushed.stderr.trim().split("\n").filter((line) => line.startsWith("runshape")),
+  };
 }
 
 describe("installPrePushHook", () => {
-  test("a failing check stops the push, a passing one lets it through, and another branch than the one checked out is refused", async () => {
+  test("every commit a push sends is checked, by any name; a failing check stops it; deletions and tags aren't checked", async () => {
     const { root, git, asked, invocation } = project();
     const installed = await installPrePushHook(new GitCli(root), root, invocation);
-    const failing = push(root, "agent", 1);
-    const passing = push(root, "agent", 0);
-    git("branch", "other", "main");
-    commitIn(root, "more");
-    git("branch", "-f", "other", "HEAD~1");
-    const otherBranch = push(root, "other", 0);
+    git("tag", "v1", "main");
     expect({
       where: installed.where.slice(root.length),
-      replaced: installed.replaced,
       executable: (statSync(installed.where).mode & 0o111) !== 0,
-      failing,
-      passing,
-      asked: readFileSync(asked, "utf8").trim().replace(root, "<root>"),
-      otherBranch,
+      failing: push(root, asked, ["agent"], { exit: 1 }),
+      branchAndRawHash: push(root, asked, ["agent", `${git("rev-parse", "agent~1")}:refs/heads/earlier`]),
+      // Git's own variables for the hook (set here by hand) never reach the check.
+      withGitDir: (commitIn(root, "one more"), push(root, asked, ["agent"], { env: { GIT_DIR: join(root, ".git"), GIT_WORK_TREE: root } }).asked),
+      deletion: push(root, asked, [":earlier"]),
+      tag: push(root, asked, ["v1"]),
     }).toMatchInlineSnapshot(`
       {
-        "asked": "--project=<root> check --gate",
+        "branchAndRawHash": {
+          "asked": [
+            "--project=<root> check --gate --head=<agent> GIT_DIR=unset",
+            "--project=<root> check --gate --head=<agent~1> GIT_DIR=unset",
+          ],
+          "said": [],
+          "status": 0,
+        },
+        "deletion": {
+          "asked": [],
+          "said": [],
+          "status": 0,
+        },
         "executable": true,
         "failing": {
-          "status": 1,
-          "stderr": [],
-        },
-        "otherBranch": {
-          "status": 1,
-          "stderr": [
-            "runshape: the check runs on the branch checked out; check out refs/heads/other to push it (or push it with --no-verify, unchecked)",
+          "asked": [
+            "--project=<root> check --gate --head=<agent> GIT_DIR=unset",
           ],
+          "said": [],
+          "status": 1,
         },
-        "passing": {
+        "tag": {
+          "asked": [],
+          "said": [
+            "runshape: refs/tags/v1 is a tag: not checked",
+          ],
           "status": 0,
-          "stderr": [],
         },
-        "replaced": false,
         "where": "/.git/hooks/pre-push",
+        "withGitDir": [
+          "--project=<root> check --gate --head=<agent> GIT_DIR=unset",
+        ],
       }
     `);
   });
 
-  test("a hook that isn't Runshape's is never replaced; Runshape's own is", async () => {
+  test("a hook shared by every worktree checks the worktree it's pushed from", async () => {
+    const { root, git, asked, invocation } = project();
+    await installPrePushHook(new GitCli(root), root, invocation);
+    const worktree = `${root}-worktree`;
+    git("worktree", "add", "--quiet", "-b", "elsewhere", worktree, "main");
+    commitIn(worktree, "work in the other worktree");
+    writeFileSync(asked, "");
+    const pushed = spawnSync("git", ["push", "--quiet", "origin", "elsewhere"], { cwd: worktree, encoding: "utf8" });
+    expect({ status: pushed.status, project: readFileSync(asked, "utf8").trim().replace(/--head=[0-9a-f]{40}/, "--head=<elsewhere>").replace(worktree, "<worktree>") }).toMatchInlineSnapshot(`
+      {
+        "project": "--project=<worktree> check --gate --head=<elsewhere> GIT_DIR=unset",
+        "status": 0,
+      }
+    `);
+  });
+
+  test("a hook that isn't Runshape's is never replaced, and the gate says so; Runshape's own is replaced", async () => {
     const { root, invocation } = project();
     await installPrePushHook(new GitCli(root), root, invocation);
     const again = await installPrePushHook(new GitCli(root), root, invocation);
     writeFileSync(join(root, ".git", "hooks", "pre-push"), "#!/bin/sh\nmake lint\n");
-    const refused = await installPrePushHook(new GitCli(root), root, invocation).catch((error: Error) => error.message.replace(root, "<root>").replace(invocation, "<invocation>"));
-    expect({ replaced: again.replaced, refused, kept: readFileSync(join(root, ".git", "hooks", "pre-push"), "utf8") }).toMatchInlineSnapshot(`
+    const refused = await new GitPushGate(new GitCli(root), root, invocation).install();
+    expect({
+      replaced: again.replaced,
+      refused: "refused" in refused ? refused.refused.replace(root, "<root>").replace(invocation, "<invocation>") : refused,
+      kept: readFileSync(join(root, ".git", "hooks", "pre-push"), "utf8"),
+    }).toMatchInlineSnapshot(`
       {
         "kept": "#!/bin/sh
       make lint
