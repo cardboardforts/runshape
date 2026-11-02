@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ArrangementFile, assertPlainRecording, GhIssues, GhPullRequestReview, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, projectRecorders, projectTestConfig, RevisionRequestFile, UnchosenRecorder } from "@runshape/adapters";
+import { ArrangementFile, assertPlainRecording, CheckStore, GhIssues, GhPullRequestReview, GhPullRequests, GitCli, GitRepository, NodeProjectFiles, projectLibrary, projectRecorders, projectTestConfig, GitPushGate, RevisionRequestFile, shellWord, UnchosenRecorder } from "@runshape/adapters";
 import { TestConfigError } from "@runshape/kernel";
 import { LogfmtLogger, NodeFiles, nodeHashing } from "@runshape/infra";
 
@@ -59,6 +59,10 @@ try {
 
 const library = projectLibrary(root, repository);
 const REVISIONS = join(".runshape", "revisions");
+const CHECKS = join(".runshape", "checks");
+// How a shell in this project runs this CLI: npm in Runshape's checkout, pointed at the project.
+// The pre-push hook runs it.
+const invocation = `npm --prefix ${shellWord(home)} run --silent runshape -- --project=${shellWord(root)}`;
 process.exitCode = await runRecordings(choice.argv, {
   root,
   repository,
@@ -66,6 +70,10 @@ process.exitCode = await runRecordings(choice.argv, {
   reviewDrafts: library.reviews,
   // Posting to a PR is wired here and asked for by the command (--post): never by default.
   commentSinks: { github: (pullRequest) => new GhPullRequestReview(root, pullRequest), agent: new RevisionRequestFile(new NodeFiles(join(root, REVISIONS)), REVISIONS) },
+  checks: new CheckStore(new NodeFiles(join(root, CHECKS)), CHECKS),
+  pushGate: new GitPushGate(new GitCli(root), root, invocation),
+  invocation,
+  printProgress: (line) => console.error(line),
   arrangements: new ArrangementFile(root),
   project: new NodeProjectFiles(root),
   hashing: nodeHashing,

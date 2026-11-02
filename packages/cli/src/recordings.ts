@@ -1,8 +1,8 @@
-// npm run runshape -- list | record | compare | review | review-requests | readmes | view | schedule | forget:
+// npm run runshape -- list | record | compare | check | review | review-requests | readmes | view | schedule | forget:
 // the command line. Each command is a call on the workflows' Recordings (packages/workflows).
 import { RULES_FILE } from "@runshape/architecture";
-import { ArchitectureSummary, CommentSink, GitError, KeptReviewDrafts, LibraryOverview, ModelChoice, ReviewVerdict, TestConfigError, WORKING_TREE_ID } from "@runshape/kernel";
-import { OpenedReview, RecordingError, Recordings, RecordingsDependencies, RecordingView, ReviewNotFound, Reviewing, SendMode } from "@runshape/workflows";
+import { ArchitectureSummary, CommentSink, GitError, KeptChecks, KeptReviewDrafts, LibraryOverview, ModelChoice, PushGate, ReviewVerdict, TestConfigError, WORKING_TREE_ID } from "@runshape/kernel";
+import { BypassRefused, Checking, checkExitCode, checkText, OpenedReview, RecordingError, Recordings, RecordingsDependencies, RecordingView, ReviewNotFound, Reviewing, SendMode } from "@runshape/workflows";
 
 import { launchdJob, scheduleInstructions } from "./schedule";
 
@@ -14,6 +14,14 @@ export interface CommandDependencies extends Omit<RecordingsDependencies, "compa
   reviewDrafts: KeptReviewDrafts;
   /** Where `review <name> send` sends: a pull request on GitHub, or a revision request for a local agent. */
   commentSinks: { github: (pullRequest: number) => CommentSink; agent: CommentSink };
+  /** The last check and the person's OK to go past it (.runshape/checks). */
+  checks: KeptChecks;
+  /** What runs `check --gate` before a push (git's pre-push hook): `check --install-hook` installs it. */
+  pushGate: PushGate;
+  /** How a shell in this project runs Runshape: what the hook runs and an agent is told to run. */
+  invocation: string;
+  /** Where progress goes while --json keeps what's printed for the result (stderr). */
+  printProgress: (line: string) => void;
 }
 
 /** Where the demo's dev server serves the recordings page (npm run dev -w packages/webview). */
@@ -94,7 +102,8 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
   const [command = "list", ...names] = argv.filter((arg) => !arg.startsWith("--"));
   const unknownFlags = [...flags].filter((flag) => !KNOWN_FLAGS.has(flag));
   const comparisonLink = (baseId: string, headId: string) => `${DEMO_URL}?base=${baseId}&head=${headId} (npm run dev -w packages/webview)`;
-  const recordings = new Recordings({ ...dependencies, comparisonLink }, {
+  // With --json, what's printed is the result alone: recording's progress goes elsewhere.
+  const recordings = new Recordings({ ...dependencies, comparisonLink, print: flags.has("--json") ? dependencies.printProgress : dependencies.print }, {
     fetch: flags.has("--fetch"),
     again: flags.has("--again"),
     explainAgain: flags.has("--explain-again"),
@@ -112,7 +121,10 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
     if (explain !== null && !MODEL_CHOICES.has(explain)) throw new UsageError("--explain takes claude or api (or nothing: claude -p if it runs, else the API)");
     const describe = flags.has("--describe") ? (flagValues.get("--describe") ?? "auto") : null;
     if (describe !== null && command !== "readmes") throw new UsageError("--describe only applies to readmes");
-    if ((flags.has("--json") || flags.has("--module")) && command !== "view") throw new UsageError("--json and --module only apply to view");
+    if (flags.has("--json") && command !== "view" && command !== "check") throw new UsageError("--json only applies to view and check");
+    if (flags.has("--module") && command !== "view") throw new UsageError("--module only applies to view");
+    const checkOnly = [...flags].filter((flag) => CHECK_FLAGS.has(flag));
+    if (checkOnly.length > 0 && command !== "check") throw new UsageError(`${checkOnly.join(", ")} only ${checkOnly.length === 1 ? "applies" : "apply"} to check`);
     if (describe !== null && !MODEL_CHOICES.has(describe)) throw new UsageError("--describe takes claude or api (or nothing: claude -p if it runs, else the API)");
     switch (command) {
       case "list":
@@ -176,6 +188,8 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
         for (const line of scheduleInstructions(dependencies.root)) dependencies.print(line);
         return 0;
       }
+      case "check":
+        return await check(names, text, flags, recordings, dependencies);
       case "review":
         return await review(names, text, flags, flagValues, dependencies);
       case "forget":
@@ -186,7 +200,7 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
         throw new UsageError(`unknown command ${command}\n${USAGE}`);
     }
   } catch (error) {
-    if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError || error instanceof TestConfigError || error instanceof ReviewNotFound) {
+    if (error instanceof UsageError || error instanceof GitError || error instanceof RecordingError || error instanceof TestConfigError || error instanceof ReviewNotFound || error instanceof BypassRefused) {
       dependencies.print(`runshape: ${error.message}`);
       dependencies.logger.log("warn", "command.refused", { command, error: error.message });
       return 1;
@@ -195,16 +209,18 @@ async function runCommand(everything: string[], dependencies: CommandDependencie
   }
 }
 
-const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module", "--pr", "--approve", "--request-changes", "--post"]);
+const KNOWN_FLAGS = new Set(["--fetch", "--again", "--tip", "--explain", "--explain-again", "--sandbox", "--limit", "--at", "--write", "--describe", "--json", "--module", "--pr", "--approve", "--request-changes", "--post", "--gate", "--bypass", "--install-hook"]);
+const CHECK_FLAGS = new Set(["--gate", "--bypass", "--install-hook"]);
 const REVIEW_FLAGS = new Set(["--pr", "--approve", "--request-changes", "--post"]);
 /** Before anyone's at work, after most of a day's pushes. */
 const DEFAULT_SCHEDULE_TIME = "03:00";
 /** A morning's worth: more than this is a queue to triage, not to record unattended. */
 const DEFAULT_PULL_REQUEST_LIMIT = 20;
 const MODEL_CHOICES = new Set(["auto", "claude", "api"]);
+const CHECK_USAGE = "check [<base>] [<head>] [--gate] [--json] | check --bypass -- <the person's OK, in their words> | check --install-hook";
 const REVIEW_USAGE = "review <base>..<head> [check <n>... | comment <n|change> -- <text> | send github|agent [--approve|--request-changes] [--pr=N] [--post]]";
 const USAGE =
-  `usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | ${REVIEW_USAGE} | schedule [--at=HH:MM] | forget <id>`;
+  `usage: npm run runshape -- [--project=<folder>] [--recorder=typescript|python|go] list | record <ref|working>... [--fetch] [--again] [--sandbox] | compare <base> [<head>] [--fetch] [--tip] [--sandbox] [--explain[=claude|api]] | review-requests [--explain] [--limit=N] | readmes [--write] [--describe[=claude|api]] | view [<recording>] [--module=<module>] [--json] | ${CHECK_USAGE} | ${REVIEW_USAGE} | schedule [--at=HH:MM] | forget <id>`;
 
 /**
  * `review <name>`: what there is to check off and the comments so far; `check` and `comment`
@@ -270,6 +286,53 @@ async function review(names: string[], text: string[] | null, flags: Set<string>
     default:
       throw new UsageError(`unknown review action ${action}: ${REVIEW_USAGE}`);
   }
+}
+
+function checkingOf(recordings: Recordings, dependencies: CommandDependencies): Checking {
+  return new Checking(recordings, dependencies.library.store, dependencies.checks, dependencies.repository, dependencies.logger, dependencies.now);
+}
+
+/**
+ * `check`: records what's missing, compares, and exits by the worst finding (checkExitCode:
+ * 1 when anything blocks review, or the check couldn't be made). The base defaults to the branch of merged code, the head to
+ * the working tree. `--bypass` records the person's OK past the last check's findings;
+ * `--install-hook` makes `check --gate` run before every push.
+ */
+async function check(names: string[], text: string[] | null, flags: Set<string>, recordings: Recordings, dependencies: CommandDependencies): Promise<number> {
+  const { print } = dependencies;
+  const checking = checkingOf(recordings, dependencies);
+  const modes = ["--bypass", "--install-hook"].filter((flag) => flags.has(flag));
+  if (modes.length > 1 || (modes.length === 1 && (names.length > 0 || flags.has("--gate") || flags.has("--json")))) throw new UsageError(`${modes[0]} is a command of its own: ${CHECK_USAGE}`);
+  if (text !== null && !flags.has("--bypass")) throw new UsageError(`text after -- is a bypass's: ${CHECK_USAGE}`);
+  if (flags.has("--install-hook")) {
+    const installed = await checking.installGate(dependencies.pushGate);
+    if ("refused" in installed) throw new UsageError(installed.refused);
+    const { where, replaced } = installed;
+    print(`${replaced ? "Replaced" : "Installed"} ${where}: \`check --gate\` runs before every push of the branch checked out, and a failing check stops it.`);
+    print("`git push --no-verify` skips it, unrecorded: run the check in CI too (docs/agent-loop.md).");
+    return 0;
+  }
+  if (flags.has("--bypass")) {
+    if (text === null || text.join(" ").trim() === "") throw new UsageError("check --bypass -- <who said it's fine, in their words>: a bypass records the person's OK");
+    const bypass = await checking.bypass(text.join(" "));
+    print(`Recorded the OK for ${bypass.head.slice(0, 12)}, past ${bypass.findings.length} blocking finding${bypass.findings.length === 1 ? "" : "s"}:`);
+    for (const finding of bypass.findings) print(`  ${finding.rule}: ${finding.subject}`);
+    print("The gate lets this commit through with exactly these; anything new, or another commit, is checked afresh.");
+    return 0;
+  }
+  if (names.length > 2) throw new UsageError(`check [<base>] [<head>]\n${CHECK_USAGE}`);
+  const base = names[0] ?? (await checking.defaultBase());
+  if (base === null) throw new UsageError("check against what? Name the base (check main), or say which branch is merged code (see `list`)");
+  const head = names[1] ?? WORKING_TREE_ID;
+  if (flags.has("--sandbox") && head === WORKING_TREE_ID) throw new UsageError("--sandbox checks commits: name the head (the working tree is yours, recorded on this machine without it)");
+  let exit = 1;
+  await recordings.exclusively(async () => {
+    const result = await checking.check(base, head, { gate: flags.has("--gate") });
+    if (flags.has("--json")) print(JSON.stringify(result, null, 2));
+    else for (const line of checkText(result, dependencies.checks.shownLast)) print(line);
+    exit = checkExitCode(result);
+  });
+  return exit;
 }
 
 /** --pr=N, else the pull request the review is of. */
