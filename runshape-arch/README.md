@@ -58,7 +58,28 @@ Tags that look alike on a diff are often different things. In the example above:
   several. An instance links to a catalog entry, or uses a name of its own: freeform naming is
   allowed, since a team's own patterns are often the valuable ones.
 
-The format for all three is in [map-format.md](map-format.md). That file is the contract the other
+## Product and workshop
+
+Some of a repo isn't the product. The test: **does it run as part of the product?** Infrastructure
+such as a database runs with the product. The workshop acts on it, and the product doesn't know it
+exists.
+
+| Kind | Role | Job | Examples | When it changes, ask |
+|---|---|---|---|---|
+| Docs | `docs` | Explain the system | `docs/`, `README.md` | Is this still true? |
+| Dev tooling | `dev-tooling` | Work on it locally | `justfile`, dev scripts, linter config | Does it still work on a clean machine? |
+| Delivery | `delivery` | Ship it | GitHub Actions, Dockerfiles, deploy config | What does this now have access to? |
+| Repo config | `repo-config` | Settings for the repo itself | `.gitignore`, `.editorconfig`, lockfiles | Usually nothing |
+
+The workshop has an architecture of its own: a pipeline is the composition root for shipping, and a
+justfile is one for local development. They know about everything, and nothing in the product
+depends on them. That's one standard, `std-product-ignores-the-workshop`.
+
+Tests stay with the system they test, because they change with that code.
+
+## The format
+
+The format for all three structures is in [map-format.md](map-format.md). That file is the contract the other
 work builds on.
 
 ## Entry formats

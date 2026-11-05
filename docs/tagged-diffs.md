@@ -78,6 +78,15 @@ Unknown code must get louder in review, not quieter.
 - Open: should new code be allowed into a dragon? Leaning warn, not block.
 - Open: should a dragon's age show? Leaning show it, and never expire it.
 
+## The workshop in review
+
+How loud a change is shouldn't follow its size. A two-line change to a pipeline can matter more than a
+large one to docs, because delivery holds secrets and is the path to production. The questions are in the
+[catalog](../runshape-arch/README.md#product-and-workshop).
+
+- Delivery changes get a callout, whatever their size: what does this now have access to?
+- Docs changes are low risk, but a code change whose docs didn't change may leave them out of date.
+
 ## Checking expectations
 
 `expects` entries in the map become rules a change can break. Import violations stay a separate rule,

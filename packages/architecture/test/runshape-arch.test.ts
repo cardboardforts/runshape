@@ -101,7 +101,7 @@ describe("check-map", () => {
       claimedTwice: [{ file: "portal/shared/f.ts", systems: ["Frontend/Design", "Frontend/Patient"] }],
       noCode: ["Backend/Auth", "Database"],
       undecided: [],
-      states: { parts: 2, shape: 6, dragons: 0, spaghetti: 0 },
+      states: { parts: 2, shape: 6, plain: 0, dragons: 0, spaghetti: 0 },
       patterns: 0,
     });
     expect(exit, "leftovers are questions for the person, not failures").toBe(0);
@@ -135,7 +135,7 @@ describe("check-map", () => {
       exit: 0,
       problems: [],
       unclaimed: [],
-      states: { parts: 0, shape: 0, dragons: 1, spaghetti: 1 },
+      states: { parts: 0, shape: 0, plain: 0, dragons: 1, spaghetti: 1 },
     });
   });
 
@@ -153,6 +153,7 @@ describe("check-map", () => {
         system("Odd", { paths: ["api/**"], pathsBy: "user", state: "maybe" }),
         system("A/B", { paths: [5, ""], state: "shape", style: "layered", systems: [box("Inner", ["api/**"])] }),
         system("Stringy", { paths: "api/**" }),
+        system("Flat", { paths: ["api/**"], state: "plain", style: "layered", systems: [box("Inner", ["api/**"])] }),
       ],
       expects: [{ from: "Twin", to: "Nowhere", talks: "sometimes", by: "user" }],
       exceptions: [{ claim: "", by: "user" }],
@@ -174,11 +175,13 @@ describe("check-map", () => {
       "systems[4] (Zoned).zones[0].paths match no code in this system",
       'systems[4] (Zoned).roles[0].role "wizard" is not in the catalog',
       "systems[4] (Zoned).roles[0].reason must say why",
-      'systems[5] (Odd).state must be "parts", "shape", "dragons" or "spaghetti"',
+      'systems[5] (Odd).state must be "parts", "shape", "plain", "dragons" or "spaghetti"',
       'systems[6] (A/B).name can\'t contain "/": a system\'s path joins names with it',
       "systems[6] (A/B).paths must be a list of non-empty globs",
       'systems[6] (A/B): "shape" stops the drill-down, so it has no systems: use "parts"',
       "systems[7] (Stringy).paths must be a list of non-empty globs",
+      'systems[8] (Flat): "plain" takes no style',
+      'systems[8] (Flat): "plain" has nothing inside it: use "parts"',
       'expects[0].to "Nowhere" is not a system',
       "expects[0].talks must be true or false",
       "expects[0].reason must say why",
@@ -249,6 +252,35 @@ describe("check-map", () => {
       "patterns[0] (Broken).parts[5].part must name the part",
       "patterns[0] (Broken).parts[5].file must be a path from the project root",
     ]);
+  });
+
+  test("plain is understood with nothing inside worth breaking down: a complete answer, with no style", async () => {
+    // The workshop's docs and justfile (runshape-arch/README.md): nobody is confused by them, so
+    // "dragons" would be a lie, and they have no zones, so "shape" would be too.
+    const root = await project(["docs/a.md", "justfile"]);
+
+    const { exit, report } = await checkMap(root, {
+      version: 1,
+      systems: [system("Workshop", { state: "parts", systems: [system("Docs", { paths: ["docs"], state: "plain" }), system("Dev tooling", { paths: ["justfile"], state: "plain" })] })],
+    });
+
+    expect({ exit, problems: report.problems, unclaimed: report.unclaimed, undecided: report.undecided, states: report.states }).toEqual({
+      exit: 0,
+      problems: [],
+      unclaimed: [],
+      undecided: [],
+      states: { parts: 1, shape: 0, plain: 2, dragons: 0, spaghetti: 0 },
+    });
+  });
+
+  test("a file deleted but not yet committed isn't asked about: it's gone from the working tree", async () => {
+    // cardboard-genome's fhirloader/ was deleted and uncommitted, and showed up as unclaimed.
+    const root = await project(["api/a.py", "gone/b.py"]);
+    await rm(join(root, "gone"), { recursive: true });
+
+    const { report } = await checkMapAsIs(root);
+
+    expect({ files: report.files, unclaimed: report.unclaimed }).toEqual({ files: 1, unclaimed: [{ within: null, files: 1, groups: ["api/ (1 file)"] }] });
   });
 
   test("a repository's runshape.json can't reach git's options: a commit is a hex sha or a problem", async () => {
@@ -324,7 +356,7 @@ describe("check-map", () => {
         claimedTwice: [],
         noCode: [],
         undecided: [],
-        states: { parts: 0, shape: 0, dragons: 0, spaghetti: 0 },
+        states: { parts: 0, shape: 0, plain: 0, dragons: 0, spaghetti: 0 },
         patterns: 0,
       },
     });

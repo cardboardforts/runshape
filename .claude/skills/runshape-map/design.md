@@ -30,13 +30,17 @@ any of that yet, so the map is its own section.
 Six names also left out `lab/`, `fhirloader/` and `docs/`. Either those belong to a named system, or the
 person forgot them. Only they can say, and a script can ask.
 
-## Three answers at each level
+## Four answers at each level
 
 The recursion is two questions in one: **is this made of parts, or does it have a shape?** Parts go
 deeper. A shape stops the recursion and hands over to styles and zones. Asking that gives the skill a
 natural stopping point.
 
-The third answer is **I don't know**. The larger the codebase, the more likely you'll look at something
+Trying it on `cardboard-genome` added a third answer, **plain**: understood, with nothing inside worth
+breaking down. A `docs` folder isn't a mystery and has no zones, so neither "shape" nor "don't know" was
+true of it.
+
+The fourth answer is **I don't know**. The larger the codebase, the more likely you'll look at something
 and say "I have no idea", and label it "thar be dragons" or "spaghetti". That's a valid answer, not a
 gap to fill.
 
@@ -45,14 +49,26 @@ gap to fill.
 - Both count as claimed, so three systems and one giant dragon is an honest, complete map of a big repo.
 - The skill stops there. It doesn't guess inside or press for more.
 
+## The workshop
+
+Docs, a justfile and GitHub Actions had no good description. The test is whether something runs as part
+of the product. Infrastructure runs with the product, and the workshop acts on it. The word and its kinds
+are in the [catalog](../../../runshape-arch/README.md#product-and-workshop). It's a known category, so the
+skill may suggest it for leftovers.
+
 ## Who answers first
 
 Offering options conflicts with the goal: once someone sees a model's three decompositions, they pick
-one. So the person always goes first, and what the model does next depends on the kind of answer.
+one. So the person always goes first on how to divide things up, and what the model does next depends on
+the kind of answer.
+
+That doesn't mean a blank question. On the first run, asking raw felt like too little to go on, so each
+level opens with a summary of what's there. The line is between an inventory, which says what exists,
+and a decomposition, which says how to group it. The skill gives the first and never the second.
 
 | Answer | Example | Model's role |
 |---|---|---|
-| **Naming and grouping** | "Portals and design are the frontend" | Maps the words to folders. No wrong answers |
+| **Naming and grouping** | "Portals and design are the frontend" | Summarizes what exists, then maps the words to folders. No wrong answers |
 | **Shape claims** | "Core is hexagonal" | Examines the claim, because architecture has rules and isn't pure imagination |
 | **Zones and roles** | "That's a DTO" | Can suggest from the catalog |
 | **Patterns** | "This is a sliding window" | Can suggest from the catalog, since recognizing one has right answers |

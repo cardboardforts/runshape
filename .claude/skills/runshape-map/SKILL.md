@@ -28,21 +28,38 @@ Why it's built this way: [design.md](design.md). The format you write:
 
 Stop and say so if `check-map` reports `problems` you didn't cause, or if this isn't a git repository.
 
-Your own reading (READMEs, the file tree) is fine. Don't share what you find until the person has
-answered.
+Read what you need for the summary in step 1 (the file tree, READMEs, manifests).
 
 ## The loop
 
 Run this for the repo root, then for each system the person wants to go into. Each level:
 
-### 1. Ask, with no suggestions
+### 1. Summarize what's here, then ask
 
-> How many systems are in `<this area>`, and what are they? Say what each one is for, in your own words.
+Start with a short summary of what needs organizing in this area: a line or two on what the area is, then
+each folder or notable file with what it holds. It's an inventory, in plain words. For example:
 
-Ask in plain text. Do **not** offer options here, list folders, or use `AskUserQuestion`. Once someone
-sees three decompositions, they just pick one. There are many valid answers, and that's on purpose.
+> This looks like a genetic-testing lab demo. Here's what's in it:
+>
+> - `api/`: a Django Ninja backend
+> - `portal/`: a pnpm workspace with two React apps and a shared component library
+> - `lab/`: a Python simulation of the lab workflow
+> - `fhir/`: config for a HAPI FHIR server
+> - `auth/`: empty so far
+> - `docs/`: architecture notes and the original brief
+> - `justfile`: local development recipes
 
-If they say they don't know where to start, then offer the file tree, not a decomposition.
+Then ask, in plain text:
+
+> How would you divide this up? What are the systems, and what is each one for, in your own words?
+
+The summary says what exists. **It never says how to group it.** Don't propose systems, name groupings,
+offer options or use `AskUserQuestion` here. Once someone sees a decomposition, they just pick it. There
+are many valid answers, and that's on purpose.
+
+Keep it to what fits on a screen. A long list can be shortened by what the items are ("12 service
+folders"), but never by which system they might belong to.
+Base it on what you read, and don't describe a folder you haven't looked at.
 
 ### 2. Map their words to code
 
@@ -61,22 +78,27 @@ Save (see **Saving**), run `check-map`, and take its findings to the person:
 - `noCode`: confirm it's meant to have none, or fix the path.
 
 Leftovers are the most useful output of the first pass, so ask even when you could guess. Root files
-such as `README.md` can go to a small system of their own (say "Repo plumbing"), without much ceremony.
+such as `README.md` don't need much ceremony.
+
+When leftovers look like docs, a task runner, CI or repo config, ask: **does this run as part of the
+product?** If they say no, you can name it: that's the workshop, and `runshape-arch/README.md` has the
+kinds. It's a known category, so suggesting it at this point is fine, once they've given their own
+division. Use their name for it if they have one. Each part of it is usually `plain`.
 
 ### 4. Ask what each one is
 
 For each system, ask with `AskUserQuestion`:
 
-> Is `<system>` made of parts, does it have a shape, or do you not know?
+> Is `<system>` made of parts, does it have a shape, is it just a plain box, or do you not know?
 
 | Answer | Do |
 |---|---|
 | **Parts** | `"state": "parts"`. Run the loop on it, when they're ready |
 | **Shape** | Ask which style, then go to step 6. The recursion stops here |
+| **Plain** | `"state": "plain"`. Understood, with nothing inside worth breaking down. Stop |
 | **Don't know** | Ask if it's unclear (`dragons`) or a mess (`spaghetti`). Record who and today's date. Stop |
 
-"It's just a box to me" means the same as don't know, or as `shape` with no detail if they do
-understand it. Ask which.
+"It's just a box to me" is `plain` if they understand it, and don't know if they don't. Ask which.
 
 **"I don't know" ends that branch at once.** It's a complete, valid answer, and the larger the codebase
 the more of them there'll be. Don't guess inside it, press them, or come back to it. Offer a `label` if

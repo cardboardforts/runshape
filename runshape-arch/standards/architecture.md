@@ -25,3 +25,10 @@
 **Check:** judgement  
 **Severity:** info  
 **With:** `dto`, `mapper`  
+
+### `std-product-ignores-the-workshop`
+**Rule:** Product code doesn't depend on the workshop. The workshop may reach into anything.  
+**Why:** A pipeline or a task runner is a composition root: it wires the product, not the reverse.  
+**Check:** imports  
+**Severity:** warn  
+**With:** `composition-root`, `docs`, `dev-tooling`, `delivery`  

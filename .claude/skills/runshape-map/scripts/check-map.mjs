@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const RULES_FILE = "runshape.json";
 const DECIDERS = ["user", "llm", "detected"];
-const STATES = ["parts", "shape", "dragons", "spaghetti"];
+const STATES = ["parts", "shape", "plain", "dragons", "spaghetti"];
 const UNKNOWN_STATES = ["dragons", "spaghetti"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Commits come from a repository's own runshape.json: only hex may reach git, never an option.
@@ -34,9 +34,12 @@ function git(project, args) {
 
 function projectFiles(project) {
   // Untracked counts: scaffolding is often uncommitted. Ignored files and empty folders don't.
-  // runshape.json is excluded: the map's own file isn't code for a system to claim.
-  const listed = git(project, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]);
-  return [...new Set(listed.split("\0").filter((file) => file !== "" && file !== RULES_FILE))].sort();
+  // runshape.json is excluded: the map's own file isn't code for a system to claim. So are files
+  // deleted but not committed: --cached still lists them.
+  const names = (args) => git(project, ["ls-files", ...args, "-z"]).split("\0").filter((file) => file !== "");
+  const deleted = new Set(names(["--deleted"]));
+  const listed = names(["--cached", "--others", "--exclude-standard"]);
+  return [...new Set(listed)].filter((file) => file !== RULES_FILE && !deleted.has(file)).sort();
 }
 
 function markdownIn(folder) {
@@ -125,8 +128,9 @@ function readSystems(systems, parent, whereParent, ctx) {
     if (state === "shape" && !catalog.styles.has(candidate?.style)) {
       problems.push(`${where}.style ${JSON.stringify(candidate?.style)} is not in the catalog (${[...catalog.styles.keys()].sort().join(", ")})`);
     }
+    if ([...UNKNOWN_STATES, "plain"].includes(state) && candidate?.style !== undefined) problems.push(`${where}: "${state}" takes no style`);
+    if (state === "plain" && children.length > 0) problems.push(`${where}: "plain" has nothing inside it: use "parts"`);
     if (UNKNOWN_STATES.includes(state)) {
-      if (candidate?.style !== undefined) problems.push(`${where}: "${state}" takes no style`);
       if (!nonEmpty(candidate?.marked?.who) || !realDate(candidate?.marked?.on)) problems.push(`${where}.marked must say who and on (YYYY-MM-DD)`);
     }
 
@@ -288,7 +292,7 @@ function checkPatterns(patterns, catalog, project, problems) {
 }
 
 function emptyReport(catalog, files, problems) {
-  return { catalog, files, problems, unclaimed: [], claimedTwice: [], noCode: [], undecided: [], states: { parts: 0, shape: 0, dragons: 0, spaghetti: 0 }, patterns: 0 };
+  return { catalog, files, problems, unclaimed: [], claimedTwice: [], noCode: [], undecided: [], states: { parts: 0, shape: 0, plain: 0, dragons: 0, spaghetti: 0 }, patterns: 0 };
 }
 
 function report(project) {
@@ -322,7 +326,7 @@ function report(project) {
   checkExceptions(map?.exceptions, problems);
   checkPatterns(map?.patterns, catalog, project, problems);
 
-  const states = { parts: 0, shape: 0, dragons: 0, spaghetti: 0 };
+  const states = { parts: 0, shape: 0, plain: 0, dragons: 0, spaghetti: 0 };
   for (const system of systems) if (system.state in states) states[system.state] += 1;
   return {
     catalog: folder,

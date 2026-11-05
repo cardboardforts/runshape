@@ -29,3 +29,16 @@ Tests, fixtures and test harnesses.
 
 ### `generated`
 Produced by a tool. Not reviewed by hand.
+
+### `docs`
+Explains the system. Part of the [workshop](../README.md#product-and-workshop).
+
+### `dev-tooling`
+Helps people work on the system locally: task runners, dev scripts, linter config.
+
+### `delivery`
+Ships the system: pipelines, image builds, deploy config. It's privileged, so changes here deserve
+attention even when they're small.
+
+### `repo-config`
+Settings for the repository itself.

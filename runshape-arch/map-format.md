@@ -72,13 +72,14 @@ dotted names is part of the later work.
 
 ### States
 
-Each level answers one question: **is this made of parts, does it have a shape, or do you not
-know?**
+Each level answers one question: **is this made of parts, does it have a shape, is it just a plain
+box, or do you not know?**
 
 | `state` | Meaning | Needs |
 |---|---|---|
 | `parts` | Made of smaller systems: go deeper | `systems`, once someone goes there |
 | `shape` | Has a style: the recursion stops. It holds no `systems` | `style` |
+| `plain` | Understood, with nothing inside worth breaking down: the recursion stops. No `style`, no `systems` | |
 | `dragons` | Someone looked and can't tell | `marked` |
 | `spaghetti` | Someone looked, and there's no structure | `marked` |
 
